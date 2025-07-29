@@ -1,3 +1,7 @@
+# Secret files
+.env*
+!.env.example
+
 # Windows thumbnail cache files
 Thumbs.db
 Thumbs.db:encryptable
@@ -27,7 +31,8 @@ $RECYCLE.BIN/
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon[]
+Icon[
+]
 
 # Thumbnails
 ._*
