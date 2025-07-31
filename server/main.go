@@ -1,17 +1,21 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"server/config"
 	"server/router"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := router.Setup()
+	config := config.LoadConfig()
+	app := router.Setup(config)
 
-	// Start the server on port 3000
-	log.Fatal(app.Listen(":3000", fiber.ListenConfig{
+	port := fmt.Sprintf(":%s", config.Port)
+
+	log.Fatal(app.Listen(port, fiber.ListenConfig{
 		EnablePrefork: true,
 		// TIPS: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 		// ListenerNetwork: fiber.NetworkTCP6,
