@@ -29,7 +29,6 @@ func TestUserService_CreateUser(t *testing.T) {
 		username := "username_already_taken_user"
 		password := "test_password"
 
-		// First create a user
 		mockRepo.Users = append(mockRepo.Users, &model.User{
 			ID:       primitive.NewObjectID(),
 			Username: username,
@@ -46,7 +45,7 @@ func TestUserService_CreateUser(t *testing.T) {
 
 	t.Run("password_too_long", func(t *testing.T) {
 		username := "password_too_long_user"
-		password := "a" + string(make([]byte, 256)) // Simulate a long password
+		password := string(make([]byte, 256))
 
 		_, err := userService.CreateUser(ctx, username, password)
 		if assert.Error(t, err) {
@@ -56,16 +55,13 @@ func TestUserService_CreateUser(t *testing.T) {
 }
 
 func TestUserService_AuthenticateUser(t *testing.T) {
-	// Setup
 	mockRepo := model.NewMockUserRepo()
 	userService := NewUserService(mockRepo, "test_secret")
 	ctx := context.Background()
 
-	// First create a user for testing
 	username := "test_user"
 	password := "test_password"
 
-	// Manually create user (simulate existing user)
 	_, _ = userService.CreateUser(ctx, username, password)
 
 	t.Run("successful_authentication", func(t *testing.T) {
