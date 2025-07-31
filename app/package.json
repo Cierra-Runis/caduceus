@@ -9,20 +9,29 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@heroui/button": "^2.2.24",
+    "@heroui/popover": "^2.3.24",
+    "@heroui/progress": "^2.2.20",
+    "@heroui/system": "^2.4.20",
+    "@heroui/theme": "^2.4.20",
+    "@heroui/toast": "^2.0.14",
+    "@tabler/icons-react": "^3.34.1",
+    "framer-motion": "^12.23.12",
+    "next": "15.4.4",
+    "next-themes": "^0.4.6",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.4.4"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.4.4",
-    "@eslint/eslintrc": "^3"
+    "tailwindcss": "^4",
+    "typescript": "^5"
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }
