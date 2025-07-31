@@ -4,14 +4,31 @@ import (
 	"fmt"
 	"log"
 	"server/config"
+	"server/database"
+	"server/handler"
+	"server/model"
 	"server/router"
+	"server/service"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 func main() {
 	config := config.LoadConfig()
-	app := router.Setup(config)
+
+	client, err := database.NewMongoClient(config.MongoURI, config.DBName)
+	if err != nil {
+		panic("Failed to connect to MongoDB: " + err.Error())
+	}
+
+	userHandler := handler.NewUserHandler(
+		service.NewUserService(
+			model.NewMongoUserRepo(client.DB),
+			config.JWTSecret,
+		),
+	)
+
+	app := router.Setup(userHandler)
 
 	port := fmt.Sprintf(":%s", config.Port)
 
