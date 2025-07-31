@@ -38,17 +38,10 @@ func TestUserService_CreateUser(t *testing.T) {
 
 		user, err := userService.CreateUser(ctx, username, password)
 
-		if err == nil {
-			t.Fatal("expected error, got nil")
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrUsernameTaken, err.Error())
 		}
-
-		if err.Error() != ErrUsernameTaken {
-			t.Errorf("expected error %s, got %s", ErrUsernameTaken, err.Error())
-		}
-
-		if user != nil {
-			t.Error("expected user to be nil")
-		}
+		assert.Nil(t, user)
 	})
 
 	t.Run("password_too_long", func(t *testing.T) {
@@ -75,49 +68,25 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 
 	t.Run("successful_authentication", func(t *testing.T) {
 		token, err := userService.AuthenticateUser(ctx, username, password)
-
-		if err != nil {
-			t.Fatalf("expected no error, got: %v", err)
-		}
-
-		if token == nil {
-			t.Fatal("expected token not to be nil")
-		}
-
-		if *token == "" {
-			t.Error("expected token not to be empty string")
-		}
+		assert.NoError(t, err)
+		assert.NotNil(t, token)
+		assert.NotEmpty(t, *token)
 	})
 
 	t.Run("user_not_found", func(t *testing.T) {
 		token, err := userService.AuthenticateUser(ctx, "nonexistent", "password")
-
-		if err == nil {
-			t.Fatal("expected error, got nil")
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrUserNotFound, err.Error())
 		}
-
-		if err.Error() != ErrUserNotFound {
-			t.Errorf("expected error %s, got %s", ErrUserNotFound, err.Error())
-		}
-
-		if token != nil {
-			t.Error("expected token to be nil")
-		}
+		assert.Nil(t, token)
 	})
 
 	t.Run("invalid_password", func(t *testing.T) {
 		token, err := userService.AuthenticateUser(ctx, username, "wrongpassword")
 
-		if err == nil {
-			t.Fatal("expected error, got nil")
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrInvalidPassword, err.Error())
 		}
-
-		if err.Error() != ErrInvalidPassword {
-			t.Errorf("expected error %s, got %s", ErrInvalidPassword, err.Error())
-		}
-
-		if token != nil {
-			t.Error("expected token to be nil")
-		}
+		assert.Nil(t, token)
 	})
 }
