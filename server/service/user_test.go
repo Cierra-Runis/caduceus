@@ -15,8 +15,8 @@ func TestUserService_CreateUser(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful_user_creation", func(t *testing.T) {
-		username := "testuser"
-		password := "testpassword"
+		username := "successful_user_creation_user"
+		password := "test_password"
 
 		user, err := userService.CreateUser(ctx, username, password)
 
@@ -26,14 +26,14 @@ func TestUserService_CreateUser(t *testing.T) {
 	})
 
 	t.Run("username_already_taken", func(t *testing.T) {
-		username := "existinguser"
-		password := "testpassword"
+		username := "username_already_taken_user"
+		password := "test_password"
 
 		// First create a user
 		mockRepo.Users = append(mockRepo.Users, &model.User{
 			ID:       primitive.NewObjectID(),
 			Username: username,
-			Password: "hashedpassword",
+			Password: "hashed_password",
 		})
 
 		user, err := userService.CreateUser(ctx, username, password)
@@ -45,11 +45,13 @@ func TestUserService_CreateUser(t *testing.T) {
 	})
 
 	t.Run("password_too_long", func(t *testing.T) {
-		username := "testuser"
+		username := "password_too_long_user"
 		password := "a" + string(make([]byte, 256)) // Simulate a long password
 
 		_, err := userService.CreateUser(ctx, username, password)
-		assert.Error(t, err)
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrInvalidPassword, err.Error())
+		}
 	})
 }
 
@@ -60,8 +62,8 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 	ctx := context.Background()
 
 	// First create a user for testing
-	username := "testuser"
-	password := "testpassword"
+	username := "test_user"
+	password := "test_password"
 
 	// Manually create user (simulate existing user)
 	_, _ = userService.CreateUser(ctx, username, password)
@@ -82,7 +84,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 	})
 
 	t.Run("invalid_password", func(t *testing.T) {
-		token, err := userService.AuthenticateUser(ctx, username, "wrongpassword")
+		token, err := userService.AuthenticateUser(ctx, username, "wrong_password")
 
 		if assert.Error(t, err) {
 			assert.Equal(t, ErrInvalidPassword, err.Error())
