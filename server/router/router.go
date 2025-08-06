@@ -8,6 +8,8 @@ import (
 
 func Setup(userHandler *handler.UserHandler) *fiber.App {
 	app := fiber.New()
-	app.Post("/register", userHandler.CreateUser)
+	api := app.Group("/api")
+	api.Get("/health", handler.GetHealth)
+	api.Post("/register", userHandler.CreateUser)
 	return app
 }
