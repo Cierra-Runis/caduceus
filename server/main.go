@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"server/config"
@@ -24,6 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
+	defer client.Client.Disconnect(context.Background())
 
 	userHandler := handler.NewUserHandler(
 		service.NewUserService(
