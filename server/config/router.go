@@ -1,7 +1,12 @@
 package config
 
-import "server/handler"
+import (
+	"server/handler"
+
+	"github.com/gofiber/fiber/v3/middleware/cors"
+)
 
 type RouterConfig struct {
-	UserHandler *handler.UserHandler
+	CorsConfig  cors.Config
+	UserHandler handler.UserHandler
 }

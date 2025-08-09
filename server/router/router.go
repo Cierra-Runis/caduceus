@@ -12,23 +12,7 @@ import (
 func Setup(config config.RouterConfig) *fiber.App {
 	app := fiber.New()
 
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3000"},
-		AllowHeaders: []string{
-			fiber.HeaderOrigin,
-			fiber.HeaderContentType,
-			fiber.HeaderAccept,
-			fiber.HeaderAuthorization,
-		},
-		AllowMethods: []string{
-			fiber.MethodGet,
-			fiber.MethodPost,
-			fiber.MethodPut,
-			fiber.MethodDelete,
-			fiber.MethodOptions,
-		},
-		AllowCredentials: true,
-	}))
+	app.Use(cors.New(config.CorsConfig))
 
 	api := app.Group("/api")
 	api.Get("/health", handler.GetHealth)

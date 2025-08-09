@@ -11,6 +11,7 @@ import (
 	"server/service"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -32,7 +33,24 @@ func main() {
 	)
 
 	app := router.Setup(config.RouterConfig{
-		UserHandler: userHandler,
+		CorsConfig: cors.Config{
+			AllowOrigins: []string{"http://localhost:3000"},
+			AllowHeaders: []string{
+				fiber.HeaderOrigin,
+				fiber.HeaderContentType,
+				fiber.HeaderAccept,
+				fiber.HeaderAuthorization,
+			},
+			AllowMethods: []string{
+				fiber.MethodGet,
+				fiber.MethodPost,
+				fiber.MethodPut,
+				fiber.MethodDelete,
+				fiber.MethodOptions,
+			},
+			AllowCredentials: true,
+		},
+		UserHandler: *userHandler,
 	})
 
 	port := fmt.Sprintf(":%s", appConfig.Port)
