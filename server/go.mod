@@ -3,10 +3,10 @@ module server
 go 1.24.5
 
 require (
-	github.com/fasthttp/websocket v1.5.12
 	github.com/gofiber/fiber/v3 v3.0.0-beta.5
 	github.com/golang-jwt/jwt/v5 v5.2.3
 	github.com/joho/godotenv v1.5.1
+	github.com/kiuber/gofiber3-contrib/websocket v0.1.1-0.20250623070125-7ef7e8d8a964
 	github.com/stretchr/testify v1.10.0
 	go.mongodb.org/mongo-driver v1.17.4
 	golang.org/x/crypto v0.40.0
@@ -15,6 +15,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/fasthttp/websocket v1.5.11 // indirect
 	github.com/gofiber/schema v1.6.0 // indirect
 	github.com/gofiber/utils/v2 v2.0.0-beta.13 // indirect
 	github.com/golang/snappy v1.0.0 // indirect

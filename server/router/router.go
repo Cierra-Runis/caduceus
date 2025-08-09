@@ -4,12 +4,24 @@ import (
 	"server/handler"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/kiuber/gofiber3-contrib/websocket"
 )
 
 func Setup(userHandler *handler.UserHandler) *fiber.App {
 	app := fiber.New()
+
 	api := app.Group("/api")
 	api.Get("/health", handler.GetHealth)
 	api.Post("/register", userHandler.CreateUser)
+
+	ws := app.Group("/ws")
+	ws.Use("/ws", func(c fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	ws.Get("/", websocket.New(handler.WebSocket))
+
 	return app
 }
