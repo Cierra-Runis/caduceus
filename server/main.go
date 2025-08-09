@@ -14,11 +14,14 @@ import (
 )
 
 func main() {
-	appConfig := config.LoadConfig()
+	appConfig, err := config.LoadConfig()
+	if err != nil {
+		log.Fatal("Failed to load configuration: ", err)
+	}
 
 	client, err := database.NewMongoClient(appConfig.MongoURI, appConfig.DBName)
 	if err != nil {
-		panic("Failed to connect to MongoDB: " + err.Error())
+		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
 
 	userHandler := handler.NewUserHandler(
