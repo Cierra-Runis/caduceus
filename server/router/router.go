@@ -20,10 +20,10 @@ func Setup(config config.RouterConfig) *fiber.App {
 
 	ws := app.Group("/ws")
 	ws.Use("/ws", func(c fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			return c.Next()
+		if !websocket.IsWebSocketUpgrade(c) {
+			return fiber.ErrUpgradeRequired
 		}
-		return fiber.ErrUpgradeRequired
+		return c.Next()
 	})
 	ws.Get("/", websocket.New(handler.WebSocket))
 
