@@ -14,9 +14,9 @@ import (
 )
 
 func main() {
-	config := config.LoadConfig()
+	appConfig := config.LoadConfig()
 
-	client, err := database.NewMongoClient(config.MongoURI, config.DBName)
+	client, err := database.NewMongoClient(appConfig.MongoURI, appConfig.DBName)
 	if err != nil {
 		panic("Failed to connect to MongoDB: " + err.Error())
 	}
@@ -24,13 +24,15 @@ func main() {
 	userHandler := handler.NewUserHandler(
 		service.NewUserService(
 			model.NewMongoUserRepo(client.DB),
-			config.JWTSecret,
+			appConfig.JWTSecret,
 		),
 	)
 
-	app := router.Setup(userHandler)
+	app := router.Setup(config.RouterConfig{
+		UserHandler: userHandler,
+	})
 
-	port := fmt.Sprintf(":%s", config.Port)
+	port := fmt.Sprintf(":%s", appConfig.Port)
 
 	log.Fatal(app.Listen(port, fiber.ListenConfig{
 		EnablePrefork: true,
