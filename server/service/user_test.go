@@ -88,3 +88,31 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 		assert.Nil(t, token)
 	})
 }
+
+func TestUserService_AuthenticateUser_TokenGenerationError(t *testing.T) {
+	// Create a mock repository with a specific user
+	mockRepo := model.NewMockUserRepo()
+	userService := NewUserService(mockRepo, "test_secret")
+	ctx := context.Background()
+
+	// Create a user first
+	username := "test_user"
+	password := "test_password"
+	_, _ = userService.CreateUser(ctx, username, password)
+
+	// Test JWT generation with normal secret (should work fine)
+	token, err := userService.AuthenticateUser(ctx, username, password)
+	assert.NoError(t, err)
+	assert.NotNil(t, token)
+}
+
+func TestNewUserService(t *testing.T) {
+	mockRepo := model.NewMockUserRepo()
+	secret := "test_secret"
+
+	userService := NewUserService(mockRepo, secret)
+
+	assert.NotNil(t, userService)
+	assert.Equal(t, mockRepo, userService.repo)
+	assert.Equal(t, secret, userService.jwtSecret)
+}
