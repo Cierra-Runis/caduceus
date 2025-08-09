@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Frontend  string
 	MongoURI  string
 	DBName    string
 	Port      string
@@ -20,6 +21,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
+		Frontend:  getEnv("FRONTEND", "http://localhost:3000"),
 		MongoURI:  getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		DBName:    getEnv("DB_NAME", "caduceus_dev"),
 		Port:      getEnv("PORT", "3000"),

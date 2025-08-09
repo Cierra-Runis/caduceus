@@ -34,7 +34,7 @@ func main() {
 
 	app := router.Setup(config.RouterConfig{
 		CorsConfig: cors.Config{
-			AllowOrigins: []string{"http://localhost:3000"},
+			AllowOrigins: []string{appConfig.Frontend},
 			AllowHeaders: []string{
 				fiber.HeaderOrigin,
 				fiber.HeaderContentType,
