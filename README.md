@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./.github/icon.svg" alt="Caduceus Logo" width="120" height="120" style="border-radius: 20px" />
+  <img src="./.github/icon.svg" alt="Caduceus Logo" width="120" height="120"/>
 
 # Caduceus
 
@@ -62,18 +62,14 @@
 
 Caduceus follows a modern, scalable architecture designed for performance and maintainability:
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Next.js App   │◄──►│   Go Backend    │◄──►│    MongoDB      │
-│  (TypeScript)   │    │   (Fiber v3)    │    │   (Database)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         │                       ▼                       │
-         │              ┌─────────────────┐              │
-         │              │ Typst Compiler  │              │
-         └──────────────┤   (Document     ├──────────────┘
-                        │   Processing)   │
-                        └─────────────────┘
+```mermaid
+graph TD;
+  NextApp["Next.js App <br/> (TypeScript)"]
+  GoBackend["Go Backend <br/> (Fiber v3)"]
+  MongoDB["MongoDB (Database)"]
+  TypstCompiler["Typst Compiler <br/> (Document Processing)"]
+  NextApp <--> GoBackend <--> MongoDB
+  GoBackend <--> TypstCompiler
 ```
 
 ### Frontend Stack
