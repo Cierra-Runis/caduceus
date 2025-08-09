@@ -69,8 +69,7 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: ./server/coverage.out
-          flags: backend
-          name: backend-coverage
+          slug: Cierra-Runis/caduceus
           token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
