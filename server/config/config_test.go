@@ -25,11 +25,11 @@ func TestLoadConfig(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	t.Run("valid_config", func(t *testing.T) {
 		config := &Config{
-			Frontend:  "http://localhost:3000",
-			MongoURI:  "mongodb://localhost:27017",
-			DBName:    "testdb",
-			Port:      "8080",
-			JWTSecret: "secret",
+			AllowOrigins: []string{"http://localhost:3000"},
+			MongoURI:     "mongodb://localhost:27017",
+			DBName:       "testdb",
+			Port:         "8080",
+			JWTSecret:    "secret",
 		}
 		err := config.Validate()
 		assert.NoError(t, err)

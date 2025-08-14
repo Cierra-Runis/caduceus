@@ -14,11 +14,11 @@ type RouterConfig struct {
 }
 
 type Config struct {
-	Frontend  string `mapstructure:"frontend"`
-	MongoURI  string `mapstructure:"mongoUri"`
-	DBName    string `mapstructure:"dbName"`
-	Port      string `mapstructure:"port"`
-	JWTSecret string `mapstructure:"jwtSecret"`
+	AllowOrigins []string `mapstructure:"allowOrigins"`
+	MongoURI     string   `mapstructure:"mongoUri"`
+	DBName       string   `mapstructure:"dbName"`
+	Port         string   `mapstructure:"port"`
+	JWTSecret    string   `mapstructure:"jwtSecret"`
 }
 
 func LoadConfig(env string) (*Config, error) {
@@ -46,7 +46,7 @@ func LoadConfig(env string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.Frontend == "" || c.MongoURI == "" || c.DBName == "" || c.Port == "" || c.JWTSecret == "" {
+	if len(c.AllowOrigins) == 0 || c.MongoURI == "" || c.DBName == "" || c.Port == "" || c.JWTSecret == "" {
 		return fmt.Errorf("missing required configuration fields")
 	}
 	return nil

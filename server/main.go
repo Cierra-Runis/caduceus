@@ -41,7 +41,7 @@ func main() {
 
 	app := router.Setup(config.RouterConfig{
 		CorsConfig: cors.Config{
-			AllowOrigins: []string{appConfig.Frontend},
+			AllowOrigins: appConfig.AllowOrigins,
 			AllowHeaders: []string{
 				fiber.HeaderOrigin,
 				fiber.HeaderContentType,
