@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"server/config"
 	"server/database"
 	"server/handler"
@@ -16,7 +17,11 @@ import (
 )
 
 func main() {
-	appConfig, err := config.LoadConfig()
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "dev"
+	}
+	appConfig, err := config.LoadConfig(env)
 	if err != nil {
 		log.Fatal("Failed to load configuration: ", err)
 	}
