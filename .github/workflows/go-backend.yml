@@ -59,7 +59,7 @@ jobs:
         with:
           fail_ci_if_error: true
           flags: unit_tests
-          file: coverage.out
+          files: coverage.out
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
