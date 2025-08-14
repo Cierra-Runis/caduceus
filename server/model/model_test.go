@@ -13,7 +13,7 @@ import (
 func TestGenerateToken(t *testing.T) {
 	user := &User{
 		ID:       primitive.NewObjectID(),
-		Username: "testuser",
+		Username: "test_user",
 	}
 	secret := "test_secret"
 
@@ -22,7 +22,6 @@ func TestGenerateToken(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed
 		parsedToken, err := jwt.ParseWithClaims(token, &JwtCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(secret), nil
 		})
@@ -96,21 +95,21 @@ func TestMockUserRepo_CreateUser(t *testing.T) {
 
 	t.Run("successful_creation", func(t *testing.T) {
 		user := &User{
-			Username: "newuser",
+			Username: "new_user",
 			Password: "password",
 		}
 
 		createdUser, err := repo.CreateUser(ctx, user)
 		assert.NoError(t, err)
 		assert.NotNil(t, createdUser)
-		assert.Equal(t, "newuser", createdUser.Username)
+		assert.Equal(t, "new_user", createdUser.Username)
 		assert.NotEqual(t, primitive.NilObjectID, createdUser.ID)
 		assert.Len(t, repo.Users, 1)
 	})
 
 	t.Run("mock_error_scenario", func(t *testing.T) {
 		user := &User{
-			Username: "fail", // This triggers mock error
+			Username: "fail",
 			Password: "password",
 		}
 
@@ -124,17 +123,17 @@ func TestMockUserRepo_CreateUser(t *testing.T) {
 func TestUser_StructFields(t *testing.T) {
 	user := User{
 		ID:        primitive.NewObjectID(),
-		Username:  "testuser",
+		Username:  "test_user",
 		Nickname:  "Test User",
-		Password:  "hashedpassword",
+		Password:  "hashed_password",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	assert.NotEqual(t, primitive.NilObjectID, user.ID)
-	assert.Equal(t, "testuser", user.Username)
+	assert.Equal(t, "test_user", user.Username)
 	assert.Equal(t, "Test User", user.Nickname)
-	assert.Equal(t, "hashedpassword", user.Password)
+	assert.Equal(t, "hashed_password", user.Password)
 	assert.WithinDuration(t, time.Now(), user.CreatedAt, time.Second)
 	assert.WithinDuration(t, time.Now(), user.UpdatedAt, time.Second)
 }
