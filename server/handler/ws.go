@@ -25,7 +25,6 @@ func WebSocket(c *websocket.Conn) {
 			break
 		}
 
-		// 处理不同类型的消息
 		response := handleWebSocketMessage(msg)
 
 		if err := c.WriteJSON(response); err != nil {
@@ -40,7 +39,6 @@ func WebSocket(c *websocket.Conn) {
 func handleWebSocketMessage(msg WebSocketMessage) WebSocketMessage {
 	switch msg.Type {
 	case "compile":
-		// 处理实时编译请求
 		return WebSocketMessage{
 			Type: "compile_result",
 			Data: fiber.Map{
