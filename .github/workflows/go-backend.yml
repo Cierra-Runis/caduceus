@@ -57,7 +57,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          file: ./server/coverage.out
+          file: ./coverage.out
           slug: Cierra-Runis/caduceus
           token: ${{ secrets.CODECOV_TOKEN }}
 
