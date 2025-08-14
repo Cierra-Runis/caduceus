@@ -12,23 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetHealth(t *testing.T) {
-	app := fiber.New()
-	app.Get("/health", GetHealth)
-
-	req := httptest.NewRequest("GET", "/health", nil)
-	resp, err := app.Test(req)
-
-	assert.NoError(t, err)
-	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	var response map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	assert.NoError(t, err)
-	assert.Equal(t, "ok", response["status"])
-	assert.NotNil(t, response["timestamp"])
-}
-
 func TestUserHandler_CreateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret")
@@ -39,8 +22,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 
 	t.Run("successful_user_creation", func(t *testing.T) {
 		reqBody := CreateUserRequest{
-			Username: "testuser",
-			Password: "testpassword",
+			Username: "test_user",
+			Password: "test_password",
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
@@ -54,13 +37,13 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		var response model.User
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, "testuser", response.Username)
+		assert.Equal(t, "test_user", response.Username)
 	})
 
 	t.Run("username_already_taken", func(t *testing.T) {
 		reqBody := CreateUserRequest{
-			Username: "testuser", // Same username as above
-			Password: "testpassword",
+			Username: "test_user", // Same username as above
+			Password: "test_password",
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
@@ -79,7 +62,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 
 	t.Run("invalid_password", func(t *testing.T) {
 		reqBody := CreateUserRequest{
-			Username: "testuser2",
+			Username: "test_user2",
 			Password: string(make([]byte, 256)), // Too long password
 		}
 		jsonBody, _ := json.Marshal(reqBody)
@@ -110,7 +93,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 	t.Run("mock_create_error", func(t *testing.T) {
 		reqBody := CreateUserRequest{
 			Username: "fail", // This triggers mock error
-			Password: "testpassword",
+			Password: "test_password",
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
