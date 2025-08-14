@@ -13,8 +13,8 @@ type MongoClient struct {
 	DB     *mongo.Database
 }
 
-func NewMongoClient(uri, dbName string) (*MongoClient, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func NewMongoClient(uri, dbName string, timeout time.Duration) (*MongoClient, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))

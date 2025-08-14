@@ -10,6 +10,7 @@ import (
 	"server/model"
 	"server/router"
 	"server/service"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -25,7 +26,11 @@ func main() {
 		log.Fatal("Failed to load configuration: ", err)
 	}
 
-	client, err := database.NewMongoClient(appConfig.MongoURI, appConfig.DBName)
+	client, err := database.NewMongoClient(
+		appConfig.MongoURI,
+		appConfig.DBName,
+		10*time.Second,
+	)
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
