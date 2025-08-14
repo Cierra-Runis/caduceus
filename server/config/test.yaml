@@ -2,5 +2,5 @@ allowOrigins:
   - http://localhost:3000
 mongoUri: mongodb://localhost:27017
 dbName: caduceus_test
-port: 8080
+address: http://localhost:8080
 jwtSecret: WVM5vYfj0QTFiC5N2D6pFuX7

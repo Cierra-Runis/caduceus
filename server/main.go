@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"server/config"
@@ -60,9 +59,7 @@ func main() {
 		UserHandler: *userHandler,
 	})
 
-	port := fmt.Sprintf(":%s", appConfig.Port)
-
-	log.Fatal(app.Listen(port, fiber.ListenConfig{
+	log.Fatal(app.Listen(appConfig.Address, fiber.ListenConfig{
 		EnablePrefork: true,
 		// TIPS: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 		// ListenerNetwork: fiber.NetworkTCP6,

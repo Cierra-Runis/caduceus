@@ -17,7 +17,7 @@ type Config struct {
 	AllowOrigins []string `mapstructure:"allowOrigins"`
 	MongoURI     string   `mapstructure:"mongoUri"`
 	DBName       string   `mapstructure:"dbName"`
-	Port         string   `mapstructure:"port"`
+	Address      string   `mapstructure:"address"`
 	JWTSecret    string   `mapstructure:"jwtSecret"`
 }
 
@@ -46,7 +46,7 @@ func LoadConfig(env string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if len(c.AllowOrigins) == 0 || c.MongoURI == "" || c.DBName == "" || c.Port == "" || c.JWTSecret == "" {
+	if len(c.AllowOrigins) == 0 || c.MongoURI == "" || c.DBName == "" || c.Address == "" || c.JWTSecret == "" {
 		return fmt.Errorf("missing required configuration fields")
 	}
 	return nil

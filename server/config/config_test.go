@@ -28,7 +28,7 @@ func TestConfig_Validate(t *testing.T) {
 			AllowOrigins: []string{"http://localhost:3000"},
 			MongoURI:     "mongodb://localhost:27017",
 			DBName:       "testdb",
-			Port:         "8080",
+			Address:      "http://localhost:8080",
 			JWTSecret:    "secret",
 		}
 		err := config.Validate()
