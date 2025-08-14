@@ -7,7 +7,7 @@
 To run the unit tests, use the following command:
 
 ```bash
-go test ./...
+go test ./src/...
 ```
 
 ### Coverage Report
@@ -15,7 +15,7 @@ go test ./...
 Run the following command to execute tests and generate a coverage report:
 
 ```bash
-go test -coverprofile 'coverage.out' ./...
+go test -coverprofile 'coverage.out' ./src/...
 go tool cover -html 'coverage.out' -o 'coverage.html'
 ```
 
@@ -24,5 +24,5 @@ go tool cover -html 'coverage.out' -o 'coverage.html'
 To run the integration tests, use the following command:
 
 ```bash
-go test -tags=integration ./...
+go test -tags=integration ./src/...
 ```

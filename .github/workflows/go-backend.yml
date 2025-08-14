@@ -35,7 +35,7 @@ jobs:
         run: go mod verify
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet ./src/...
 
       - name: Run go fmt check
         run: |
@@ -49,10 +49,10 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
       - name: Run staticcheck
-        run: staticcheck ./...
+        run: staticcheck ./src/...
 
       - name: Run unit tests with coverage
-        run: go test -v -coverprofile 'coverage.out' ./...
+        run: go test -v -coverprofile 'coverage.out' ./src/...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -107,7 +107,7 @@ jobs:
           TEST_DB_NAME: test_caduceus
         run: |
           echo "Running integration tests..."
-          go test -v -tags=integration ./...
+          go test -v -tags=integration ./src/...
 
   build:
     name: Build

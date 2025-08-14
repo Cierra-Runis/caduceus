@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"server/service"
+	"server/src/service"
 
 	"github.com/gofiber/fiber/v3"
 )

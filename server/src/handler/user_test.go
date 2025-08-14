@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
-	"server/model"
-	"server/service"
+	"server/src/model"
+	"server/src/service"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"

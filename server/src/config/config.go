@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"server/handler"
+	"server/src/handler"
 
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/spf13/viper"

@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"server/model"
+	"server/src/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

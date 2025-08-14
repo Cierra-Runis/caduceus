@@ -2,10 +2,10 @@ package router
 
 import (
 	"net/http/httptest"
-	"server/config"
-	"server/handler"
-	"server/model"
-	"server/service"
+	"server/src/config"
+	"server/src/handler"
+	"server/src/model"
+	"server/src/service"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"

@@ -1,8 +1,8 @@
 package router
 
 import (
-	"server/config"
-	"server/handler"
+	"server/src/config"
+	"server/src/handler"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"

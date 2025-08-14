@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"server/model"
+	"server/src/model"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
