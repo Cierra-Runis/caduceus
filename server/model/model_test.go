@@ -50,15 +50,6 @@ func TestGenerateToken(t *testing.T) {
 	})
 }
 
-func TestNewMongoUserRepo(t *testing.T) {
-	// Test with a mock database structure
-	t.Run("constructor_creates_repo", func(t *testing.T) {
-		// We can't test with nil DB as it causes panic in MongoDB driver
-		// Instead, we test that the constructor exists and would work with valid DB
-		assert.NotNil(t, NewMongoUserRepo)
-	})
-}
-
 func TestNewMockUserRepo(t *testing.T) {
 	repo := NewMockUserRepo()
 	assert.NotNil(t, repo)
