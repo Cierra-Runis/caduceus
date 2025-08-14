@@ -9,13 +9,13 @@ import (
 
 func TestNewMongoClient_InvalidURI(t *testing.T) {
 	t.Run("invalid_mongo_uri", func(t *testing.T) {
-		client, err := NewMongoClient("invalid://uri", "testdb", time.Second)
+		client, err := NewMongoClient("invalid://uri", "test_db", time.Second)
 		assert.Error(t, err)
 		assert.Nil(t, client)
 	})
 
 	t.Run("empty_uri", func(t *testing.T) {
-		client, err := NewMongoClient("", "testdb", time.Second)
+		client, err := NewMongoClient("", "test_db", time.Second)
 		assert.Error(t, err)
 		assert.Nil(t, client)
 	})
