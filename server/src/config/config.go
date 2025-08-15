@@ -21,13 +21,13 @@ type Config struct {
 	JWTSecret    string   `mapstructure:"jwtSecret"`
 }
 
-func LoadConfig(env string) (*Config, error) {
+func LoadConfig(env string, configPath string) (*Config, error) {
 	v := viper.New()
 
 	v.SetConfigName(env)
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
-	v.AddConfigPath("config")
+	v.AddConfigPath(configPath)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)

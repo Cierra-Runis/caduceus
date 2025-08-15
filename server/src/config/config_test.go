@@ -9,14 +9,14 @@ import (
 func TestLoadConfig(t *testing.T) {
 	t.Run("load_config_success", func(t *testing.T) {
 		env := "test"
-		config, err := LoadConfig(env)
+		config, err := LoadConfig(env, "../../config")
 		assert.NoError(t, err)
 		assert.NotNil(t, config)
 	})
 
 	t.Run("load_config_file_not_found", func(t *testing.T) {
 		env := "nonexistent"
-		config, err := LoadConfig(env)
+		config, err := LoadConfig(env, "../../config")
 		assert.Error(t, err)
 		assert.Nil(t, config)
 	})
