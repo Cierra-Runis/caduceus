@@ -9,6 +9,7 @@ import (
 )
 
 func TestHandleWebSocketMessage(t *testing.T) {
+	webSocketHandler := NewWebSocketHandler()
 	timestamp := time.Now().Unix()
 
 	t.Run("compile_message", func(t *testing.T) {
@@ -18,7 +19,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 			Timestamp: timestamp,
 		}
 
-		response := handleWebSocketMessage(msg)
+		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "compile_result", response.Type)
 		assert.NotNil(t, response.Data)
@@ -40,7 +41,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 			Timestamp: timestamp,
 		}
 
-		response := handleWebSocketMessage(msg)
+		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "pong", response.Type)
 		assert.NotNil(t, response.Data)
@@ -61,7 +62,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 			Timestamp: timestamp,
 		}
 
-		response := handleWebSocketMessage(msg)
+		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "error", response.Type)
 		assert.NotNil(t, response.Data)
@@ -82,7 +83,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 			Timestamp: timestamp,
 		}
 
-		response := handleWebSocketMessage(msg)
+		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "error", response.Type)
 		assert.NotNil(t, response.Data)

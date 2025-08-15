@@ -9,8 +9,10 @@ import (
 )
 
 type RouterConfig struct {
-	CorsConfig  cors.Config
-	UserHandler handler.UserHandler
+	CorsConfig       cors.Config
+	HealthHandler    handler.HealthHandler
+	UserHandler      handler.UserHandler
+	WebSocketHandler handler.WebSocketHandler
 }
 
 type Config struct {

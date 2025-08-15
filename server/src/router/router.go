@@ -15,7 +15,7 @@ func Setup(config config.RouterConfig) *fiber.App {
 	app.Use(cors.New(config.CorsConfig))
 
 	api := app.Group("/api")
-	api.Get("/health", handler.GetHealth)
+	api.Get("/health", config.HealthHandler.GetHealth)
 	api.Post("/register", config.UserHandler.CreateUser)
 
 	ws := app.Group("/ws")
@@ -25,7 +25,22 @@ func Setup(config config.RouterConfig) *fiber.App {
 		}
 		return c.Next()
 	})
-	ws.Get("/", websocket.New(handler.WebSocket))
+	ws.Get("/", websocket.New(func(c *websocket.Conn) {
+		defer c.Close()
+
+		for {
+			var msg handler.WebSocketMessage
+			if err := c.ReadJSON(&msg); err != nil {
+				break
+			}
+
+			response := config.WebSocketHandler.HandleWebSocketMessage(msg)
+
+			if err := c.WriteJSON(response); err != nil {
+				break
+			}
+		}
+	}))
 
 	return app
 }
