@@ -13,7 +13,7 @@ func TestGetHealth(t *testing.T) {
 	app := fiber.New()
 	app.Get("/health", GetHealth)
 
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/health", nil)
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)

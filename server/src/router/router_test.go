@@ -45,7 +45,7 @@ func TestSetup(t *testing.T) {
 	assert.NotNil(t, app)
 
 	t.Run("health_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/health", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/api/health", nil)
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err)
@@ -53,7 +53,7 @@ func TestSetup(t *testing.T) {
 	})
 
 	t.Run("register_endpoint_exists", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/register", nil)
+		req := httptest.NewRequest(fiber.MethodPost, "/api/register", nil)
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err)
@@ -62,7 +62,7 @@ func TestSetup(t *testing.T) {
 	})
 
 	t.Run("websocket_upgrade_required", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/ws/", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/ws/", nil)
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err)
@@ -70,11 +70,11 @@ func TestSetup(t *testing.T) {
 	})
 
 	t.Run("websocket_with_upgrade_headers", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/ws/", nil)
-		req.Header.Set("Connection", "Upgrade")
-		req.Header.Set("Upgrade", "websocket")
-		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-		req.Header.Set("Sec-WebSocket-Version", "13")
+		req := httptest.NewRequest(fiber.MethodGet, "/ws/", nil)
+		req.Header.Set(fiber.HeaderConnection, "Upgrade")
+		req.Header.Set(fiber.HeaderUpgrade, "websocket")
+		req.Header.Set(fiber.HeaderSecWebSocketKey, "dGhlIHNhbXBsZSBub25jZQ==")
+		req.Header.Set(fiber.HeaderSecWebSocketVersion, "13")
 
 		resp, err := app.Test(req)
 
@@ -86,9 +86,9 @@ func TestSetup(t *testing.T) {
 	})
 
 	t.Run("cors_preflight", func(t *testing.T) {
-		req := httptest.NewRequest("OPTIONS", "/api/health", nil)
-		req.Header.Set("Origin", "http://localhost:3000")
-		req.Header.Set("Access-Control-Request-Method", "GET")
+		req := httptest.NewRequest(fiber.MethodOptions, "/api/health", nil)
+		req.Header.Set(fiber.HeaderOrigin, "http://localhost:3000")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 
 		resp, err := app.Test(req)
 
@@ -98,7 +98,7 @@ func TestSetup(t *testing.T) {
 	})
 
 	t.Run("invalid_route", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/invalid", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/invalid", nil)
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err)

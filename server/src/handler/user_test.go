@@ -27,8 +27,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest("POST", "/register", bytes.NewReader(jsonBody))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader(jsonBody))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
@@ -47,8 +47,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest("POST", "/register", bytes.NewReader(jsonBody))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader(jsonBody))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
@@ -67,8 +67,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest("POST", "/register", bytes.NewReader(jsonBody))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader(jsonBody))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
@@ -81,8 +81,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 	})
 
 	t.Run("invalid_request_body", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/register", bytes.NewReader([]byte("invalid json")))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader([]byte("invalid json")))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
@@ -97,8 +97,8 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
-		req := httptest.NewRequest("POST", "/register", bytes.NewReader(jsonBody))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader(jsonBody))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
