@@ -19,7 +19,7 @@ func Setup(config config.RouterConfig) *fiber.App {
 	api.Post("/register", config.UserHandler.CreateUser)
 
 	ws := app.Group("/ws")
-	ws.Use("/ws", func(c fiber.Ctx) error {
+	ws.Use(func(c fiber.Ctx) error {
 		if !websocket.IsWebSocketUpgrade(c) {
 			return fiber.ErrUpgradeRequired
 		}
