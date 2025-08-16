@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"log"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/kiuber/gofiber3-contrib/websocket"
 )
@@ -16,24 +14,19 @@ type WebSocketMessage struct {
 func WebSocket(c *websocket.Conn) {
 	defer c.Close()
 
-	log.Println("WebSocket connection established")
-
 	for {
 		var msg WebSocketMessage
 		if err := c.ReadJSON(&msg); err != nil {
-			log.Println("WebSocket read error:", err)
 			break
 		}
 
 		response := handleWebSocketMessage(msg)
 
 		if err := c.WriteJSON(response); err != nil {
-			log.Println("WebSocket write error:", err)
 			break
 		}
 	}
 
-	log.Println("WebSocket connection closed")
 }
 
 func handleWebSocketMessage(msg WebSocketMessage) WebSocketMessage {
