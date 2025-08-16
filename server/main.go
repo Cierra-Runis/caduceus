@@ -21,7 +21,7 @@ func main() {
 	if env == "" {
 		env = "dev"
 	}
-	appConfig, err := config.LoadConfig(env)
+	appConfig, err := config.LoadConfig(env, "config")
 	if err != nil {
 		log.Fatal("Failed to load configuration: ", err)
 	}
