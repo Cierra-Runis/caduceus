@@ -14,6 +14,13 @@ func TestLoadConfig(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, config)
 	})
+
+	t.Run("load_config_file_not_found", func(t *testing.T) {
+		env := "nonexistent"
+		config, err := config.LoadConfig(env, "../../config")
+		assert.Error(t, err)
+		assert.Nil(t, config)
+	})
 }
 
 func TestConfig_Validate(t *testing.T) {
