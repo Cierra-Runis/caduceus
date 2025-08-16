@@ -69,6 +69,22 @@ func TestSetup(t *testing.T) {
 		assert.Equal(t, fiber.StatusUpgradeRequired, resp.StatusCode)
 	})
 
+	t.Run("websocket_with_upgrade_headers", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/ws/", nil)
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+
+		resp, err := app.Test(req)
+
+		assert.NoError(t, err)
+		// This should pass the middleware check (c.Next() gets called)
+		// but will fail at the WebSocket handler level since we're not doing a real WebSocket handshake
+		// The important thing is that we test the c.Next() path in the middleware
+		assert.NotEqual(t, fiber.StatusUpgradeRequired, resp.StatusCode)
+	})
+
 	t.Run("cors_preflight", func(t *testing.T) {
 		req := httptest.NewRequest("OPTIONS", "/api/health", nil)
 		req.Header.Set("Origin", "http://localhost:3000")
