@@ -13,6 +13,7 @@
 
 **Caduceus** is a open-source alternative to [Typst App](https://typst.app). This project aims to provide a simple, self-hostable alternative for writing and compiling Typst documents in your browser.
 
+> [!WARNING]
 > ⚠️ **Work in Progress**: This project is currently under active development. Many features are planned but not yet implemented.
 
 ## 📄 License
