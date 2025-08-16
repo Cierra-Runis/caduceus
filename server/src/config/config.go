@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"server/src/handler"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/spf13/viper"
 )
 
 type RouterConfig struct {
+	FiberConfig      fiber.Config
 	CorsConfig       cors.Config
 	HealthHandler    handler.HealthHandler
 	UserHandler      handler.UserHandler

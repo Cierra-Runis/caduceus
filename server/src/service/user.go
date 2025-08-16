@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	ErrUsernameTaken   = "username already taken"
-	ErrInvalidPassword = "invalid password"
-	ErrUserNotFound    = "user not found"
+	ErrInvalidRequestBody = "invalid request body"
+	ErrUsernameTaken      = "username already taken"
+	ErrInvalidPassword    = "invalid password"
+	ErrUserNotFound       = "user not found"
 )
 
 type UserService struct {

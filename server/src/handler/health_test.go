@@ -1,17 +1,20 @@
-package handler
+package handler_test
 
 import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
+	"server/src/handler"
+	"server/src/router"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetHealth(t *testing.T) {
-	app := fiber.New()
-	healthHandler := NewHealthHandler()
+	app := router.SetupTestRouter()
+	healthHandler := handler.NewHealthHandler()
 	app.Get("/health", healthHandler.GetHealth)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/health", nil)

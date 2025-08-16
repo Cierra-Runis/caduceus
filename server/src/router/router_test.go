@@ -57,8 +57,7 @@ func TestSetup(t *testing.T) {
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err)
-		// Should get 422 for invalid JSON binding, not 404 for missing route
-		assert.Equal(t, fiber.StatusUnprocessableEntity, resp.StatusCode)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 	})
 
 	t.Run("websocket_upgrade_required", func(t *testing.T) {
@@ -104,4 +103,9 @@ func TestSetup(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	})
+}
+
+func TestSetupTestRouter(t *testing.T) {
+	app := SetupTestRouter()
+	assert.NotNil(t, app)
 }

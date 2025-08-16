@@ -7,6 +7,7 @@ import (
 	"server/src/config"
 	"server/src/database"
 	"server/src/handler"
+	"server/src/middleware"
 	"server/src/model"
 	"server/src/router"
 	"server/src/service"
@@ -44,6 +45,10 @@ func main() {
 	)
 
 	app := router.Setup(config.RouterConfig{
+		FiberConfig: fiber.Config{
+			AppName:         "caduceus",
+			StructValidator: middleware.NewStructValidator(),
+		},
 		CorsConfig: cors.Config{
 			AllowOrigins: appConfig.AllowOrigins,
 			AllowHeaders: []string{

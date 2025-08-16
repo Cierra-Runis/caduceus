@@ -1,10 +1,12 @@
-package handler
+package handler_test
 
 import (
 	"bytes"
 	"encoding/json"
 	"net/http/httptest"
+	"server/src/handler"
 	"server/src/model"
+	"server/src/router"
 	"server/src/service"
 	"testing"
 
@@ -15,13 +17,13 @@ import (
 func TestUserHandler_CreateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret")
-	userHandler := NewUserHandler(userService)
+	userHandler := handler.NewUserHandler(userService)
 
-	app := fiber.New()
+	app := router.SetupTestRouter()
 	app.Post("/register", userHandler.CreateUser)
 
 	t.Run("successful_user_creation", func(t *testing.T) {
-		reqBody := CreateUserRequest{
+		reqBody := handler.CreateUserRequest{
 			Username: "test_user",
 			Password: "test_password",
 		}
@@ -34,14 +36,14 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-		var response model.User
+		var response model.Response[handler.CreateUserResponse]
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, "test_user", response.Username)
+		assert.Equal(t, "test_user", response.Data.Username)
 	})
 
 	t.Run("username_already_taken", func(t *testing.T) {
-		reqBody := CreateUserRequest{
+		reqBody := handler.CreateUserRequest{
 			Username: "test_user", // Same username as above
 			Password: "test_password",
 		}
@@ -54,14 +56,14 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusConflict, resp.StatusCode)
 
-		var response map[string]string
+		var response model.Response[handler.CreateUserResponse]
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrUsernameTaken, response["error"])
+		assert.Equal(t, service.ErrUsernameTaken, response.Message)
 	})
 
 	t.Run("invalid_password", func(t *testing.T) {
-		reqBody := CreateUserRequest{
+		reqBody := handler.CreateUserRequest{
 			Username: "test_user2",
 			Password: string(make([]byte, 256)), // Too long password
 		}
@@ -74,24 +76,32 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 
-		var response map[string]string
+		var response model.Response[handler.CreateUserResponse]
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrInvalidPassword, response["error"])
+		assert.Equal(t, service.ErrInvalidPassword, response.Message)
 	})
 
 	t.Run("invalid_request_body", func(t *testing.T) {
-		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader([]byte("invalid json")))
+		reqBody := map[string]interface{}{
+			"invalid_field": "value",
+		}
+		jsonBody, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest(fiber.MethodPost, "/register", bytes.NewReader(jsonBody))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := app.Test(req)
 		assert.NoError(t, err)
-		// Fiber v3 returns 500 for JSON parsing errors, not 400
-		assert.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+		assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+		var response model.Response[handler.CreateUserResponse]
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		assert.NoError(t, err)
+		assert.Equal(t, service.ErrInvalidRequestBody, response.Message)
 	})
 
 	t.Run("mock_create_error", func(t *testing.T) {
-		reqBody := CreateUserRequest{
+		reqBody := handler.CreateUserRequest{
 			Username: "fail", // This triggers mock error
 			Password: "test_password",
 		}
@@ -104,13 +114,4 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	})
-}
-
-func TestNewUserHandler(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
-	userHandler := NewUserHandler(userService)
-
-	assert.NotNil(t, userHandler)
-	assert.Equal(t, userService, userHandler.userService)
 }

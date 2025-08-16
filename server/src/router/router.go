@@ -3,6 +3,7 @@ package router
 import (
 	"server/src/config"
 	"server/src/handler"
+	"server/src/middleware"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -10,7 +11,7 @@ import (
 )
 
 func Setup(config config.RouterConfig) *fiber.App {
-	app := fiber.New()
+	app := fiber.New(config.FiberConfig)
 
 	app.Use(cors.New(config.CorsConfig))
 
@@ -41,6 +42,14 @@ func Setup(config config.RouterConfig) *fiber.App {
 			}
 		}
 	}))
+
+	return app
+}
+
+func SetupTestRouter() *fiber.App {
+	app := fiber.New(fiber.Config{
+		StructValidator: middleware.NewStructValidator(),
+	})
 
 	return app
 }

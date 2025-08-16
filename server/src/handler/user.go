@@ -1,16 +1,11 @@
 package handler
 
 import (
+	"server/src/model"
 	"server/src/service"
 
 	"github.com/gofiber/fiber/v3"
 )
-
-// import (
-// 	"log"
-// 	"net/http"
-// 	"server/service"
-// )
 
 type UserHandler struct {
 	userService *service.UserService
@@ -21,15 +16,19 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 }
 
 type CreateUserRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}
+
+type CreateUserResponse struct {
+	model.User
 }
 
 func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	req := new(CreateUserRequest)
 
-	if err := c.Bind().All(req); err != nil {
-		return err
+	if err := c.Bind().JSON(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(model.Response[CreateUserResponse]{Message: service.ErrInvalidRequestBody})
 	}
 
 	user, err := h.userService.CreateUser(c, req.Username, req.Password)
@@ -37,70 +36,52 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	if err != nil {
 		switch err.Error() {
 		case service.ErrUsernameTaken:
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusConflict).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
 		case service.ErrInvalidPassword:
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusBadRequest).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
 		default:
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+			return c.Status(fiber.StatusInternalServerError).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
 		}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(user)
+	return c.Status(fiber.StatusOK).JSON(model.Response[CreateUserResponse]{
+		Message: "User created successfully",
+		Data:    &CreateUserResponse{User: *user},
+	})
 }
 
-// 	var req CreateUserRequest
-// 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data: " + err.Error()})
-// 		return
-// 	}
-
-// 	user, err := h.userService.CreateUser(c.Request.Context(), req.Username, req.Password)
-
-// 	if err != nil {
-// 		switch err.Error() {
-// 		case service.ErrUsernameTaken:
-// 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()}) /// TODO: Add I18N support
-// 		case service.ErrInvalidPassword:
-// 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}) /// TODO: Add I18N support
-// 		default:
-// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 			log.Printf("[Error] %v", err)
-// 		}
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// type LoginUserRequest struct {
+// type LoginRequest struct {
 // 	Username string `json:"username" binding:"required"`
 // 	Password string `json:"password" binding:"required"`
 // }
 
-// type LoginUserResponse struct {
-// 	JWT string `json:"jwt"`
+// type LoginResponse struct {
+// 	Error string `json:"error,omitempty"`
+// 	Token string `json:"token"`
 // }
 
-// func (h *UserHandler) LoginUser(c *gin.Context) {
-// 	var req LoginUserRequest
-// 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data: " + err.Error()})
-// 		return
+// func (h *UserHandler) Login(c fiber.Ctx) error {
+// 	req := new(LoginRequest)
+
+// 	if err := c.Bind().All(req); err != nil {
+// 		return err
 // 	}
 
-// 	jwt, err := h.userService.AuthenticateUser(c.Request.Context(), req.Username, req.Password)
+// 	token, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
+
 // 	if err != nil {
 // 		switch err.Error() {
 // 		case service.ErrUserNotFound:
-// 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()}) /// TODO: Add I18N support
+// 			return c.Status(fiber.StatusNotFound).JSON(model.Response[LoginResponse]{Message: err.Error()})
 // 		case service.ErrInvalidPassword:
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()}) /// TODO: Add I18N support
+// 			return c.Status(fiber.StatusUnauthorized).JSON(model.Response[LoginResponse]{Message: err.Error()})
 // 		default:
-// 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 			log.Printf("[Error] %v", err)
+// 			return c.Status(fiber.StatusInternalServerError).JSON(model.Response[LoginResponse]{Message: err.Error()})
 // 		}
-// 		return
 // 	}
 
-// 	c.JSON(http.StatusOK, LoginUserResponse{JWT: *jwt})
+// 	return c.Status(fiber.StatusOK).JSON(model.Response[LoginResponse]{
+// 		Message: "Login successful",
+// 		Data:    &LoginResponse{Token: *token},
+// 	})
 // }
