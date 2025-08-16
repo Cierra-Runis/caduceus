@@ -11,7 +11,8 @@ import (
 
 func TestGetHealth(t *testing.T) {
 	app := fiber.New()
-	app.Get("/health", GetHealth)
+	healthHandler := NewHealthHandler()
+	app.Get("/health", healthHandler.GetHealth)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/health", nil)
 	resp, err := app.Test(req)

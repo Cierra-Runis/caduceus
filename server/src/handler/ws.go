@@ -2,8 +2,13 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/kiuber/gofiber3-contrib/websocket"
 )
+
+type WebSocketHandler struct{}
+
+func NewWebSocketHandler() *WebSocketHandler {
+	return &WebSocketHandler{}
+}
 
 type WebSocketMessage struct {
 	Type      string      `json:"type"`
@@ -11,25 +16,7 @@ type WebSocketMessage struct {
 	Timestamp int64       `json:"timestamp"`
 }
 
-func WebSocket(c *websocket.Conn) {
-	defer c.Close()
-
-	for {
-		var msg WebSocketMessage
-		if err := c.ReadJSON(&msg); err != nil {
-			break
-		}
-
-		response := handleWebSocketMessage(msg)
-
-		if err := c.WriteJSON(response); err != nil {
-			break
-		}
-	}
-
-}
-
-func handleWebSocketMessage(msg WebSocketMessage) WebSocketMessage {
+func (h *WebSocketHandler) HandleWebSocketMessage(msg WebSocketMessage) WebSocketMessage {
 	switch msg.Type {
 	case "compile":
 		return WebSocketMessage{
