@@ -1,7 +1,8 @@
-package model
+package model_test
 
 import (
 	"context"
+	"server/src/model"
 	"testing"
 	"time"
 
@@ -13,22 +14,22 @@ import (
 )
 
 func TestNewMockUserRepo(t *testing.T) {
-	repo := NewMockUserRepo()
+	repo := model.NewMockUserRepo()
 	assert.NotNil(t, repo)
 	assert.NotNil(t, repo.Users)
 	assert.Empty(t, repo.Users)
 }
 
 func TestMockUserRepo_GetUserByUsername(t *testing.T) {
-	repo := NewMockUserRepo()
+	repo := model.NewMockUserRepo()
 	ctx := context.Background()
 
-	user1 := &User{
+	user1 := &model.User{
 		ID:       primitive.NewObjectID(),
 		Username: "user1",
 		Password: "password1",
 	}
-	user2 := &User{
+	user2 := &model.User{
 		ID:       primitive.NewObjectID(),
 		Username: "user2",
 		Password: "password2",
@@ -53,11 +54,11 @@ func TestMockUserRepo_GetUserByUsername(t *testing.T) {
 }
 
 func TestMockUserRepo_CreateUser(t *testing.T) {
-	repo := NewMockUserRepo()
+	repo := model.NewMockUserRepo()
 	ctx := context.Background()
 
 	t.Run("successful_creation", func(t *testing.T) {
-		user := &User{
+		user := &model.User{
 			Username: "new_user",
 			Password: "password",
 		}
@@ -71,7 +72,7 @@ func TestMockUserRepo_CreateUser(t *testing.T) {
 	})
 
 	t.Run("mock_error_scenario", func(t *testing.T) {
-		user := &User{
+		user := &model.User{
 			Username: "fail",
 			Password: "password",
 		}
@@ -84,7 +85,7 @@ func TestMockUserRepo_CreateUser(t *testing.T) {
 }
 
 func TestUser_StructFields(t *testing.T) {
-	user := User{
+	user := model.User{
 		ID:        primitive.NewObjectID(),
 		Username:  "test_user",
 		Nickname:  "Test User",
@@ -105,11 +106,11 @@ func TestNewMongoUserRepo(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	mt.Run("creates_mongo_user_repo", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 
 		assert.NotNil(t, repo)
-		assert.NotNil(t, repo.collection)
-		assert.Equal(t, "users", repo.collection.Name())
+		assert.NotNil(t, repo.Collection)
+		assert.Equal(t, "users", repo.Collection.Name())
 	})
 }
 
@@ -117,10 +118,10 @@ func TestMongoUserRepo_GetUserByUsername(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	mt.Run("successful_get_user", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
-		expectedUser := User{
+		expectedUser := model.User{
 			ID:        primitive.NewObjectID(),
 			Username:  "test_user",
 			Nickname:  "Test User",
@@ -147,7 +148,7 @@ func TestMongoUserRepo_GetUserByUsername(t *testing.T) {
 	})
 
 	mt.Run("user_not_found", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
 		mt.AddMockResponses(mtest.CreateCursorResponse(0, "caduceus_test.users", mtest.FirstBatch))
@@ -160,7 +161,7 @@ func TestMongoUserRepo_GetUserByUsername(t *testing.T) {
 	})
 
 	mt.Run("database_error", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
 		mt.AddMockResponses(mtest.CreateCommandErrorResponse(mtest.CommandError{
@@ -179,11 +180,11 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	mt.Run("successful_create_user", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
 		newID := primitive.NewObjectID()
-		user := &User{
+		user := &model.User{
 			Username:  "new_user",
 			Nickname:  "New User",
 			Password:  "hashed_password",
@@ -203,10 +204,10 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 	})
 
 	mt.Run("database_error_on_create", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
-		user := &User{
+		user := &model.User{
 			Username:  "new_user",
 			Password:  "hashed_password",
 			CreatedAt: time.Now(),
@@ -225,12 +226,12 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 	})
 
 	mt.Run("timeout_context", func(mt *mtest.T) {
-		repo := NewMongoUserRepo(mt.DB)
+		repo := model.NewMongoUserRepo(mt.DB)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		user := &User{
+		user := &model.User{
 			Username:  "new_user",
 			Password:  "hashed_password",
 			CreatedAt: time.Now(),

@@ -25,12 +25,12 @@ type UserRepository interface {
 }
 
 type MongoUserRepo struct {
-	collection *mongo.Collection
+	Collection *mongo.Collection
 }
 
 func NewMongoUserRepo(db *mongo.Database) *MongoUserRepo {
 	return &MongoUserRepo{
-		collection: db.Collection("users"),
+		Collection: db.Collection("users"),
 	}
 }
 
@@ -46,7 +46,7 @@ func NewMockUserRepo() *MockUserRepo {
 
 func (r *MongoUserRepo) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
-	err := r.collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (r *MongoUserRepo) CreateUser(ctx context.Context, user *User) (*User, erro
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	res, err := r.collection.InsertOne(ctx, user)
+	res, err := r.Collection.InsertOne(ctx, user)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
-package handler
+package handler_test
 
 import (
+	"server/src/handler"
 	"testing"
 	"time"
 
@@ -9,11 +10,11 @@ import (
 )
 
 func TestHandleWebSocketMessage(t *testing.T) {
-	webSocketHandler := NewWebSocketHandler()
+	webSocketHandler := handler.NewWebSocketHandler()
 	timestamp := time.Now().Unix()
 
 	t.Run("compile_message", func(t *testing.T) {
-		msg := WebSocketMessage{
+		msg := handler.WebSocketMessage{
 			Type:      "compile",
 			Data:      map[string]interface{}{"code": "test code"},
 			Timestamp: timestamp,
@@ -35,7 +36,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 	})
 
 	t.Run("ping_message", func(t *testing.T) {
-		msg := WebSocketMessage{
+		msg := handler.WebSocketMessage{
 			Type:      "ping",
 			Data:      nil,
 			Timestamp: timestamp,
@@ -56,7 +57,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 	})
 
 	t.Run("unknown_message_type", func(t *testing.T) {
-		msg := WebSocketMessage{
+		msg := handler.WebSocketMessage{
 			Type:      "unknown",
 			Data:      nil,
 			Timestamp: timestamp,
@@ -77,7 +78,7 @@ func TestHandleWebSocketMessage(t *testing.T) {
 	})
 
 	t.Run("empty_message_type", func(t *testing.T) {
-		msg := WebSocketMessage{
+		msg := handler.WebSocketMessage{
 			Type:      "",
 			Data:      nil,
 			Timestamp: timestamp,

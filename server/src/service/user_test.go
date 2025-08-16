@@ -1,8 +1,9 @@
-package service
+package service_test
 
 import (
 	"context"
 	"server/src/model"
+	"server/src/service"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,7 +12,7 @@ import (
 
 func TestUserService_CreateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret")
 	ctx := context.Background()
 
 	t.Run("successful_user_creation", func(t *testing.T) {
@@ -38,7 +39,7 @@ func TestUserService_CreateUser(t *testing.T) {
 		user, err := userService.CreateUser(ctx, username, password)
 
 		if assert.Error(t, err) {
-			assert.Equal(t, ErrUsernameTaken, err.Error())
+			assert.Equal(t, service.ErrUsernameTaken, err.Error())
 		}
 		assert.Nil(t, user)
 	})
@@ -49,14 +50,14 @@ func TestUserService_CreateUser(t *testing.T) {
 
 		_, err := userService.CreateUser(ctx, username, password)
 		if assert.Error(t, err) {
-			assert.Equal(t, ErrInvalidPassword, err.Error())
+			assert.Equal(t, service.ErrInvalidPassword, err.Error())
 		}
 	})
 }
 
 func TestUserService_AuthenticateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret")
 	ctx := context.Background()
 
 	username := "test_user"
@@ -74,7 +75,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 	t.Run("user_not_found", func(t *testing.T) {
 		token, err := userService.AuthenticateUser(ctx, "nonexistent", "password")
 		if assert.Error(t, err) {
-			assert.Equal(t, ErrUserNotFound, err.Error())
+			assert.Equal(t, service.ErrUserNotFound, err.Error())
 		}
 		assert.Nil(t, token)
 	})
@@ -83,7 +84,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 		token, err := userService.AuthenticateUser(ctx, username, "wrong_password")
 
 		if assert.Error(t, err) {
-			assert.Equal(t, ErrInvalidPassword, err.Error())
+			assert.Equal(t, service.ErrInvalidPassword, err.Error())
 		}
 		assert.Nil(t, token)
 	})
@@ -92,7 +93,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 func TestUserService_AuthenticateUser_TokenGenerationError(t *testing.T) {
 	// Create a mock repository with a specific user
 	mockRepo := model.NewMockUserRepo()
-	userService := NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret")
 	ctx := context.Background()
 
 	// Create a user first
@@ -110,9 +111,9 @@ func TestNewUserService(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	secret := "test_secret"
 
-	userService := NewUserService(mockRepo, secret)
+	userService := service.NewUserService(mockRepo, secret)
 
 	assert.NotNil(t, userService)
-	assert.Equal(t, mockRepo, userService.repo)
-	assert.Equal(t, secret, userService.jwtSecret)
+	assert.Equal(t, mockRepo, userService.Repo)
+	assert.Equal(t, secret, userService.JwtSecret)
 }

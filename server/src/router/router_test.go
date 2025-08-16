@@ -1,10 +1,11 @@
-package router
+package router_test
 
 import (
 	"net/http/httptest"
 	"server/src/config"
 	"server/src/handler"
 	"server/src/model"
+	"server/src/router"
 	"server/src/service"
 	"testing"
 
@@ -14,7 +15,6 @@ import (
 )
 
 func TestSetup(t *testing.T) {
-	// Create dependencies
 	mockRepo := model.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret")
 	userHandler := handler.NewUserHandler(userService)
@@ -40,7 +40,7 @@ func TestSetup(t *testing.T) {
 		UserHandler: *userHandler,
 	}
 
-	app := Setup(routerConfig)
+	app := router.Setup(routerConfig)
 
 	assert.NotNil(t, app)
 
@@ -106,6 +106,6 @@ func TestSetup(t *testing.T) {
 }
 
 func TestSetupTestRouter(t *testing.T) {
-	app := SetupTestRouter()
+	app := router.SetupTestRouter()
 	assert.NotNil(t, app)
 }

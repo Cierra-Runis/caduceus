@@ -17,19 +17,19 @@ const (
 )
 
 type UserService struct {
-	repo      model.UserRepository
-	jwtSecret string
+	Repo      model.UserRepository
+	JwtSecret string
 }
 
 func NewUserService(repo model.UserRepository, jwtSecret string) *UserService {
 	return &UserService{
-		repo:      repo,
-		jwtSecret: jwtSecret,
+		Repo:      repo,
+		JwtSecret: jwtSecret,
 	}
 }
 
 func (s *UserService) CreateUser(ctx context.Context, username string, password string) (*model.User, error) {
-	_, err := s.repo.GetUserByUsername(ctx, username)
+	_, err := s.Repo.GetUserByUsername(ctx, username)
 	if err == nil {
 		return nil, errors.New(ErrUsernameTaken)
 	}
@@ -47,11 +47,11 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 		UpdatedAt: time.Now(),
 	}
 
-	return s.repo.CreateUser(ctx, user)
+	return s.Repo.CreateUser(ctx, user)
 }
 
 func (s *UserService) AuthenticateUser(ctx context.Context, username string, password string) (*string, error) {
-	user, err := s.repo.GetUserByUsername(ctx, username)
+	user, err := s.Repo.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, errors.New(ErrUserNotFound)
 	}
@@ -60,7 +60,7 @@ func (s *UserService) AuthenticateUser(ctx context.Context, username string, pas
 		return nil, errors.New(ErrInvalidPassword)
 	}
 
-	token, err := model.GenerateToken(user, s.jwtSecret)
+	token, err := model.GenerateToken(user, s.JwtSecret)
 
 	if err != nil {
 		return nil, err

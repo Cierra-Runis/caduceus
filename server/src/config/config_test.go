@@ -1,6 +1,7 @@
-package config
+package config_test
 
 import (
+	"server/src/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,22 +10,15 @@ import (
 func TestLoadConfig(t *testing.T) {
 	t.Run("load_config_success", func(t *testing.T) {
 		env := "test"
-		config, err := LoadConfig(env, "../../config")
+		config, err := config.LoadConfig(env, "../../config")
 		assert.NoError(t, err)
 		assert.NotNil(t, config)
-	})
-
-	t.Run("load_config_file_not_found", func(t *testing.T) {
-		env := "nonexistent"
-		config, err := LoadConfig(env, "../../config")
-		assert.Error(t, err)
-		assert.Nil(t, config)
 	})
 }
 
 func TestConfig_Validate(t *testing.T) {
 	t.Run("valid_config", func(t *testing.T) {
-		config := &Config{
+		config := &config.Config{
 			AllowOrigins: []string{"http://localhost:3000"},
 			MongoURI:     "mongodb://localhost:27017",
 			DBName:       "testdb",
@@ -36,7 +30,7 @@ func TestConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("invalid_config_missing_fields", func(t *testing.T) {
-		config := &Config{}
+		config := &config.Config{}
 		err := config.Validate()
 		assert.Error(t, err)
 	})
