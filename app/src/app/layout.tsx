@@ -1,3 +1,4 @@
+import { NavBar } from "@/components/roots/NavBar";
 import { Providers } from "@/components/roots/Providers";
 import "@/styles/globals.css";
 import type { Metadata } from "next";
@@ -25,11 +26,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}>
         <Providers>
-          {children}
+          <div className="relative h-screen">
+            <NavBar />
+            {children}
+            <footer>
+              <p className="text-sm text-muted-foreground">
+                © {new Date().getFullYear()} Your Company Name
+              </p>
+            </footer>
+          </div>
         </Providers>
       </body>
     </html>
