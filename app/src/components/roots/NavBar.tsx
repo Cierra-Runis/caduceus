@@ -5,6 +5,7 @@ import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import NextLink from 'next/link';
 import { useState } from 'react';
 
+import { IconBrandGithub } from '@tabler/icons-react';
 import ThemeButton from '../buttons/ThemeButton';
 
 export const NavBar = () => {
@@ -25,6 +26,26 @@ export const NavBar = () => {
         </NextLink>
       </NavbarBrand>
       <NavbarContent className='basis-full' justify='end'>
+        <NavbarItem>
+          <NextLink href='https://github.com/Cierra-Runis/caduceus' className='text-sm font-medium'>
+            <IconBrandGithub />
+          </NextLink>
+        </NavbarItem>
+        <NavbarItem>
+          <NextLink href='/docs' className='text-sm font-medium'>
+            Docs
+          </NextLink>
+        </NavbarItem>
+        <NavbarItem>
+          <NextLink href='/register' className='text-sm font-medium'>
+            Register
+          </NextLink>
+        </NavbarItem>
+        <NavbarItem>
+          <NextLink href='/login' className='text-sm font-medium'>
+            Login
+          </NextLink>
+        </NavbarItem>
         <NavbarItem className='flex gap-2'>
           <ThemeButton />
         </NavbarItem>
