@@ -59,7 +59,7 @@ type LoginResponseData struct {
 
 type LoginResponse = model.Response[LoginResponseData]
 
-func (h *UserHandler) Login(c fiber.Ctx) error {
+func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 	req := new(LoginRequest)
 
 	if err := c.Bind().JSON(req); err != nil {

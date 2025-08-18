@@ -117,14 +117,14 @@ func TestUserHandler_CreateUser(t *testing.T) {
 	})
 }
 
-func TestUserHandler_Login(t *testing.T) {
+func TestUserHandler_LoginUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret")
 	userService.CreateUser(context.Background(), "test_user", "test_password")
 	userHandler := handler.NewUserHandler(userService)
 
 	app := router.SetupTestRouter()
-	app.Post("/login", userHandler.Login)
+	app.Post("/login", userHandler.LoginUser)
 
 	t.Run("successful_login", func(t *testing.T) {
 		reqBody := handler.LoginRequest{
