@@ -21,7 +21,7 @@ const __themes = {
     icon: <IconDevices className='w-5' />,
     title: '系统',
   },
-};
+} as const;
 
 type ThemeVariant = keyof typeof __themes;
 
@@ -61,5 +61,29 @@ export default function ThemeButton() {
         ))}
       </PopoverContent>
     </Popover>
+  );
+}
+
+
+export function ThemeButtons() {
+  const [mounted, setMounted] = useState(false);
+  const { setTheme, theme } = useTheme();
+  useEffect(() => setMounted(true), []);
+
+
+  return (
+    <>
+      {Object.entries(__themes).map(([key, { icon, title }]) => (
+        <Button
+          aria-label={title}
+          isIconOnly
+          key={key}
+          onPress={() => setTheme(key)}
+          size='sm'
+          startContent={icon}
+          variant={!mounted ? 'light' : theme === key ? 'faded' : 'light'}
+        />
+      ))}
+    </>
   );
 }
