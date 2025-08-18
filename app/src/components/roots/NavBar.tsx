@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@heroui/button';
 import { Image } from '@heroui/image';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import NextLink from 'next/link';
@@ -30,14 +31,14 @@ export const NavBar = () => {
           </NextLink>
         </NavbarItem>
         <NavbarItem>
-          <NextLink href='/register' className='text-sm font-medium'>
-            Register
-          </NextLink>
-        </NavbarItem>
-        <NavbarItem>
           <NextLink href='/login' className='text-sm font-medium'>
             Login
           </NextLink>
+        </NavbarItem>
+        <NavbarItem>
+          <Button href='/register' className='text-sm font-medium' variant='faded' as={NextLink}>
+            Register
+          </Button>
         </NavbarItem>
       </NavbarContent>
     </Navbar>
