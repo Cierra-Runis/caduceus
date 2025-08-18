@@ -48,38 +48,41 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	})
 }
 
-// type LoginRequest struct {
-// 	Username string `json:"username" binding:"required"`
-// 	Password string `json:"password" binding:"required"`
-// }
+type LoginRequest struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}
 
-// type LoginResponse struct {
-// 	Error string `json:"error,omitempty"`
-// 	Token string `json:"token"`
-// }
+type LoginResponseData struct {
+	Token string `json:"token"`
+}
 
-// func (h *UserHandler) Login(c fiber.Ctx) error {
-// 	req := new(LoginRequest)
+type LoginResponse = model.Response[LoginResponseData]
 
-// 	if err := c.Bind().All(req); err != nil {
-// 		return err
-// 	}
+func (h *UserHandler) Login(c fiber.Ctx) error {
+	req := new(LoginRequest)
 
-// 	token, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
+	if err := c.Bind().JSON(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(LoginResponse{Message: service.ErrInvalidRequestBody})
+	}
 
-// 	if err != nil {
-// 		switch err.Error() {
-// 		case service.ErrUserNotFound:
-// 			return c.Status(fiber.StatusNotFound).JSON(model.Response[LoginResponse]{Message: err.Error()})
-// 		case service.ErrInvalidPassword:
-// 			return c.Status(fiber.StatusUnauthorized).JSON(model.Response[LoginResponse]{Message: err.Error()})
-// 		default:
-// 			return c.Status(fiber.StatusInternalServerError).JSON(model.Response[LoginResponse]{Message: err.Error()})
-// 		}
-// 	}
+	token, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
 
-// 	return c.Status(fiber.StatusOK).JSON(model.Response[LoginResponse]{
-// 		Message: "Login successful",
-// 		Data:    &LoginResponse{Token: *token},
-// 	})
-// }
+	if err != nil {
+		switch err.Error() {
+		case service.ErrUserNotFound:
+			return c.Status(fiber.StatusNotFound).JSON(LoginResponse{Message: err.Error()})
+		case service.ErrInvalidPassword:
+			return c.Status(fiber.StatusUnauthorized).JSON(LoginResponse{Message: err.Error()})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(LoginResponse{Message: err.Error()})
+		}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(LoginResponse{
+		Message: "Login successful",
+		Data: &LoginResponseData{
+			Token: *token,
+		},
+	})
+}
