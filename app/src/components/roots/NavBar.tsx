@@ -5,7 +5,6 @@ import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import NextLink from 'next/link';
 import { useState } from 'react';
 
-import { IconBrandGithub } from '@tabler/icons-react';
 
 export const NavBar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -25,11 +24,6 @@ export const NavBar = () => {
         </NextLink>
       </NavbarBrand>
       <NavbarContent className='basis-full' justify='end'>
-        <NavbarItem>
-          <NextLink href='https://github.com/Cierra-Runis/caduceus' className='text-sm font-medium'>
-            <IconBrandGithub />
-          </NextLink>
-        </NavbarItem>
         <NavbarItem>
           <NextLink href='/docs' className='text-sm font-medium'>
             Docs
