@@ -21,8 +21,9 @@ export default function LoginPage() {
     <section className="flex items-center flex-col justify-center h-screen p-4">
       <Card className="w-full max-w-3xl p-4">
         <Form onSubmit={onSubmit}>
-          <CardHeader >
+          <CardHeader className="flex justify-between items-center">
             <h1 className="text-2xl font-bold">Login</h1>
+            <Button href="/" as={NextLink} size="sm" variant="light">Back to homepage</Button>
           </CardHeader>
           <CardBody>
             <div className="flex flex-col gap-4">
