@@ -18,6 +18,7 @@ func Setup(config config.RouterConfig) *fiber.App {
 	api := app.Group("/api")
 	api.Get("/health", config.HealthHandler.GetHealth)
 	api.Post("/register", config.UserHandler.CreateUser)
+	api.Post("/login", config.UserHandler.LoginUser)
 
 	ws := app.Group("/ws")
 	ws.Use(func(c fiber.Ctx) error {
