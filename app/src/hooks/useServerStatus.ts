@@ -11,7 +11,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function useServerStatus() {
   const { error, isLoading, data } = useSWR<ServerStatus>(
-    'http://localhost:8080/api/health',
+    '/api/health',
     fetcher,
     {
       refreshInterval: 100,
