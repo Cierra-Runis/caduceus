@@ -20,15 +20,13 @@ type CreateUserRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-type CreateUserResponse struct {
-	model.User
-}
+type CreateUserResponse = model.Response[model.User]
 
 func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	req := new(CreateUserRequest)
 
 	if err := c.Bind().JSON(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(model.Response[CreateUserResponse]{Message: service.ErrInvalidRequestBody})
+		return c.Status(fiber.StatusBadRequest).JSON(CreateUserResponse{Message: service.ErrInvalidRequestBody})
 	}
 
 	user, err := h.userService.CreateUser(c, req.Username, req.Password)
@@ -36,17 +34,17 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	if err != nil {
 		switch err.Error() {
 		case service.ErrUsernameTaken:
-			return c.Status(fiber.StatusConflict).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
+			return c.Status(fiber.StatusConflict).JSON(CreateUserResponse{Message: err.Error()})
 		case service.ErrInvalidPassword:
-			return c.Status(fiber.StatusBadRequest).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
+			return c.Status(fiber.StatusBadRequest).JSON(CreateUserResponse{Message: err.Error()})
 		default:
-			return c.Status(fiber.StatusInternalServerError).JSON(model.Response[CreateUserResponse]{Message: err.Error()})
+			return c.Status(fiber.StatusInternalServerError).JSON(CreateUserResponse{Message: err.Error()})
 		}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(model.Response[CreateUserResponse]{
+	return c.Status(fiber.StatusOK).JSON(CreateUserResponse{
 		Message: "User created successfully",
-		Data:    &CreateUserResponse{User: *user},
+		Data:    user,
 	})
 }
 
