@@ -34,7 +34,7 @@ export default function RootLayout({
               <div className='flex items-center justify-center gap-2'>
                 <ThemeButtons />
               </div>
-              <div>
+              <div className='flex flex-col'>
                 <div className='flex items-center justify-center gap-4 md:justify-start'>
                   <div className='flex items-center gap-1'>
                     <Image src="favicon.svg" alt='Caduceus Icon' className='w-6 dark:invert'></Image>
