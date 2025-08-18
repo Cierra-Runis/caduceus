@@ -1,6 +1,6 @@
 package model
 
 type Response[T any] struct {
-	Message string
-	Data    *T
+	Message string `json:"message"`
+	Data    *T     `json:"data,omitempty"`
 }
