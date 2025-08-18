@@ -5,17 +5,59 @@ import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
 import { Form } from "@heroui/form";
 import { Input } from "@heroui/input";
 import { Link } from "@heroui/link";
+import { addToast } from "@heroui/toast";
+import axios from "axios";
 import NextLink from 'next/link';
-import { FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const form = new FormData(e.currentTarget);
+    const payload = {
+      username: String(form.get("username") || ""),
+      nickname: String(form.get("nickname") || ""),
+      password: String(form.get("password") || ""),
+    };
 
-    console.log("Form Data Submitted:", data);
+    if (!payload.username || !payload.password) {
+      return addToast({
+        color: "warning",
+        title: "Register Failed",
+        description: "Please fill in both username and password.",
+      });
+    }
+
+    // TODO: Find a better way to avoid try-catch
+    try {
+      setSubmitting(true);
+      const res = await axios.post("/api/register", payload, {
+        headers: { "Content-Type": "application/json" },
+        withCredentials: true,
+      });
+      addToast({
+        color: "success",
+        title: res.data.message,
+        description: "Redirecting to login page...",
+        timeout: 3000,
+        shouldShowTimeoutProgress: true,
+        onClose: () => router.push("/login") // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+      });
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message;
+      addToast({
+        color: "danger",
+        title: "Register Failed",
+        description: message,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -64,7 +106,7 @@ export default function RegisterPage() {
             <Button href="/login" as={NextLink} variant="light">
               Already have an account?
             </Button>
-            <Button type="submit" color="primary">
+            <Button type="submit" color="primary" isLoading={submitting} isDisabled={submitting}>
               Register
             </Button>
           </CardFooter>
