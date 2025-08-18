@@ -6,7 +6,6 @@ import NextLink from 'next/link';
 import { useState } from 'react';
 
 import { IconBrandGithub } from '@tabler/icons-react';
-import ThemeButton from '../buttons/ThemeButton';
 
 export const NavBar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -45,9 +44,6 @@ export const NavBar = () => {
           <NextLink href='/login' className='text-sm font-medium'>
             Login
           </NextLink>
-        </NavbarItem>
-        <NavbarItem className='flex gap-2'>
-          <ThemeButton />
         </NavbarItem>
       </NavbarContent>
     </Navbar>
