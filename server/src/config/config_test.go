@@ -35,7 +35,11 @@ func TestLoadConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to write temp file: %v", err)
 		}
-		defer os.Remove(tmpFile)
+		defer func() {
+			if os.Remove(tmpFile) != nil {
+				t.Logf("failed to remove temp file: %v", err)
+			}
+		}()
 
 		_, err = config.LoadConfig("missing_config", tmpDir)
 		if err == nil || !strings.Contains(err.Error(), "config validation failed") {

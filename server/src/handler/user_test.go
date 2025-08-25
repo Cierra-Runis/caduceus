@@ -121,7 +121,9 @@ func TestUserHandler_CreateUser(t *testing.T) {
 func TestUserHandler_LoginUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
-	userService.CreateUser(context.Background(), "test_user", "test_password")
+	user, err := userService.CreateUser(context.Background(), "test_user", "test_password")
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
 	userHandler := handler.NewUserHandler(userService)
 
 	app := router.SetupTestRouter()

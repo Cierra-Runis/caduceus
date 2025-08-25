@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log"
 	"server/src/config"
 	"server/src/handler"
 	"server/src/middleware"
@@ -28,7 +29,11 @@ func Setup(config config.RouterConfig) *fiber.App {
 		return c.Next()
 	})
 	ws.Get("/", websocket.New(func(c *websocket.Conn) {
-		defer c.Close()
+		defer func() {
+			if err := c.Close(); err != nil {
+				log.Printf("Error closing WebSocket connection: %v", err)
+			}
+		}()
 
 		for {
 			var msg handler.WebSocketMessage

@@ -35,7 +35,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
 	}
-	defer client.Client.Disconnect(context.Background())
+	defer func() {
+		if err := client.Client.Disconnect(context.Background()); err != nil {
+			log.Printf("Error disconnecting MongoDB client: %v", err)
+		}
+	}()
 
 	userHandler := handler.NewUserHandler(
 		service.NewUserService(
