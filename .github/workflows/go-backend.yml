@@ -34,22 +34,8 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
-      - name: Run go vet
-        run: go vet ./src/...
-
-      - name: Run go fmt check
-        run: |
-          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "The following files are not formatted:"
-            gofmt -s -l .
-            exit 1
-          fi
-
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-
-      - name: Run staticcheck
-        run: staticcheck ./src/...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
 
       - name: Run unit tests with coverage
         run: go test -v -coverprofile 'coverage.out' ./src/...
