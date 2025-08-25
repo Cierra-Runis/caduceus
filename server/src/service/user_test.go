@@ -5,6 +5,7 @@ import (
 	"server/src/model"
 	"server/src/service"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -12,7 +13,7 @@ import (
 
 func TestUserService_CreateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	ctx := context.Background()
 
 	t.Run("successful_user_creation", func(t *testing.T) {
@@ -57,7 +58,7 @@ func TestUserService_CreateUser(t *testing.T) {
 
 func TestUserService_AuthenticateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	ctx := context.Background()
 
 	username := "test_user"
@@ -66,34 +67,38 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 	_, _ = userService.CreateUser(ctx, username, password)
 
 	t.Run("successful_authentication", func(t *testing.T) {
-		token, err := userService.AuthenticateUser(ctx, username, password)
+		token, claims, err := userService.AuthenticateUser(ctx, username, password)
 		assert.NoError(t, err)
 		assert.NotNil(t, token)
 		assert.NotEmpty(t, *token)
+		assert.NotNil(t, claims)
+		assert.Equal(t, username, claims.Username)
 	})
 
 	t.Run("user_not_found", func(t *testing.T) {
-		token, err := userService.AuthenticateUser(ctx, "nonexistent", "password")
+		token, claims, err := userService.AuthenticateUser(ctx, "nonexistent", "password")
 		if assert.Error(t, err) {
 			assert.Equal(t, service.ErrUserNotFound, err.Error())
 		}
 		assert.Nil(t, token)
+		assert.Nil(t, claims)
 	})
 
 	t.Run("invalid_password", func(t *testing.T) {
-		token, err := userService.AuthenticateUser(ctx, username, "wrong_password")
+		token, claims, err := userService.AuthenticateUser(ctx, username, "wrong_password")
 
 		if assert.Error(t, err) {
 			assert.Equal(t, service.ErrInvalidPassword, err.Error())
 		}
 		assert.Nil(t, token)
+		assert.Nil(t, claims)
 	})
 }
 
 func TestUserService_AuthenticateUser_TokenGenerationError(t *testing.T) {
 	// Create a mock repository with a specific user
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	ctx := context.Background()
 
 	// Create a user first
@@ -102,16 +107,19 @@ func TestUserService_AuthenticateUser_TokenGenerationError(t *testing.T) {
 	_, _ = userService.CreateUser(ctx, username, password)
 
 	// Test JWT generation with normal secret (should work fine)
-	token, err := userService.AuthenticateUser(ctx, username, password)
+	token, claims, err := userService.AuthenticateUser(ctx, username, password)
 	assert.NoError(t, err)
 	assert.NotNil(t, token)
+	assert.NotEmpty(t, *token)
+	assert.NotNil(t, claims)
+	assert.Equal(t, username, claims.Username)
 }
 
 func TestNewUserService(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
 	secret := "test_secret"
 
-	userService := service.NewUserService(mockRepo, secret)
+	userService := service.NewUserService(mockRepo, secret, 24*time.Hour, false)
 
 	assert.NotNil(t, userService)
 	assert.Equal(t, mockRepo, userService.Repo)

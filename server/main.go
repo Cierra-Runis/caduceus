@@ -41,6 +41,8 @@ func main() {
 		service.NewUserService(
 			model.NewMongoUserRepo(client.DB),
 			appConfig.JWTSecret,
+			24*time.Hour,
+			env == "production",
 		),
 	)
 

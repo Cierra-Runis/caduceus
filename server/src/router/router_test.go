@@ -8,6 +8,7 @@ import (
 	"server/src/router"
 	"server/src/service"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -16,7 +17,7 @@ import (
 
 func TestSetup(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	userHandler := handler.NewUserHandler(userService)
 
 	routerConfig := config.RouterConfig{

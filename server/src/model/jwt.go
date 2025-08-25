@@ -1,10 +1,15 @@
 package model
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+const (
+	ErrTokenExpired = "token has expired"
 )
 
 type JwtCustomClaims struct {
@@ -13,17 +18,37 @@ type JwtCustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(u *User, secret string) (string, error) {
+func GenerateToken(u *User, secret string, issuedAt time.Time, ttl time.Duration) (string, JwtCustomClaims, error) {
 	claims := JwtCustomClaims{
 		ID:       u.ID,
 		Username: u.Username,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(time.Hour) * 24)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(issuedAt),
+			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(ttl)),
 			Subject:   "Token",
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	jwt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token, err := jwt.SignedString([]byte(secret))
+
+	return token, claims, err
+}
+
+func ParseToken(token string, secret string, verifiedAt time.Time) (*JwtCustomClaims, error) {
+	jwt, err := jwt.ParseWithClaims(token, &JwtCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	claims := jwt.Claims.(*JwtCustomClaims)
+
+	if claims.ExpiresAt.Before(verifiedAt) {
+		return nil, errors.New(ErrTokenExpired)
+	}
+
+	return claims, nil
 }

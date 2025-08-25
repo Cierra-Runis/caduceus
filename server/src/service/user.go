@@ -17,14 +17,23 @@ const (
 )
 
 type UserService struct {
-	Repo      model.UserRepository
-	JwtSecret string
+	Repo         model.UserRepository
+	JwtSecret    string
+	JwtTTL       time.Duration
+	CookieSecure bool
 }
 
-func NewUserService(repo model.UserRepository, jwtSecret string) *UserService {
+func NewUserService(
+	repo model.UserRepository,
+	jwtSecret string,
+	jwtTTL time.Duration,
+	cookieSecure bool,
+) *UserService {
 	return &UserService{
-		Repo:      repo,
-		JwtSecret: jwtSecret,
+		Repo:         repo,
+		JwtSecret:    jwtSecret,
+		JwtTTL:       jwtTTL,
+		CookieSecure: cookieSecure,
 	}
 }
 
@@ -50,20 +59,20 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 	return s.Repo.CreateUser(ctx, user)
 }
 
-func (s *UserService) AuthenticateUser(ctx context.Context, username string, password string) (*string, error) {
+func (s *UserService) AuthenticateUser(ctx context.Context, username string, password string) (*string, *model.JwtCustomClaims, error) {
 	user, err := s.Repo.GetUserByUsername(ctx, username)
 	if err != nil {
-		return nil, errors.New(ErrUserNotFound)
+		return nil, nil, errors.New(ErrUserNotFound)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, errors.New(ErrInvalidPassword)
+		return nil, nil, errors.New(ErrInvalidPassword)
 	}
 
-	token, err := model.GenerateToken(user, s.JwtSecret)
+	token, claims, err := model.GenerateToken(user, s.JwtSecret, time.Now(), s.JwtTTL)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &token, nil
+	return &token, &claims, nil
 }

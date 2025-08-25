@@ -10,6 +10,7 @@ import (
 	"server/src/router"
 	"server/src/service"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 
 func TestUserHandler_CreateUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	userHandler := handler.NewUserHandler(userService)
 
 	app := router.SetupTestRouter()
@@ -119,7 +120,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 
 func TestUserHandler_LoginUser(t *testing.T) {
 	mockRepo := model.NewMockUserRepo()
-	userService := service.NewUserService(mockRepo, "test_secret")
+	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	userService.CreateUser(context.Background(), "test_user", "test_password")
 	userHandler := handler.NewUserHandler(userService)
 

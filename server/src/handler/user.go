@@ -66,7 +66,7 @@ func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(LoginResponse{Message: service.ErrInvalidRequestBody})
 	}
 
-	token, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
+	token, claims, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
 
 	if err != nil {
 		switch err.Error() {
@@ -79,7 +79,18 @@ func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 		}
 	}
 
-	return c.Status(fiber.StatusOK).JSON(LoginResponse{
+	cookie := fiber.Cookie{
+		Name:     "jwt",
+		Value:    *token,
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+		Expires:  claims.ExpiresAt.Time,
+	}
+
+	c.Status(fiber.StatusOK).Cookie(&cookie)
+
+	return c.JSON(LoginResponse{
 		Message: "Login successful",
 		Payload: &LoginPayload{
 			Token: *token,
