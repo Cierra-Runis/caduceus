@@ -3,8 +3,11 @@ import { useMemo } from 'react';
 import useSWR from 'swr';
 
 export type ServerStatus = {
-  status: 'ok';
-  timestamp: string;
+  message: string;
+  data: {
+    status: 'ok';
+    timestamp: string;
+  };
 };
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -21,7 +24,7 @@ export function useServerStatus() {
   const color = useMemo<BadgeProps['color']>(() => {
     if (isLoading) return 'default';
     if (error) return 'danger';
-    if (data?.status === 'ok') return 'success';
+    if (data?.data?.status === 'ok') return 'success';
     return 'warning';
   }, [error, data, isLoading]);
 
