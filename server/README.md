@@ -1,5 +1,25 @@
 # Caduceus Server
 
+## Development
+
+To start the development server, run the following command:
+
+```bash
+go run .
+```
+
+For hot-reloading during development, download and install `air` by
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+Then, start the server with hot-reloading using:
+
+```bash
+air
+```
+
 ## Testing
 
 ### Unit Tests
