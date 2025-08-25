@@ -26,6 +26,6 @@ func TestGetHealth(t *testing.T) {
 	var response handler.HealthResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	assert.NoError(t, err)
-	assert.Equal(t, "ok", response.Data.Status)
-	assert.NotNil(t, response.Data.Timestamp)
+	assert.Equal(t, "ok", response.Payload.Status)
+	assert.NotNil(t, response.Payload.Timestamp)
 }

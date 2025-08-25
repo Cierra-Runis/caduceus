@@ -40,7 +40,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		var response handler.CreateUserResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, "test_user", response.Data.Username)
+		assert.Equal(t, "test_user", response.Payload.Username)
 	})
 
 	t.Run("username_already_taken", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestUserHandler_LoginUser(t *testing.T) {
 		var response handler.LoginResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.NotEmpty(t, response.Data.Token)
+		assert.NotEmpty(t, response.Payload.Token)
 	})
 
 	t.Run("invalid_credentials", func(t *testing.T) {

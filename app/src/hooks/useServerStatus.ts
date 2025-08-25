@@ -4,7 +4,7 @@ import useSWR from 'swr';
 
 export type ServerStatus = {
   message: string;
-  data: {
+  payload: {
     status: 'ok';
     timestamp: string;
   };
@@ -24,7 +24,7 @@ export function useServerStatus() {
   const color = useMemo<BadgeProps['color']>(() => {
     if (isLoading) return 'default';
     if (error) return 'danger';
-    if (data?.data?.status === 'ok') return 'success';
+    if (data?.payload?.status === 'ok') return 'success';
     return 'warning';
   }, [error, data, isLoading]);
 

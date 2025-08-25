@@ -16,78 +16,78 @@ func TestHandleWebSocketMessage(t *testing.T) {
 	t.Run("compile_message", func(t *testing.T) {
 		msg := handler.WebSocketMessage{
 			Type:      "compile",
-			Data:      map[string]interface{}{"code": "test code"},
+			Payload:   map[string]interface{}{"code": "test code"},
 			Timestamp: timestamp,
 		}
 
 		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "compile_result", response.Type)
-		assert.NotNil(t, response.Data)
+		assert.NotNil(t, response.Payload)
 		assert.Equal(t, timestamp, response.Timestamp)
 
 		// fiber.Map is a type alias for map[string]interface{}
-		if dataMap, ok := response.Data.(fiber.Map); ok {
+		if dataMap, ok := response.Payload.(fiber.Map); ok {
 			assert.Equal(t, "processing", dataMap["status"])
 			assert.Equal(t, "Compilation started", dataMap["message"])
 		} else {
-			t.Fatalf("Expected response.Data to be fiber.Map, got %T", response.Data)
+			t.Fatalf("Expected response.Payload to be fiber.Map, got %T", response.Payload)
 		}
 	})
 
 	t.Run("ping_message", func(t *testing.T) {
 		msg := handler.WebSocketMessage{
 			Type:      "ping",
-			Data:      nil,
+			Payload:   nil,
 			Timestamp: timestamp,
 		}
 
 		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "pong", response.Type)
-		assert.NotNil(t, response.Data)
+		assert.NotNil(t, response.Payload)
 		assert.Equal(t, timestamp, response.Timestamp)
 
 		// fiber.Map is a type alias for map[string]interface{}
-		if dataMap, ok := response.Data.(fiber.Map); ok {
+		if dataMap, ok := response.Payload.(fiber.Map); ok {
 			assert.Equal(t, "Server is alive", dataMap["message"])
 		} else {
-			t.Fatalf("Expected response.Data to be fiber.Map, got %T", response.Data)
+			t.Fatalf("Expected response.Payload to be fiber.Map, got %T", response.Payload)
 		}
 	})
 
 	t.Run("unknown_message_type", func(t *testing.T) {
 		msg := handler.WebSocketMessage{
 			Type:      "unknown",
-			Data:      nil,
+			Payload:   nil,
 			Timestamp: timestamp,
 		}
 
 		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "error", response.Type)
-		assert.NotNil(t, response.Data)
+		assert.NotNil(t, response.Payload)
 		assert.Equal(t, timestamp, response.Timestamp)
 
 		// fiber.Map is a type alias for map[string]interface{}
-		if dataMap, ok := response.Data.(fiber.Map); ok {
+		if dataMap, ok := response.Payload.(fiber.Map); ok {
 			assert.Equal(t, "Unknown message type", dataMap["message"])
 		} else {
-			t.Fatalf("Expected response.Data to be fiber.Map, got %T", response.Data)
+			t.Fatalf("Expected response.Payload to be fiber.Map, got %T", response.Payload)
 		}
 	})
 
 	t.Run("empty_message_type", func(t *testing.T) {
 		msg := handler.WebSocketMessage{
 			Type:      "",
-			Data:      nil,
+			Payload:   nil,
 			Timestamp: timestamp,
 		}
 
 		response := webSocketHandler.HandleWebSocketMessage(msg)
 
 		assert.Equal(t, "error", response.Type)
-		assert.NotNil(t, response.Data)
+		assert.NotNil(t, response.Payload)
 		assert.Equal(t, timestamp, response.Timestamp)
 	})
 }

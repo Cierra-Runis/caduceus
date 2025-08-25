@@ -12,7 +12,7 @@ func NewWebSocketHandler() *WebSocketHandler {
 
 type WebSocketMessage struct {
 	Type      string      `json:"type"`
-	Data      interface{} `json:"data,omitempty"`
+	Payload   interface{} `json:"data,omitempty"`
 	Timestamp int64       `json:"timestamp"`
 }
 
@@ -21,7 +21,7 @@ func (h *WebSocketHandler) HandleWebSocketMessage(msg WebSocketMessage) WebSocke
 	case "compile":
 		return WebSocketMessage{
 			Type: "compile_result",
-			Data: fiber.Map{
+			Payload: fiber.Map{
 				"status":  "processing",
 				"message": "Compilation started",
 			},
@@ -30,7 +30,7 @@ func (h *WebSocketHandler) HandleWebSocketMessage(msg WebSocketMessage) WebSocke
 	case "ping":
 		return WebSocketMessage{
 			Type: "pong",
-			Data: fiber.Map{
+			Payload: fiber.Map{
 				"message": "Server is alive",
 			},
 			Timestamp: msg.Timestamp,
@@ -38,7 +38,7 @@ func (h *WebSocketHandler) HandleWebSocketMessage(msg WebSocketMessage) WebSocke
 	default:
 		return WebSocketMessage{
 			Type: "error",
-			Data: fiber.Map{
+			Payload: fiber.Map{
 				"message": "Unknown message type",
 			},
 			Timestamp: msg.Timestamp,

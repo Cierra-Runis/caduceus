@@ -44,7 +44,7 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(CreateUserResponse{
 		Message: "User created successfully",
-		Data:    user,
+		Payload: user,
 	})
 }
 
@@ -53,11 +53,11 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-type LoginResponseData struct {
+type LoginPayload struct {
 	Token string `json:"token"`
 }
 
-type LoginResponse = model.Response[LoginResponseData]
+type LoginResponse = model.Response[LoginPayload]
 
 func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 	req := new(LoginRequest)
@@ -81,7 +81,7 @@ func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(LoginResponse{
 		Message: "Login successful",
-		Data: &LoginResponseData{
+		Payload: &LoginPayload{
 			Token: *token,
 		},
 	})
