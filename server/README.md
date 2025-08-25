@@ -2,6 +2,22 @@
 
 ## Development
 
+### Writing Code
+
+Please install the [Golangci-lint](https://golangci-lint.run/docs/welcome/install/#local-installation) tool to ensure code quality. You can run the linter with:
+
+```bash
+golangci-lint run
+```
+
+And [integrate with your IDE](https://golangci-lint.run/docs/welcome/integrations) for real-time feedback.
+
+> ![Note]
+> If you're using VSCode, the recommended settings are already included in `.vscode/settings.json`.
+> In IDE mode, some linters will be disable since `--fast-only` is enabled. To run all linters, use the command line.
+
+### Running the Server
+
 To start the development server, run the following command:
 
 ```bash
