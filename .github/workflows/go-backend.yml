@@ -36,6 +36,8 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: './server'
 
       - name: Run unit tests with coverage
         run: go test -v -coverprofile 'coverage.out' ./src/...
