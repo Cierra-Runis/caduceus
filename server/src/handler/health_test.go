@@ -23,9 +23,9 @@ func TestGetHealth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	var response map[string]interface{}
+	var response handler.HealthResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	assert.NoError(t, err)
-	assert.Equal(t, "ok", response["status"])
-	assert.NotNil(t, response["timestamp"])
+	assert.Equal(t, "ok", response.Data.Status)
+	assert.NotNil(t, response.Data.Timestamp)
 }
