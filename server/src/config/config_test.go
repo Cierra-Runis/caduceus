@@ -1,8 +1,12 @@
 package config_test
 
 import (
-	"server/src/config"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"server/src/config"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -20,6 +24,23 @@ func TestLoadConfig(t *testing.T) {
 		config, err := config.LoadConfig(env, "../../config")
 		assert.Error(t, err)
 		assert.Nil(t, config)
+	})
+
+	t.Run("load_config_validate_error", func(t *testing.T) {
+		tmpDir := os.TempDir()
+		tmpFile := filepath.Join(tmpDir, "missing_config.yaml")
+		// 写入缺少必填字段的 yaml 内容
+		content := []byte("allowOrigins: []\nmongoUri: ''\ndbName: ''\naddress: ''\njwtSecret: ''\n")
+		err := os.WriteFile(tmpFile, content, 0644)
+		if err != nil {
+			t.Fatalf("failed to write temp file: %v", err)
+		}
+		defer os.Remove(tmpFile)
+
+		_, err = config.LoadConfig("missing_config", tmpDir)
+		if err == nil || !strings.Contains(err.Error(), "config validation failed") {
+			t.Errorf("should return validation error, got %v", err)
+		}
 	})
 }
 
