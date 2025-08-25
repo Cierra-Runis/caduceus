@@ -29,7 +29,7 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("load_config_validate_error", func(t *testing.T) {
 		tmpDir := os.TempDir()
 		tmpFile := filepath.Join(tmpDir, "missing_config.yaml")
-		// 写入缺少必填字段的 yaml 内容
+
 		content := []byte("allowOrigins: []\nmongoUri: ''\ndbName: ''\naddress: ''\njwtSecret: ''\n")
 		err := os.WriteFile(tmpFile, content, 0644)
 		if err != nil {
