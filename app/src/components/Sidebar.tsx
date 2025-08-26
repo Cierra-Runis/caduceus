@@ -7,8 +7,11 @@ import {
 } from "@heroui/listbox";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { IconHome, IconListTree, IconLogout, IconPackage, IconSettings, IconSubtask, IconUser } from "@tabler/icons-react";
+import { usePathname } from "next/navigation";
 
 export default function Sidebar() {
+  const pathname = usePathname();
+
   return <aside className="border-r-small border-divider transition-width  relative flex justify-between h-full w-72 flex-col p-6">
     <header className="flex flex-col items-center justify-center gap-4">
       <h2 className='text-2xl font-bold'>Caduceus</h2>
@@ -21,42 +24,49 @@ export default function Sidebar() {
     </header>
 
     <ScrollShadow className="flex-1 flex items-center">
-      <Listbox classNames={{ base: "w-full" }}>
+      <Listbox classNames={{ base: "w-full" }} selectionMode="single" selectedKeys={[pathname]}>
         <ListboxSection title="Overview">
           <ListboxItem
-            key="home"
+            key="/dashboard"
+            href="/dashboard"
             description="Home"
             classNames={{ description: "text-md" }}
             startContent={<IconHome />} />
           <ListboxItem
-            key="projects"
+            key="/dashboard/projects"
+            href="/dashboard/projects"
             description="Projects"
             classNames={{ description: "text-md" }}
             startContent={<IconPackage />} />
           <ListboxItem
-            key="tasks"
+            key="/dashboard/tasks"
+            href="/dashboard/tasks"
             description="Tasks"
             classNames={{ description: "text-md" }}
             startContent={<IconSubtask />} />
           <ListboxItem
-            key="teams"
+            key="/dashboard/teams"
+            href="/dashboard/teams"
             description="Teams"
             classNames={{ description: "text-md" }}
             startContent={<IconUser />} />
           <ListboxItem
-            key="tracker"
+            key="/dashboard/tracker"
+            href="/dashboard/tracker"
             description="Tracker"
             classNames={{ description: "text-md" }}
             startContent={<IconListTree />} />
         </ListboxSection>
         <ListboxSection title="Organization">
           <ListboxItem
-            key="members"
+            key="/dashboard/members"
+            href="/dashboard/members"
             description="Members"
             classNames={{ description: "text-md" }}
             startContent={<IconUser />} />
           <ListboxItem
-            key="settings"
+            key="/dashboard/settings"
+            href="/dashboard/settings"
             description="Settings"
             classNames={{ description: "text-md" }}
             startContent={<IconSettings />} />
@@ -67,7 +77,8 @@ export default function Sidebar() {
     <Listbox className='mt-auto'>
       <ListboxSection>
         <ListboxItem
-          key="logout"
+          key="/dashboard/logout"
+          href="/dashboard/logout"
           description="Log Out"
           classNames={{ description: "text-md" }}
           startContent={<IconLogout />} />
