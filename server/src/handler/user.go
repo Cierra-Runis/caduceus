@@ -20,7 +20,12 @@ type CreateUserRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-type CreateUserResponse = model.Response[model.User]
+type CreateUserPayload struct {
+	*model.User
+	Password string `json:"password,omitempty"`
+}
+
+type CreateUserResponse = model.Response[CreateUserPayload]
 
 func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	req := new(CreateUserRequest)
@@ -44,7 +49,7 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(CreateUserResponse{
 		Message: "User created successfully",
-		Payload: user,
+		Payload: &CreateUserPayload{User: user},
 	})
 }
 
