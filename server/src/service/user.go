@@ -6,6 +6,7 @@ import (
 	"server/src/model"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -66,20 +67,29 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 	return s.Repo.CreateUser(ctx, user)
 }
 
-func (s *UserService) AuthenticateUser(ctx context.Context, username string, password string) (*string, *model.JwtCustomClaims, error) {
+func (s *UserService) LoginUser(ctx context.Context, username string, password string) (*fiber.Cookie, error) {
 	user, err := s.Repo.GetUserByUsername(ctx, username)
 	if err != nil {
-		return nil, nil, ErrUserNotFound
+		return nil, ErrUserNotFound
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, nil, ErrInvalidPassword
+		return nil, ErrInvalidPassword
 	}
 
-	token, claims, err := model.GenerateToken(user, s.JwtSecret, time.Now(), s.JwtTTL)
+	claims := user.GenerateClaimsWith(time.Now(), s.JwtTTL)
+	token, err := claims.GenerateSignedString(s.JwtSecret)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return &token, &claims, nil
+
+	return &fiber.Cookie{
+		Name:     "jwt",
+		Value:    token,
+		HTTPOnly: true,
+		Secure:   s.CookieSecure,
+		SameSite: fiber.CookieSameSiteLaxMode,
+		Expires:  claims.ExpiresAt.Time,
+	}, nil
 }

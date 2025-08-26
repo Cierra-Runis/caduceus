@@ -1,42 +1,47 @@
 package model
 
 import (
-	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-const (
-	ErrTokenExpired = "token has expired"
-)
-
-type JwtCustomClaims struct {
+type UserJwtClaims struct {
 	ID       primitive.ObjectID `json:"id"`
 	Username string             `json:"username"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(u *User, secret string, issuedAt time.Time, ttl time.Duration) (string, JwtCustomClaims, error) {
-	claims := JwtCustomClaims{
+func (u *User) GenerateClaimsWith(issuedAt time.Time, ttl time.Duration) *UserJwtClaims {
+	return &UserJwtClaims{
 		ID:       u.ID,
 		Username: u.Username,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(ttl)),
-			Subject:   "Token",
+			Subject:   u.ID.String(),
 		},
 	}
-
-	jwt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	token, err := jwt.SignedString([]byte(secret))
-
-	return token, claims, err
 }
 
-func ParseToken(token string, secret string, verifiedAt time.Time) (*JwtCustomClaims, error) {
-	jwt, err := jwt.ParseWithClaims(token, &JwtCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
+func (c *UserJwtClaims) GenerateSignedString(secret string) (string, error) {
+	jwt := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
+	token, err := jwt.SignedString([]byte(secret))
+	return token, err
+}
+
+func ParseStringToToken(token string, secret string, verifiedAt time.Time) (*jwt.Token, error) {
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuedAt(),
+		jwt.WithExpirationRequired(),
+		jwt.WithTimeFunc(func() time.Time {
+			return verifiedAt
+		}),
+	)
+
+	jwtToken, err := parser.ParseWithClaims(token, &UserJwtClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
 
@@ -44,11 +49,5 @@ func ParseToken(token string, secret string, verifiedAt time.Time) (*JwtCustomCl
 		return nil, err
 	}
 
-	claims := jwt.Claims.(*JwtCustomClaims)
-
-	if claims.ExpiresAt.Before(verifiedAt) {
-		return nil, errors.New(ErrTokenExpired)
-	}
-
-	return claims, nil
+	return jwtToken, nil
 }
