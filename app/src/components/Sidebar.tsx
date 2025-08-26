@@ -6,7 +6,7 @@ import {
   ListboxSection
 } from "@heroui/listbox";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { IconHome, IconListTree, IconLogout, IconPackage, IconSettings, IconSubtask, IconUser } from "@tabler/icons-react";
+import { IconHome, IconLogout, IconPackage, IconSettings, IconSubtask, IconUser } from "@tabler/icons-react";
 import { usePathname } from "next/navigation";
 
 export default function Sidebar() {
@@ -50,12 +50,6 @@ export default function Sidebar() {
             description="Teams"
             classNames={{ description: "text-md" }}
             startContent={<IconUser />} />
-          <ListboxItem
-            key="/dashboard/tracker"
-            href="/dashboard/tracker"
-            description="Tracker"
-            classNames={{ description: "text-md" }}
-            startContent={<IconListTree />} />
         </ListboxSection>
         <ListboxSection title="Organization">
           <ListboxItem
