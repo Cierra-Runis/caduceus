@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardHeader } from '@heroui/card';
 import { Divider } from '@heroui/divider';
@@ -8,11 +10,11 @@ import { IconBell, IconPalette, IconShield, IconUser } from '@tabler/icons-react
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 mx-auto container">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-default-800">设置</h1>
-        <p className="text-default-600 mt-1">管理您的账户设置和偏好</p>
+        <h1 className="text-3xl font-bold text-default-800">Settings</h1>
+        <p className="text-default-600 mt-1">Manage your account settings and preferences</p>
       </div>
 
       {/* Profile Settings */}
@@ -20,30 +22,30 @@ export default function SettingsPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <IconUser size={20} />
-            <h3 className="text-lg font-semibold text-default-800">个人资料</h3>
+            <h3 className="text-lg font-semibold text-default-800">Profile</h3>
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="姓名"
-              placeholder="输入您的姓名"
-              defaultValue="张三"
+              label="Name"
+              placeholder="Enter your name"
+              defaultValue="John Doe"
             />
             <Input
-              label="邮箱"
-              placeholder="输入您的邮箱"
-              defaultValue="zhangsan@example.com"
+              label="Email"
+              placeholder="Enter your email"
+              defaultValue="john.doe@example.com"
               type="email"
             />
           </div>
           <Input
-            label="个人简介"
-            placeholder="简单介绍一下您自己"
-            defaultValue="系统管理员"
+            label="Bio"
+            placeholder="Tell us about yourself"
+            defaultValue="System Administrator"
           />
           <div className="flex justify-end">
-            <Button color="primary">保存更改</Button>
+            <Button color="primary">Save Changes</Button>
           </div>
         </CardBody>
       </Card>
@@ -53,31 +55,31 @@ export default function SettingsPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <IconBell size={20} />
-            <h3 className="text-lg font-semibold text-default-800">通知设置</h3>
+            <h3 className="text-lg font-semibold text-default-800">Notifications</h3>
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">邮件通知</p>
-                <p className="text-sm text-default-500">接收重要更新的邮件通知</p>
+                <p className="font-medium text-default-800">Email Notifications</p>
+                <p className="text-sm text-default-500">Receive email notifications for important updates</p>
               </div>
               <Switch defaultSelected />
             </div>
             <Divider />
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">推送通知</p>
-                <p className="text-sm text-default-500">在浏览器中接收推送通知</p>
+                <p className="font-medium text-default-800">Push Notifications</p>
+                <p className="text-sm text-default-500">Receive push notifications in your browser</p>
               </div>
               <Switch defaultSelected />
             </div>
             <Divider />
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">系统更新</p>
-                <p className="text-sm text-default-500">当系统有更新时通知我</p>
+                <p className="font-medium text-default-800">System Updates</p>
+                <p className="text-sm text-default-500">Notify me when system updates are available</p>
               </div>
               <Switch />
             </div>
@@ -90,24 +92,24 @@ export default function SettingsPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <IconPalette size={20} />
-            <h3 className="text-lg font-semibold text-default-800">外观设置</h3>
+            <h3 className="text-lg font-semibold text-default-800">Appearance</h3>
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select
-              label="主题"
-              placeholder="选择主题"
+              label="Theme"
+              placeholder="Select theme"
               defaultSelectedKeys={["light"]}
             >
-              <SelectItem key="light">浅色主题</SelectItem>
-              <SelectItem key="dark">深色主题</SelectItem>
-              <SelectItem key="auto">跟随系统</SelectItem>
+              <SelectItem key="light">Light Theme</SelectItem>
+              <SelectItem key="dark">Dark Theme</SelectItem>
+              <SelectItem key="auto">Follow System</SelectItem>
             </Select>
             <Select
-              label="语言"
-              placeholder="选择语言"
-              defaultSelectedKeys={["zh-cn"]}
+              label="Language"
+              placeholder="Select language"
+              defaultSelectedKeys={["en"]}
             >
               <SelectItem key="zh-cn">简体中文</SelectItem>
               <SelectItem key="en">English</SelectItem>
@@ -122,33 +124,33 @@ export default function SettingsPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <IconShield size={20} />
-            <h3 className="text-lg font-semibold text-default-800">安全设置</h3>
+            <h3 className="text-lg font-semibold text-default-800">Security</h3>
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">两步验证</p>
-                <p className="text-sm text-default-500">为您的账户添加额外的安全保护</p>
+                <p className="font-medium text-default-800">Two-Factor Authentication</p>
+                <p className="text-sm text-default-500">Add an extra layer of security to your account</p>
               </div>
-              <Button variant="flat" size="sm">设置</Button>
+              <Button variant="flat" size="sm">Setup</Button>
             </div>
             <Divider />
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">修改密码</p>
-                <p className="text-sm text-default-500">定期更新密码以保护账户安全</p>
+                <p className="font-medium text-default-800">Change Password</p>
+                <p className="text-sm text-default-500">Update your password regularly to keep your account secure</p>
               </div>
-              <Button variant="flat" size="sm">修改</Button>
+              <Button variant="flat" size="sm">Change</Button>
             </div>
             <Divider />
             <div className="flex justify-between items-center">
               <div>
-                <p className="font-medium text-default-800">登录设备</p>
-                <p className="text-sm text-default-500">查看和管理已登录的设备</p>
+                <p className="font-medium text-default-800">Login Devices</p>
+                <p className="text-sm text-default-500">View and manage your logged-in devices</p>
               </div>
-              <Button variant="flat" size="sm">查看</Button>
+              <Button variant="flat" size="sm">View</Button>
             </div>
           </div>
         </CardBody>
