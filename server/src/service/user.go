@@ -10,10 +10,17 @@ import (
 )
 
 const (
-	ErrInvalidRequestBody = "invalid request body"
-	ErrUsernameTaken      = "username already taken"
-	ErrInvalidPassword    = "invalid password"
-	ErrUserNotFound       = "user not found"
+	MsgInvalidRequestBody = "invalid request body"
+	MsgUsernameTaken      = "username already taken"
+	MsgInvalidPassword    = "invalid password"
+	MsgUserNotFound       = "user not found"
+)
+
+var (
+	ErrInvalidRequestBody = errors.New(MsgInvalidRequestBody)
+	ErrUsernameTaken      = errors.New(MsgUsernameTaken)
+	ErrInvalidPassword    = errors.New(MsgInvalidPassword)
+	ErrUserNotFound       = errors.New(MsgUserNotFound)
 )
 
 type UserService struct {
@@ -40,12 +47,12 @@ func NewUserService(
 func (s *UserService) CreateUser(ctx context.Context, username string, password string) (*model.User, error) {
 	_, err := s.Repo.GetUserByUsername(ctx, username)
 	if err == nil {
-		return nil, errors.New(ErrUsernameTaken)
+		return nil, ErrUsernameTaken
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, errors.New(ErrInvalidPassword)
+		return nil, ErrInvalidPassword
 	}
 
 	user := &model.User{
@@ -62,11 +69,11 @@ func (s *UserService) CreateUser(ctx context.Context, username string, password 
 func (s *UserService) AuthenticateUser(ctx context.Context, username string, password string) (*string, *model.JwtCustomClaims, error) {
 	user, err := s.Repo.GetUserByUsername(ctx, username)
 	if err != nil {
-		return nil, nil, errors.New(ErrUserNotFound)
+		return nil, nil, ErrUserNotFound
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, nil, errors.New(ErrInvalidPassword)
+		return nil, nil, ErrInvalidPassword
 	}
 
 	token, claims, err := model.GenerateToken(user, s.JwtSecret, time.Now(), s.JwtTTL)

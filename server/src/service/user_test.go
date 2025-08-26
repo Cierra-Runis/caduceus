@@ -40,7 +40,7 @@ func TestUserService_CreateUser(t *testing.T) {
 		user, err := userService.CreateUser(ctx, username, password)
 
 		if assert.Error(t, err) {
-			assert.Equal(t, service.ErrUsernameTaken, err.Error())
+			assert.ErrorIs(t, service.ErrUsernameTaken, err)
 		}
 		assert.Nil(t, user)
 	})
@@ -51,7 +51,7 @@ func TestUserService_CreateUser(t *testing.T) {
 
 		_, err := userService.CreateUser(ctx, username, password)
 		if assert.Error(t, err) {
-			assert.Equal(t, service.ErrInvalidPassword, err.Error())
+			assert.ErrorIs(t, service.ErrInvalidPassword, err)
 		}
 	})
 }
@@ -78,7 +78,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 	t.Run("user_not_found", func(t *testing.T) {
 		token, claims, err := userService.AuthenticateUser(ctx, "nonexistent", "password")
 		if assert.Error(t, err) {
-			assert.Equal(t, service.ErrUserNotFound, err.Error())
+			assert.ErrorIs(t, service.ErrUserNotFound, err)
 		}
 		assert.Nil(t, token)
 		assert.Nil(t, claims)
@@ -88,7 +88,7 @@ func TestUserService_AuthenticateUser(t *testing.T) {
 		token, claims, err := userService.AuthenticateUser(ctx, username, "wrong_password")
 
 		if assert.Error(t, err) {
-			assert.Equal(t, service.ErrInvalidPassword, err.Error())
+			assert.ErrorIs(t, service.ErrInvalidPassword, err)
 		}
 		assert.Nil(t, token)
 		assert.Nil(t, claims)

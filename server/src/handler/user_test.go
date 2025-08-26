@@ -61,7 +61,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		var response handler.CreateUserResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrUsernameTaken, response.Message)
+		assert.Equal(t, service.MsgUsernameTaken, response.Message)
 	})
 
 	t.Run("invalid_password", func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		var response handler.CreateUserResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrInvalidPassword, response.Message)
+		assert.Equal(t, service.MsgInvalidPassword, response.Message)
 	})
 
 	t.Run("invalid_request_body", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 		var response handler.CreateUserResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrInvalidRequestBody, response.Message)
+		assert.Equal(t, service.MsgInvalidRequestBody, response.Message)
 	})
 
 	t.Run("mock_create_error", func(t *testing.T) {
@@ -166,7 +166,7 @@ func TestUserHandler_LoginUser(t *testing.T) {
 		var response handler.LoginResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrInvalidPassword, response.Message)
+		assert.Equal(t, service.MsgInvalidPassword, response.Message)
 	})
 
 	t.Run("user_not_found", func(t *testing.T) {
@@ -186,7 +186,7 @@ func TestUserHandler_LoginUser(t *testing.T) {
 		var response handler.LoginResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrUserNotFound, response.Message)
+		assert.Equal(t, service.MsgUserNotFound, response.Message)
 	})
 
 	t.Run("invalid_request_body", func(t *testing.T) {
@@ -204,7 +204,7 @@ func TestUserHandler_LoginUser(t *testing.T) {
 		var response handler.LoginResponse
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		assert.NoError(t, err)
-		assert.Equal(t, service.ErrInvalidRequestBody, response.Message)
+		assert.Equal(t, service.MsgInvalidRequestBody, response.Message)
 	})
 
 }

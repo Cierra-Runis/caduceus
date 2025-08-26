@@ -26,16 +26,16 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	req := new(CreateUserRequest)
 
 	if err := c.Bind().JSON(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(CreateUserResponse{Message: service.ErrInvalidRequestBody})
+		return c.Status(fiber.StatusBadRequest).JSON(CreateUserResponse{Message: service.MsgInvalidRequestBody})
 	}
 
 	user, err := h.userService.CreateUser(c, req.Username, req.Password)
 
 	if err != nil {
 		switch err.Error() {
-		case service.ErrUsernameTaken:
+		case service.MsgUsernameTaken:
 			return c.Status(fiber.StatusConflict).JSON(CreateUserResponse{Message: err.Error()})
-		case service.ErrInvalidPassword:
+		case service.MsgInvalidPassword:
 			return c.Status(fiber.StatusBadRequest).JSON(CreateUserResponse{Message: err.Error()})
 		default:
 			return c.Status(fiber.StatusInternalServerError).JSON(CreateUserResponse{Message: err.Error()})
@@ -63,16 +63,16 @@ func (h *UserHandler) LoginUser(c fiber.Ctx) error {
 	req := new(LoginRequest)
 
 	if err := c.Bind().JSON(req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(LoginResponse{Message: service.ErrInvalidRequestBody})
+		return c.Status(fiber.StatusBadRequest).JSON(LoginResponse{Message: service.MsgInvalidRequestBody})
 	}
 
 	token, claims, err := h.userService.AuthenticateUser(c, req.Username, req.Password)
 
 	if err != nil {
 		switch err.Error() {
-		case service.ErrUserNotFound:
+		case service.MsgUserNotFound:
 			return c.Status(fiber.StatusNotFound).JSON(LoginResponse{Message: err.Error()})
-		case service.ErrInvalidPassword:
+		case service.MsgInvalidPassword:
 			return c.Status(fiber.StatusUnauthorized).JSON(LoginResponse{Message: err.Error()})
 		default:
 			return c.Status(fiber.StatusInternalServerError).JSON(LoginResponse{Message: err.Error()})
