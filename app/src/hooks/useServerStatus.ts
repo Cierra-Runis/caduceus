@@ -15,10 +15,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 export function useServerStatus() {
   const { error, isLoading, data } = useSWR<ServerStatus>(
     '/api/health',
-    fetcher,
-    {
-      refreshInterval: 100,
-    }
+    fetcher
   );
 
   const color = useMemo<BadgeProps['color']>(() => {
