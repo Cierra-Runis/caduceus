@@ -1,0 +1,6 @@
+{
+  "endOfLine": "lf",
+  "filepath": "*.{ts,tsx,js,jsx,json,css,scss,md,mdx}",
+  "jsxSingleQuote": true,
+  "singleQuote": true
+}

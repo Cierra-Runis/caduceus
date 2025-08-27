@@ -6,5 +6,11 @@
   "go.alternateTools": {
     "customFormatter": "golangci-lint"
   },
-  "go.formatFlags": ["fmt", "--stdin"]
+  "go.formatFlags": ["fmt", "--stdin"],
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
 }
