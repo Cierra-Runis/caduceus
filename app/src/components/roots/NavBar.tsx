@@ -18,11 +18,11 @@ export const NavBar = () => {
       shouldHideOnScroll
     >
       <NavbarBrand className='max-w-fit gap-3'>
-        <NextLink href='/' className='flex items-center gap-2'>
+        <NextLink className='flex items-center gap-2' href='/'>
           <Image
-            src='favicon.svg'
             alt='Caduceus Icon'
             className='w-12 dark:invert'
+            src='favicon.svg'
           ></Image>
           <span className='hidden sm:inline font-semibold text-lg'>
             Caduceus
@@ -31,21 +31,21 @@ export const NavBar = () => {
       </NavbarBrand>
       <NavbarContent className='basis-full' justify='end'>
         <NavbarItem>
-          <NextLink href='/docs' className='text-sm font-medium'>
+          <NextLink className='text-sm font-medium' href='/docs'>
             Docs
           </NextLink>
         </NavbarItem>
         <NavbarItem>
-          <NextLink href='/login' className='text-sm font-medium'>
+          <NextLink className='text-sm font-medium' href='/login'>
             Login
           </NextLink>
         </NavbarItem>
         <NavbarItem>
           <Button
-            href='/register'
-            className='text-sm font-medium'
-            variant='faded'
             as={NextLink}
+            className='text-sm font-medium'
+            href='/register'
+            variant='faded'
           >
             Register
           </Button>

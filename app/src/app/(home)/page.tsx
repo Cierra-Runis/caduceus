@@ -16,19 +16,19 @@ export default function Home() {
         </p>
         <div className='flex items-center justify-center gap-6'>
           <Button
-            href='/register'
             as={NextLink}
             color='primary'
-            variant='ghost'
+            href='/register'
             size='lg'
+            variant='ghost'
           >
             Register now!
           </Button>
           <Button
-            href='https://github.com/Cierra-Runis/caduceus'
             as={NextLink}
-            variant='bordered'
+            href='https://github.com/Cierra-Runis/caduceus'
             size='lg'
+            variant='bordered'
           >
             View on GitHub
           </Button>

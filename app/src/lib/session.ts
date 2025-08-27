@@ -1,5 +1,4 @@
 import 'server-only';
-
 import { jwtVerify } from 'jose';
 
 const secretKey = process.env.JWT_SECRET;

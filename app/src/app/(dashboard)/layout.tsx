@@ -1,16 +1,17 @@
+import { Saira } from 'next/font/google';
+
 import { Providers } from '@/components/roots/Providers';
 import Sidebar from '@/components/Sidebar';
 import '@/styles/globals.css';
-import { Saira } from 'next/font/google';
 
 const sans = Saira({
-  variable: '--font-sans',
   subsets: ['latin'],
+  variable: '--font-sans',
 });
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang='en' suppressHydrationWarning className={sans.variable}>
+    <html className={sans.variable} lang='en' suppressHydrationWarning>
       <body className='min-h-screen bg-background font-sans text-foreground antialiased'>
         <Providers>
           <div className='relative h-screen flex w-full'>

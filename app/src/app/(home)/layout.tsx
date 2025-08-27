@@ -1,21 +1,23 @@
+import type { Metadata } from 'next';
+
+import { Image } from '@heroui/image';
+import { Saira } from 'next/font/google';
+import NextLink from 'next/link';
+
+import '@/styles/globals.css';
 import { ServerBadge } from '@/components/badges/ServerBadge';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { NavBar } from '@/components/roots/NavBar';
 import { Providers } from '@/components/roots/Providers';
-import '@/styles/globals.css';
-import { Image } from '@heroui/image';
-import type { Metadata } from 'next';
-import { Saira } from 'next/font/google';
-import NextLink from 'next/link';
 
 const sans = Saira({
-  variable: '--font-sans',
   subsets: ['latin'],
+  variable: '--font-sans',
 });
 
 export const metadata: Metadata = {
-  title: { default: 'Caduceus', template: '%s | Caduceus' },
   description: 'An open-source alternative to Typst App.',
+  title: { default: 'Caduceus', template: '%s | Caduceus' },
 };
 
 export default function RootLayout({
@@ -24,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en' suppressHydrationWarning className={sans.variable}>
+    <html className={sans.variable} lang='en' suppressHydrationWarning>
       <body className='min-h-screen bg-background font-sans text-foreground antialiased'>
         <Providers>
           <div className='relative h-screen'>
@@ -38,9 +40,9 @@ export default function RootLayout({
                 <div className='flex items-center justify-center gap-4 md:justify-start'>
                   <div className='flex items-center gap-1'>
                     <Image
-                      src='favicon.svg'
                       alt='Caduceus Icon'
                       className='w-8 dark:invert'
+                      src='favicon.svg'
                     />
                     <span className='text-small font-medium'>Caduceus</span>
                   </div>
@@ -53,8 +55,8 @@ export default function RootLayout({
                   </div>
                 </div>
                 <NextLink
-                  href='https://github.com/Cierra-Runis/caduceus/blob/main/LICENSE'
                   className='text-tiny text-default-400 text-center md:text-start'
+                  href='https://github.com/Cierra-Runis/caduceus/blob/main/LICENSE'
                 >
                   MIT Licensed | © 2025 Cierra Runis
                 </NextLink>

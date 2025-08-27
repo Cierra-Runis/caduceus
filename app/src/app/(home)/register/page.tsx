@@ -20,16 +20,16 @@ export default function RegisterPage() {
 
     const form = new FormData(e.currentTarget);
     const payload = {
-      username: String(form.get('username') || ''),
       nickname: String(form.get('nickname') || ''),
       password: String(form.get('password') || ''),
+      username: String(form.get('username') || ''),
     };
 
     if (!payload.username || !payload.password) {
       return addToast({
         color: 'warning',
-        title: 'Register Failed',
         description: 'Please fill in both username and password.',
+        title: 'Register Failed',
       });
     }
 
@@ -42,18 +42,18 @@ export default function RegisterPage() {
       });
       addToast({
         color: 'success',
-        title: res.data.message,
         description: 'Redirecting to login page...',
-        timeout: 3000,
-        shouldShowTimeoutProgress: true,
         onClose: () => router.push('/login'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+        shouldShowTimeoutProgress: true,
+        timeout: 3000,
+        title: res.data.message,
       });
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message;
       addToast({
         color: 'danger',
-        title: 'Register Failed',
         description: message,
+        title: 'Register Failed',
       });
     } finally {
       setSubmitting(false);
@@ -66,57 +66,57 @@ export default function RegisterPage() {
         <Form onSubmit={onSubmit}>
           <CardHeader className='flex justify-between items-center'>
             <h1 className='text-2xl font-bold'>Register</h1>
-            <Button href='/' as={NextLink} size='sm' variant='light'>
+            <Button as={NextLink} href='/' size='sm' variant='light'>
               Back to homepage
             </Button>
           </CardHeader>
           <CardBody>
             <div className='flex flex-col gap-4'>
               <Input
+                description='Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen.'
+                isRequired
                 label='Username'
                 labelPlacement='outside'
-                variant='bordered'
-                description='Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen.'
-                placeholder='Username'
                 name='username'
-                isRequired
+                placeholder='Username'
+                variant='bordered'
               />
               <Input
+                description='Nickname can contain any characters you want and it will not used for identification.'
                 label='Nickname'
                 labelPlacement='outside'
-                variant='bordered'
-                description='Nickname can contain any characters you want and it will not used for identification.'
-                placeholder='Nickname'
                 name='nickname'
+                placeholder='Nickname'
+                variant='bordered'
               />
               <Input
+                description='Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.'
+                isRequired
                 label='Password'
                 labelPlacement='outside'
-                variant='bordered'
-                description='Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.'
-                placeholder='Password'
                 name='password'
+                placeholder='Password'
                 type='password'
-                isRequired
+                variant='bordered'
               />
             </div>
             <p className='mt-4 text-sm'>
               By signing up, you confirm that you have read and accepted our{' '}
-              <Link href='/privacy' className='text-sm'>
+              <Link className='text-sm' href='/privacy'>
                 Privacy Policy
               </Link>
               .
             </p>
           </CardBody>
           <CardFooter className='flex justify-end gap-4'>
-            <Button href='/login' as={NextLink} variant='light'>
+            <Button as={NextLink} href='/login' variant='light'>
               Already have an account?
             </Button>
             <Button
-              type='submit'
               color='primary'
-              isLoading={submitting}
               isDisabled={submitting}
+              isLoading={submitting}
+              type='submit'
             >
               Register
             </Button>

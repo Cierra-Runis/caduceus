@@ -30,52 +30,52 @@ export default function Sidebar() {
       <ScrollShadow className='flex-1 flex items-center'>
         <Listbox
           classNames={{ base: 'w-full' }}
-          selectionMode='single'
           selectedKeys={[pathname]}
+          selectionMode='single'
         >
           <ListboxSection title='Overview'>
             <ListboxItem
-              key='/dashboard'
-              href='/dashboard'
-              description='Home'
               classNames={{ description: 'text-md' }}
+              description='Home'
+              href='/dashboard'
+              key='/dashboard'
               startContent={<IconHome />}
             />
             <ListboxItem
-              key='/dashboard/projects'
-              href='/dashboard/projects'
-              description='Projects'
               classNames={{ description: 'text-md' }}
+              description='Projects'
+              href='/dashboard/projects'
+              key='/dashboard/projects'
               startContent={<IconPackage />}
             />
             <ListboxItem
-              key='/dashboard/tasks'
-              href='/dashboard/tasks'
-              description='Tasks'
               classNames={{ description: 'text-md' }}
+              description='Tasks'
+              href='/dashboard/tasks'
+              key='/dashboard/tasks'
               startContent={<IconSubtask />}
             />
             <ListboxItem
-              key='/dashboard/teams'
-              href='/dashboard/teams'
-              description='Teams'
               classNames={{ description: 'text-md' }}
+              description='Teams'
+              href='/dashboard/teams'
+              key='/dashboard/teams'
               startContent={<IconUser />}
             />
           </ListboxSection>
           <ListboxSection title='Organization'>
             <ListboxItem
-              key='/dashboard/members'
-              href='/dashboard/members'
-              description='Members'
               classNames={{ description: 'text-md' }}
+              description='Members'
+              href='/dashboard/members'
+              key='/dashboard/members'
               startContent={<IconUser />}
             />
             <ListboxItem
-              key='/dashboard/settings'
-              href='/dashboard/settings'
-              description='Settings'
               classNames={{ description: 'text-md' }}
+              description='Settings'
+              href='/dashboard/settings'
+              key='/dashboard/settings'
               startContent={<IconSettings />}
             />
           </ListboxSection>
@@ -85,10 +85,10 @@ export default function Sidebar() {
       <Listbox className='mt-auto'>
         <ListboxSection>
           <ListboxItem
-            key='/dashboard/logout'
-            href='/dashboard/logout'
-            description='Log Out'
             classNames={{ description: 'text-md' }}
+            description='Log Out'
+            href='/dashboard/logout'
+            key='/dashboard/logout'
             startContent={<IconLogout />}
           />
         </ListboxSection>

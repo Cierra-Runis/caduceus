@@ -1,11 +1,12 @@
 'use client';
 
-import { useServerStatus } from '@/hooks/useServerStatus';
 import { Badge, BadgeProps } from '@heroui/badge';
 
-type ServerBadgeProps = Omit<BadgeProps, 'children'> & {
+import { useServerStatus } from '@/hooks/useServerStatus';
+
+type ServerBadgeProps = {
   children?: BadgeProps['children']; // make children optional for this wrapper
-};
+} & Omit<BadgeProps, 'children'>;
 
 export function ServerBadge({ children = '', ...props }: ServerBadgeProps) {
   const { color } = useServerStatus();

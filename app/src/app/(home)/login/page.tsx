@@ -19,15 +19,15 @@ export default function LoginPage() {
 
     const form = new FormData(e.currentTarget);
     const payload = {
-      username: String(form.get('username') || ''),
       password: String(form.get('password') || ''),
+      username: String(form.get('username') || ''),
     };
 
     if (!payload.username || !payload.password) {
       return addToast({
         color: 'warning',
-        title: 'Login Failed',
         description: 'Please fill in both username and password.',
+        title: 'Login Failed',
       });
     }
 
@@ -40,18 +40,18 @@ export default function LoginPage() {
       });
       addToast({
         color: 'success',
-        title: res.data.message,
         description: 'Redirecting to homepage...',
-        timeout: 3000,
-        shouldShowTimeoutProgress: true,
         onClose: () => router.push('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+        shouldShowTimeoutProgress: true,
+        timeout: 3000,
+        title: res.data.message,
       });
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message;
       addToast({
         color: 'danger',
-        title: 'Login Failed',
         description: message,
+        title: 'Login Failed',
       });
     } finally {
       setSubmitting(false);
@@ -64,45 +64,45 @@ export default function LoginPage() {
         <Form onSubmit={onSubmit}>
           <CardHeader className='flex justify-between items-center'>
             <h1 className='text-2xl font-bold'>Login</h1>
-            <Button href='/' as={NextLink} size='sm' variant='light'>
+            <Button as={NextLink} href='/' size='sm' variant='light'>
               Back to homepage
             </Button>
           </CardHeader>
           <CardBody>
             <div className='flex flex-col gap-4'>
               <Input
+                isRequired
                 label='Username'
                 labelPlacement='outside'
-                variant='bordered'
-                placeholder='Username'
                 name='username'
-                isRequired
+                placeholder='Username'
+                variant='bordered'
               />
               <Input
-                label='Password'
-                labelPlacement='outside'
-                variant='bordered'
-                placeholder='Password'
                 description={
-                  <NextLink href='/' className='text-primary'>
+                  <NextLink className='text-primary' href='/'>
                     Forget Password?
                   </NextLink>
                 }
-                name='password'
-                type='password'
                 isRequired
+                label='Password'
+                labelPlacement='outside'
+                name='password'
+                placeholder='Password'
+                type='password'
+                variant='bordered'
               />
             </div>
           </CardBody>
           <CardFooter className='flex justify-end gap-4'>
-            <Button href='/register' as={NextLink} variant='light'>
+            <Button as={NextLink} href='/register' variant='light'>
               New to Caduceus?
             </Button>
             <Button
-              type='submit'
               color='primary'
-              isLoading={submitting}
               isDisabled={submitting}
+              isLoading={submitting}
+              type='submit'
             >
               Login
             </Button>

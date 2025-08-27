@@ -35,21 +35,21 @@ export default function SettingsPage() {
         <CardBody className='space-y-4'>
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <Input
+              defaultValue='John Doe'
               label='Name'
               placeholder='Enter your name'
-              defaultValue='John Doe'
             />
             <Input
+              defaultValue='john.doe@example.com'
               label='Email'
               placeholder='Enter your email'
-              defaultValue='john.doe@example.com'
               type='email'
             />
           </div>
           <Input
+            defaultValue='System Administrator'
             label='Bio'
             placeholder='Tell us about yourself'
-            defaultValue='System Administrator'
           />
           <div className='flex justify-end'>
             <Button color='primary'>Save Changes</Button>
@@ -119,18 +119,18 @@ export default function SettingsPage() {
         <CardBody className='space-y-4'>
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <Select
+              defaultSelectedKeys={['light']}
               label='Theme'
               placeholder='Select theme'
-              defaultSelectedKeys={['light']}
             >
               <SelectItem key='light'>Light Theme</SelectItem>
               <SelectItem key='dark'>Dark Theme</SelectItem>
               <SelectItem key='auto'>Follow System</SelectItem>
             </Select>
             <Select
+              defaultSelectedKeys={['en']}
               label='Language'
               placeholder='Select language'
-              defaultSelectedKeys={['en']}
             >
               <SelectItem key='zh-cn'>简体中文</SelectItem>
               <SelectItem key='en'>English</SelectItem>
@@ -159,7 +159,7 @@ export default function SettingsPage() {
                   Add an extra layer of security to your account
                 </p>
               </div>
-              <Button variant='flat' size='sm'>
+              <Button size='sm' variant='flat'>
                 Setup
               </Button>
             </div>
@@ -171,7 +171,7 @@ export default function SettingsPage() {
                   Update your password regularly to keep your account secure
                 </p>
               </div>
-              <Button variant='flat' size='sm'>
+              <Button size='sm' variant='flat'>
                 Change
               </Button>
             </div>
@@ -183,7 +183,7 @@ export default function SettingsPage() {
                   View and manage your logged-in devices
                 </p>
               </div>
-              <Button variant='flat' size='sm'>
+              <Button size='sm' variant='flat'>
                 View
               </Button>
             </div>

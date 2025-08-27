@@ -12,11 +12,11 @@ export default function Dashboard() {
     <div className='space-y-6'>
       <div className='flex justify-between items-center'>
         <h1 className='text-3xl font-bold text-default-800'>Dashboard</h1>
-        <Popover showArrow placement='bottom-end'>
+        <Popover placement='bottom-end' showArrow>
           <PopoverTrigger>
             <Avatar
-              src='https://avatars.githubusercontent.com/u/29329988'
               alt='user avatar'
+              src='https://avatars.githubusercontent.com/u/29329988'
             />
           </PopoverTrigger>
           <PopoverContent className='p-1'>
@@ -50,18 +50,18 @@ export const UserCard = () => {
         </div>
         <Button
           color='primary'
-          radius='full'
-          size='sm'
           onPress={() =>
             addToast({
               color: 'success',
-              title: 'Signed out',
               description: 'You have been signed out successfully.',
-              timeout: 3000,
-              shouldShowTimeoutProgress: true,
               onClose: () => redirect('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+              shouldShowTimeoutProgress: true,
+              timeout: 3000,
+              title: 'Signed out',
             })
           }
+          radius='full'
+          size='sm'
         >
           Sign Out
         </Button>

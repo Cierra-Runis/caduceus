@@ -13,7 +13,7 @@ export type ServerStatus = {
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function useServerStatus() {
-  const { error, isLoading, data } = useSWR<ServerStatus>(
+  const { data, error, isLoading } = useSWR<ServerStatus>(
     '/api/health',
     fetcher,
   );
