@@ -54,7 +54,8 @@ export const UserCard = () => {
             addToast({
               color: 'success',
               description: 'You have been signed out successfully.',
-              onClose: () => redirect('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+              // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+              onClose: async () => redirect('/logout'),
               shouldShowTimeoutProgress: true,
               timeout: 3000,
               title: 'Signed out',
