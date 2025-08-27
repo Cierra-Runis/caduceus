@@ -16,7 +16,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className='border-r-small border-divider transition-width  relative flex justify-between h-full w-72 flex-col p-6'>
+    <aside className='border-r-small border-divider transition-width  relative flex h-full w-72 flex-col justify-between p-6'>
       <header className='flex flex-col items-center justify-center gap-4'>
         <h2 className='text-2xl font-bold'>Caduceus</h2>
         {/* <User avatarProps={{
@@ -27,7 +27,7 @@ export default function Sidebar() {
         /> */}
       </header>
 
-      <ScrollShadow className='flex-1 flex items-center'>
+      <ScrollShadow className='flex flex-1 items-center'>
         <Listbox
           classNames={{ base: 'w-full' }}
           selectedKeys={[pathname]}

@@ -59,10 +59,10 @@ export default function LoginPage() {
   };
 
   return (
-    <section className='flex items-center flex-col justify-center h-screen p-4'>
+    <section className='flex h-screen flex-col items-center justify-center p-4'>
       <Card className='w-full max-w-3xl p-4'>
         <Form onSubmit={onSubmit}>
-          <CardHeader className='flex justify-between items-center'>
+          <CardHeader className='flex items-center justify-between'>
             <h1 className='text-2xl font-bold'>Login</h1>
             <Button as={NextLink} href='/' size='sm' variant='light'>
               Back to homepage

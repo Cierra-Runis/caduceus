@@ -27,12 +27,12 @@ export default function RootLayout({
 }>) {
   return (
     <html className={sans.variable} lang='en' suppressHydrationWarning>
-      <body className='min-h-screen bg-background font-sans text-foreground antialiased'>
+      <body className='bg-background text-foreground min-h-screen font-sans antialiased'>
         <Providers>
           <div className='relative h-screen'>
             <NavBar />
             {children}
-            <footer className='flex w-full flex-col mx-auto max-w-7xl px-6 pb-4 md:flex-row-reverse md:justify-between'>
+            <footer className='mx-auto flex w-full max-w-7xl flex-col px-6 pb-4 md:flex-row-reverse md:justify-between'>
               <div className='flex items-center justify-center gap-2'>
                 <ThemeButtons />
               </div>
@@ -46,10 +46,10 @@ export default function RootLayout({
                     />
                     <span className='text-small font-medium'>Caduceus</span>
                   </div>
-                  <div className='max-w-fit min-w-min inline-flex items-center justify-between box-border whitespace-nowrap border-medium border-default bg-transparent h-7 text-small rounded-full text-default-500 border-none gap-2'>
+                  <div className='border-medium border-default text-small text-default-500 box-border inline-flex h-7 max-w-fit min-w-min items-center justify-between gap-2 rounded-full border-none bg-transparent whitespace-nowrap'>
                     <ServerBadge />
                     {/* TODO: Use `useServerStatus` */}
-                    <span className='flex-1 text-inherit font-normal'>
+                    <span className='flex-1 font-normal text-inherit'>
                       Backend Status
                     </span>
                   </div>

@@ -3,7 +3,7 @@ import NextLink from 'next/link';
 
 export default function Home() {
   return (
-    <section className='relative flex flex-col items-center justify-center h-[calc(100vh_-_64px)] overflow-hidden'>
+    <section className='relative flex h-[calc(100vh_-_64px)] flex-col items-center justify-center overflow-hidden'>
       <section className='z-20 flex flex-col items-center justify-center gap-[18px] sm:gap-6'>
         <div className='text-center text-4xl leading-[1.2] font-bold tracking-tighter sm:text-6xl'>
           <div className='bg-linear-91 from-[hsl(var(--heroui-primary))] to-[hsl(var(--heroui-secondary))] bg-clip-text text-transparent'>

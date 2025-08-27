@@ -15,10 +15,10 @@ import {
 
 export default function SettingsPage() {
   return (
-    <div className='space-y-6 mx-auto container'>
+    <div className='container mx-auto space-y-6'>
       {/* Header */}
       <div>
-        <h1 className='text-3xl font-bold text-default-800'>Settings</h1>
+        <h1 className='text-default-800 text-3xl font-bold'>Settings</h1>
         <p className='text-default-600 mt-1'>
           Manage your account settings and preferences
         </p>
@@ -29,11 +29,11 @@ export default function SettingsPage() {
         <CardHeader className='pb-3'>
           <div className='flex items-center gap-2'>
             <IconUser size={20} />
-            <h3 className='text-lg font-semibold text-default-800'>Profile</h3>
+            <h3 className='text-default-800 text-lg font-semibold'>Profile</h3>
           </div>
         </CardHeader>
         <CardBody className='space-y-4'>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
             <Input
               defaultValue='John Doe'
               label='Name'
@@ -62,41 +62,41 @@ export default function SettingsPage() {
         <CardHeader className='pb-3'>
           <div className='flex items-center gap-2'>
             <IconBell size={20} />
-            <h3 className='text-lg font-semibold text-default-800'>
+            <h3 className='text-default-800 text-lg font-semibold'>
               Notifications
             </h3>
           </div>
         </CardHeader>
         <CardBody className='space-y-4'>
           <div className='space-y-4'>
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>
+                <p className='text-default-800 font-medium'>
                   Email Notifications
                 </p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-500 text-sm'>
                   Receive email notifications for important updates
                 </p>
               </div>
               <Switch defaultSelected />
             </div>
             <Divider />
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>
+                <p className='text-default-800 font-medium'>
                   Push Notifications
                 </p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-500 text-sm'>
                   Receive push notifications in your browser
                 </p>
               </div>
               <Switch defaultSelected />
             </div>
             <Divider />
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>System Updates</p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-800 font-medium'>System Updates</p>
+                <p className='text-default-500 text-sm'>
                   Notify me when system updates are available
                 </p>
               </div>
@@ -111,13 +111,13 @@ export default function SettingsPage() {
         <CardHeader className='pb-3'>
           <div className='flex items-center gap-2'>
             <IconPalette size={20} />
-            <h3 className='text-lg font-semibold text-default-800'>
+            <h3 className='text-default-800 text-lg font-semibold'>
               Appearance
             </h3>
           </div>
         </CardHeader>
         <CardBody className='space-y-4'>
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
             <Select
               defaultSelectedKeys={['light']}
               label='Theme'
@@ -145,17 +145,17 @@ export default function SettingsPage() {
         <CardHeader className='pb-3'>
           <div className='flex items-center gap-2'>
             <IconShield size={20} />
-            <h3 className='text-lg font-semibold text-default-800'>Security</h3>
+            <h3 className='text-default-800 text-lg font-semibold'>Security</h3>
           </div>
         </CardHeader>
         <CardBody className='space-y-4'>
           <div className='space-y-4'>
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>
+                <p className='text-default-800 font-medium'>
                   Two-Factor Authentication
                 </p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-500 text-sm'>
                   Add an extra layer of security to your account
                 </p>
               </div>
@@ -164,10 +164,10 @@ export default function SettingsPage() {
               </Button>
             </div>
             <Divider />
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>Change Password</p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-800 font-medium'>Change Password</p>
+                <p className='text-default-500 text-sm'>
                   Update your password regularly to keep your account secure
                 </p>
               </div>
@@ -176,10 +176,10 @@ export default function SettingsPage() {
               </Button>
             </div>
             <Divider />
-            <div className='flex justify-between items-center'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className='font-medium text-default-800'>Login Devices</p>
-                <p className='text-sm text-default-500'>
+                <p className='text-default-800 font-medium'>Login Devices</p>
+                <p className='text-default-500 text-sm'>
                   View and manage your logged-in devices
                 </p>
               </div>

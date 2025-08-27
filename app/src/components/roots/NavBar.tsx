@@ -24,7 +24,7 @@ export const NavBar = () => {
             className='w-12 dark:invert'
             src='favicon.svg'
           ></Image>
-          <span className='hidden sm:inline font-semibold text-lg'>
+          <span className='hidden text-lg font-semibold sm:inline'>
             Caduceus
           </span>
         </NextLink>

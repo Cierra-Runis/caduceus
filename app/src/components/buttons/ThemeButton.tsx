@@ -10,16 +10,16 @@ import { useEffect, useState } from 'react';
 const __themes = {
   dark: {
     icon: <IconMoon className='w-5' />,
-    title: '暗色',
+    title: 'Dark',
   },
   light: {
     icon: <IconSun className='w-5' />,
-    title: '亮色',
+    title: 'Light',
   },
   system: {
     // Default theme is light
     icon: <IconDevices className='w-5' />,
-    title: '系统',
+    title: 'System',
   },
 } as const;
 
@@ -36,7 +36,7 @@ export default function ThemeButton() {
   }
 
   return (
-    <Popover aria-label='主题'>
+    <Popover aria-label='Theme Selector'>
       <PopoverTrigger>
         <Button
           isIconOnly
@@ -47,7 +47,7 @@ export default function ThemeButton() {
           variant='light'
         />
       </PopoverTrigger>
-      <PopoverContent className='flex p-2 gap-1 flex-row'>
+      <PopoverContent className='flex flex-row gap-1 p-2'>
         {Object.entries(__themes).map(([key, { icon, title }]) => (
           <Button
             aria-label={title}
