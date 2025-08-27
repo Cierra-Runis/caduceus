@@ -3,7 +3,7 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    // 将前端的 /api/* 请求代理到本地 Go 服务（开发环境）
+    // Proxy the front-end /api/*request to the local Go service (development environment)
     return [
       {
         source: '/api/:path*',
