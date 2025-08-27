@@ -28,7 +28,7 @@ export default function Dashboard() {
   );
 }
 
-export const UserCard = () => {
+const UserCard = () => {
   return (
     <Card className='max-w-[300px] border-none bg-transparent' shadow='none'>
       <CardHeader className='justify-between'>

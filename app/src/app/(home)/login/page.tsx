@@ -5,7 +5,7 @@ import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { Form } from '@heroui/form';
 import { Input } from '@heroui/input';
 import { addToast } from '@heroui/toast';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
@@ -46,8 +46,13 @@ export default function LoginPage() {
         timeout: 3000,
         title: res.data.message,
       });
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message;
+    } catch (err: unknown) {
+      let message = 'An unexpected error occurred';
+      if (err instanceof AxiosError) {
+        message = err.response?.data?.message || err.message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
       addToast({
         color: 'danger',
         description: message,
