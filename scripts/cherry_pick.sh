@@ -1,6 +1,14 @@
 #!/bin/bash
 
-git log dev..origin/draft --oneline --reverse | while read -r line; do
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <source_branch> <target_branch>"
+    exit 1
+fi
+
+SOURCE_BRANCH="$1"
+TARGET_BRANCH="$2"
+
+git log "$SOURCE_BRANCH..$TARGET_BRANCH" --oneline --reverse | while read -r line; do
     hash=$(echo "$line" | cut -d' ' -f1)
 
     git cherry-pick "$hash" -n
