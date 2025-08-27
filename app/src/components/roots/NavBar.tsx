@@ -6,7 +6,6 @@ import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import NextLink from 'next/link';
 import { useState } from 'react';
 
-
 export const NavBar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -20,8 +19,14 @@ export const NavBar = () => {
     >
       <NavbarBrand className='max-w-fit gap-3'>
         <NextLink href='/' className='flex items-center gap-2'>
-          <Image src="favicon.svg" alt='Caduceus Icon' className='w-12 dark:invert'></Image>
-          <span className='hidden sm:inline font-semibold text-lg'>Caduceus</span>
+          <Image
+            src='favicon.svg'
+            alt='Caduceus Icon'
+            className='w-12 dark:invert'
+          ></Image>
+          <span className='hidden sm:inline font-semibold text-lg'>
+            Caduceus
+          </span>
         </NextLink>
       </NavbarBrand>
       <NavbarContent className='basis-full' justify='end'>
@@ -36,7 +41,12 @@ export const NavBar = () => {
           </NextLink>
         </NavbarItem>
         <NavbarItem>
-          <Button href='/register' className='text-sm font-medium' variant='faded' as={NextLink}>
+          <Button
+            href='/register'
+            className='text-sm font-medium'
+            variant='faded'
+            as={NextLink}
+          >
             Register
           </Button>
         </NavbarItem>

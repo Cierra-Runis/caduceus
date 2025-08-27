@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { Button } from '@heroui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
@@ -64,12 +64,10 @@ export default function ThemeButton() {
   );
 }
 
-
 export function ThemeButtons() {
   const [mounted, setMounted] = useState(false);
   const { setTheme, theme } = useTheme();
   useEffect(() => setMounted(true), []);
-
 
   return (
     <>

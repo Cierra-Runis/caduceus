@@ -37,7 +37,11 @@ export default function RootLayout({
               <div className='flex flex-col'>
                 <div className='flex items-center justify-center gap-4 md:justify-start'>
                   <div className='flex items-center gap-1'>
-                    <Image src="favicon.svg" alt='Caduceus Icon' className='w-8 dark:invert'></Image>
+                    <Image
+                      src='favicon.svg'
+                      alt='Caduceus Icon'
+                      className='w-8 dark:invert'
+                    />
                     <span className='text-small font-medium'>Caduceus</span>
                   </div>
                   <div className='max-w-fit min-w-min inline-flex items-center justify-between box-border whitespace-nowrap border-medium border-default bg-transparent h-7 text-small rounded-full text-default-500 border-none gap-2'>
@@ -48,7 +52,10 @@ export default function RootLayout({
                     </span>
                   </div>
                 </div>
-                <NextLink href="https://github.com/Cierra-Runis/caduceus/blob/main/LICENSE" className='text-tiny text-default-400 text-center md:text-start'>
+                <NextLink
+                  href='https://github.com/Cierra-Runis/caduceus/blob/main/LICENSE'
+                  className='text-tiny text-default-400 text-center md:text-start'
+                >
                   MIT Licensed | © 2025 Cierra Runis
                 </NextLink>
               </div>
