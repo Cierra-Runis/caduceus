@@ -87,8 +87,8 @@ export default function Sidebar() {
           <ListboxItem
             classNames={{ description: 'text-md' }}
             description='Log Out'
-            href='/dashboard/logout'
-            key='/dashboard/logout'
+            href='/logout'
+            key='/logout'
             startContent={<IconLogout />}
           />
         </ListboxSection>
