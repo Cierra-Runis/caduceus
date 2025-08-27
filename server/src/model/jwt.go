@@ -20,7 +20,7 @@ func (u *User) GenerateClaimsWith(issuedAt time.Time, ttl time.Duration) *UserJw
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(ttl)),
-			Subject:   u.ID.String(),
+			Subject:   u.ID.Hex(),
 		},
 	}
 }

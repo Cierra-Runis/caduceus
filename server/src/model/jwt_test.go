@@ -23,7 +23,7 @@ func Test_Model_GenerateClaimsWith(t *testing.T) {
 
 	assert.Equal(t, user.ID, claims.ID)
 	assert.Equal(t, user.Username, claims.Username)
-	assert.Equal(t, user.ID.String(), claims.Subject)
+	assert.Equal(t, user.ID.Hex(), claims.Subject)
 	assert.WithinDuration(t, issuedAt, claims.IssuedAt.Time, time.Second)
 	assert.WithinDuration(t, issuedAt.Add(ttl), claims.ExpiresAt.Time, time.Second)
 
