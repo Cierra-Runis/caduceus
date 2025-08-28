@@ -86,7 +86,7 @@
     "build": "next build",
     "dev": "next dev --turbopack",
     "i18n:check": "i18n-check -s en-US --locales ./messages",
-    "lint": "next lint",
+    "lint": "eslint .",
     "start": "next start"
   },
   "version": "0.1.0"
