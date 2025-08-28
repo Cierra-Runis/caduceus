@@ -3,6 +3,11 @@
     "description": "您正在寻找的页面不存在",
     "title": "页面未找到"
   },
+  "Home": {
+    "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品。",
+    "registerNow": "立即注册",
+    "viewOnGitHub": "查看 GitHub 仓库"
+  },
   "Sidebar": {
     "home": "首页",
     "logout": "退出登录",

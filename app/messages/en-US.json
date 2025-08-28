@@ -3,6 +3,11 @@
     "description": "The page you are looking for does not exist.",
     "title": "Page Not Found"
   },
+  "Home": {
+    "description": "An open-source alternative to <typstApp>Typst App</typstApp>.",
+    "registerNow": "Register Now",
+    "viewOnGitHub": "View on GitHub"
+  },
   "Sidebar": {
     "home": "Home",
     "logout": "Logout",
