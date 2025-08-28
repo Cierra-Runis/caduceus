@@ -28,17 +28,16 @@ func TestMongoTeamRepo_CreateTeam(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	user := model.User{
-		ID:        primitive.NewObjectID(),
+		ID: primitive.NewObjectID(),
 	}
 
 	mt.Run("successful_create_team", func(mt *mtest.T) {
 		repo := model.NewMongoTeamRepo(mt.DB)
 		ctx := context.Background()
 
-
 		team := &model.Team{
 			Name:      "Test Team",
-			CreatorID:   user.ID,
+			CreatorID: user.ID,
 			MemberIDs: []primitive.ObjectID{user.ID},
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -62,7 +61,7 @@ func TestMongoTeamRepo_CreateTeam(t *testing.T) {
 
 		team := &model.Team{
 			Name:      "Test Team",
-			CreatorID:   user.ID,
+			CreatorID: user.ID,
 			MemberIDs: []primitive.ObjectID{user.ID},
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
