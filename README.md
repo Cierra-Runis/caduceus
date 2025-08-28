@@ -5,7 +5,7 @@
 
 **Open-source collaborative Typst document editor**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Next.js](https://img.shields.io/github/package-json/dependency-version/Cierra-Runis/caduceus/next?filename=%2Fapp%2Fpackage.json&logo=next.js)](https://nextjs.org/) [![Go version](https://img.shields.io/github/go-mod/go-version/Cierra-Runis/caduceus?filename=%2Fserver%2Fgo.mod&logo=go)](https://golang.org/) [![codecov](https://codecov.io/github/cierra-runis/caduceus/graph/badge.svg?token=L42QWPLWFC)](https://codecov.io/github/cierra-runis/caduceus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Next.js](https://img.shields.io/github/package-json/dependency-version/Cierra-Runis/caduceus/next?filename=%2Fapp%2Fpackage.json&logo=next.js)](https://nextjs.org/) [![codecov](https://codecov.io/github/cierra-runis/caduceus/graph/badge.svg?token=L42QWPLWFC)](https://codecov.io/github/cierra-runis/caduceus)
 
 </div>
 
