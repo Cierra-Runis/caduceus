@@ -66,7 +66,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <section className='flex h-screen flex-col items-center justify-center p-4'>
+    <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
         <Form onSubmit={onSubmit}>
           <CardHeader className='flex items-center justify-between'>
@@ -128,6 +128,6 @@ export default function RegisterPage() {
           </CardFooter>
         </Form>
       </Card>
-    </section>
+    </main>
   );
 }
