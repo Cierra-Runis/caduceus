@@ -80,4 +80,69 @@ mod tests {
 
         assert!(valid_config.validate().is_ok());
     }
+
+    #[test]
+    fn test_config_validation_empty_origins() {
+        let invalid_config = Config {
+            allow_origins: vec![],
+            mongo_uri: "mongodb://localhost:27017".to_string(),
+            db_name: "test_db".to_string(),
+            address: "127.0.0.1:8080".to_string(),
+            jwt_secret: "test_secret".to_string(),
+        };
+
+        assert!(invalid_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_empty_mongo_uri() {
+        let invalid_config = Config {
+            allow_origins: vec!["http://localhost:3000".to_string()],
+            mongo_uri: "".to_string(),
+            db_name: "test_db".to_string(),
+            address: "127.0.0.1:8080".to_string(),
+            jwt_secret: "test_secret".to_string(),
+        };
+
+        assert!(invalid_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_empty_db_name() {
+        let invalid_config = Config {
+            allow_origins: vec!["http://localhost:3000".to_string()],
+            mongo_uri: "mongodb://localhost:27017".to_string(),
+            db_name: "".to_string(),
+            address: "127.0.0.1:8080".to_string(),
+            jwt_secret: "test_secret".to_string(),
+        };
+
+        assert!(invalid_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_empty_address() {
+        let invalid_config = Config {
+            allow_origins: vec!["http://localhost:3000".to_string()],
+            mongo_uri: "mongodb://localhost:27017".to_string(),
+            db_name: "test_db".to_string(),
+            address: "".to_string(),
+            jwt_secret: "test_secret".to_string(),
+        };
+
+        assert!(invalid_config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validation_empty_jwt_secret() {
+        let invalid_config = Config {
+            allow_origins: vec!["http://localhost:3000".to_string()],
+            mongo_uri: "mongodb://localhost:27017".to_string(),
+            db_name: "test_db".to_string(),
+            address: "127.0.0.1:8080".to_string(),
+            jwt_secret: "".to_string(),
+        };
+
+        assert!(invalid_config.validate().is_err());
+    }
 }

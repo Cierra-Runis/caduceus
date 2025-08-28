@@ -8,12 +8,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::{
     error::{AppError, Result},
     middleware::Claims,
-    models::user::{User, UserDocument},
+    models::user::User,
 };
 
 #[derive(Clone)]
 pub struct UserService {
-    collection: Collection<UserDocument>,
+    collection: Collection<User>,
     jwt_secret: String,
     jwt_expires_in: Duration,
 }
@@ -40,7 +40,7 @@ impl UserService {
         let hashed_password = hash(password, DEFAULT_COST)?;
 
         let now = Utc::now();
-        let user_doc = UserDocument {
+        let user = User {
             id: None,
             username,
             nickname,
@@ -49,16 +49,15 @@ impl UserService {
             updated_at: now,
         };
 
-        let result = self.collection.insert_one(&user_doc).await?;
+        let result = self.collection.insert_one(&user).await?;
         let inserted_id = result
             .inserted_id
             .as_object_id()
             .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Failed to get inserted ID")))?;
 
-        let mut created_user_doc = user_doc;
-        created_user_doc.id = Some(inserted_id);
+        let mut created_user = user;
+        created_user.id = Some(inserted_id);
 
-        let created_user = User::from(created_user_doc);
         let token = self.generate_token(&created_user)?;
         Ok((created_user, token))
     }
@@ -81,7 +80,7 @@ impl UserService {
             .await?;
 
         match user {
-            Some(user_doc) => Ok(User::from(user_doc)),
+            Some(user) => Ok(user),
             None => Err(AppError::NotFound("User not found".to_string())),
         }
     }
@@ -91,7 +90,7 @@ impl UserService {
         let user = self.collection.find_one(doc! { "_id": object_id }).await?;
 
         match user {
-            Some(user_doc) => Ok(User::from(user_doc)),
+            Some(user) => Ok(user),
             None => Err(AppError::NotFound("User not found".to_string())),
         }
     }
@@ -198,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_user_model_serialization() {
-        let user_doc = UserDocument {
+        let user = User {
             id: Some(ObjectId::new()),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
@@ -207,18 +206,18 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        let json = serde_json::to_string(&user_doc).unwrap();
+        let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("test_user"));
         assert!(json.contains("Test User"));
 
-        let deserialized: UserDocument = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.username, user_doc.username);
-        assert_eq!(deserialized.nickname, user_doc.nickname);
+        let deserialized: User = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.username, user.username);
+        assert_eq!(deserialized.nickname, user.nickname);
     }
 
     #[test]
-    fn test_user_document_serialization() {
-        let user_doc = UserDocument {
+    fn test_user_serialization() {
+        let user = User {
             id: Some(ObjectId::new()),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
@@ -227,8 +226,8 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        let json_str = serde_json::to_string(&user_doc).unwrap();
-        let _: UserDocument = serde_json::from_str(&json_str).unwrap();
+        let json_str = serde_json::to_string(&user).unwrap();
+        let _: User = serde_json::from_str(&json_str).unwrap();
 
         assert!(json_str.contains("test_user"));
         assert!(json_str.contains("Test User"));

@@ -1,6 +1,7 @@
-use crate::handlers::health;
+use crate::{handlers::health, models::user::User};
 use axum::{http::StatusCode, routing::get, Router};
 use axum_test::TestServer;
+use mongodb::bson::oid::ObjectId;
 use serde_json::json;
 
 #[tokio::test]
@@ -83,9 +84,6 @@ fn test_request_validation() {
 
 #[test]
 fn test_response_serialization() {
-    use crate::models::user::User;
-    use mongodb::bson::oid::ObjectId;
-
     let user = User {
         id: Some(ObjectId::new()),
         username: "test_user".to_string(),
