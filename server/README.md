@@ -40,7 +40,7 @@ cargo test
 
 ### Coverage Report
 
-1. Frst, install `cargo-tarpaulin` if you haven't already:
+1. First, install `cargo-tarpaulin` if you haven't already:
 
    ```bash
    cargo install cargo-tarpaulin
