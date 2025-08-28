@@ -1,0 +1,15 @@
+{
+  "404": {
+    "description": "您正在寻找的页面不存在",
+    "title": "页面未找到"
+  },
+  "Sidebar": {
+    "home": "首页",
+    "logout": "退出登录",
+    "members": "成员",
+    "projects": "项目",
+    "settings": "设置",
+    "tasks": "任务",
+    "teams": "团队"
+  }
+}

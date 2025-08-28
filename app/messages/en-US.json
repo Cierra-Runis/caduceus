@@ -1,0 +1,15 @@
+{
+  "404": {
+    "description": "The page you are looking for does not exist.",
+    "title": "Page Not Found"
+  },
+  "Sidebar": {
+    "home": "Home",
+    "logout": "Logout",
+    "members": "Members",
+    "projects": "Projects",
+    "settings": "Settings",
+    "tasks": "Tasks",
+    "teams": "Teams"
+  }
+}
