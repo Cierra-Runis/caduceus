@@ -40,8 +40,14 @@ cargo test
 
 ### Coverage Report
 
-To generate a coverage report, use the following command:
+1. Frst, install `cargo-tarpaulin` if you haven't already:
 
-```bash
-cargo tarpaulin --out Html
-```
+   ```bash
+   cargo install cargo-tarpaulin
+   ```
+
+2. To generate a coverage report, use the following command:
+
+   ```bash
+   cargo tarpaulin --out Html
+   ```
