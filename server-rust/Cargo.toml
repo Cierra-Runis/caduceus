@@ -1,0 +1,56 @@
+[package]
+name = "caduceus-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["ws", "multipart", "query"] }
+tokio = { version = "1.0", features = ["full"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+mongodb = "3.0"
+bson = { version = "2.11", features = ["chrono-0_4"] }
+
+# Authentication
+jsonwebtoken = "9.3"
+bcrypt = "0.15"
+
+# Configuration
+config = "0.14"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Environment
+dotenvy = "0.15"
+
+# UUID
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Regex
+regex = "1.5"
+
+[dev-dependencies]
+tokio-test = "0.4"
+axum-test = "14.0"
+httpmock = "0.7"
+mockall = "0.12"
+serial_test = "3.0"
