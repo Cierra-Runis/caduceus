@@ -1,14 +1,10 @@
-use axum::{
-    extract::{Extension, State},
-    Json,
-};
+use axum::{extract::State, Json};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use crate::{
     error::Result,
-    middleware::Claims,
     models::{
         project::{OwnerType, Project},
         response::Response,
