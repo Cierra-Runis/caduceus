@@ -18,7 +18,7 @@ export default function Sidebar() {
   const t = useTranslations('Sidebar');
 
   return (
-    <aside className='border-r-small border-divider transition-width  relative flex h-full w-72 flex-col justify-between p-6'>
+    <aside className='transition-width relative flex w-72 flex-col justify-between p-6'>
       <header className='flex flex-col items-center justify-center gap-4'>
         <h2 className='text-2xl font-bold'>Caduceus</h2>
         {/* <User avatarProps={{
