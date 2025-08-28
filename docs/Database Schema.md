@@ -8,8 +8,8 @@
 ```mermaid
 erDiagram
   direction LR
-  USER ||--o{ ORGANIZATION : "member or creator"
-  ORGANIZATION ||--o{ PROJECT : "owner"
+  USER ||--o{ TEAM : "member or creator"
+  TEAM ||--o{ PROJECT : "owner"
   USER ||--o{ PROJECT : "owner"
 
   USER {
@@ -17,7 +17,7 @@ erDiagram
     string name
   }
 
-  ORGANIZATION {
+  TEAM {
     ObjectId _id
     string name
     ObjectId creatorId
@@ -28,7 +28,7 @@ erDiagram
     ObjectId _id
     string name
     ObjectId ownerId
-    string ownerType "USER or ORGANIZATION"
+    string ownerType "USER or TEAM"
   }
 ```
 
@@ -40,51 +40,51 @@ See: [Entity Relationship Diagram Syntax](https://mermaid.nodejs.cn/syntax/entit
 
 Represents an individual user in the system. Each user has a unique identifier (`_id`) and a `name` field.
 
-### `ORGANIZATION`
+### `TEAM`
 
-Represents a group or organization that can have multiple users as members. Each organization has a unique identifier (`_id`), a `name`, a `creatorId` that references the user who created the organization, and an array of `memberIds` that contains the IDs of users who are part of the organization.
+Represents a group or team that can have multiple users as members. Each team has a unique identifier (`_id`), a `name`, a `creatorId` that references the user who created the team, and an array of `memberIds` that contains the IDs of users who are part of the team.
 
 ### `PROJECT`
 
-Represents a project that can be owned by either a user or an organization. Each project has a unique identifier (`_id`), a `name`, an `ownerId` that references either a user or an organization, and an `ownerType` field that indicates whether the owner is a `USER` or `ORGANIZATION`.
+Represents a project that can be owned by either a user or an team. Each project has a unique identifier (`_id`), a `name`, an `ownerId` that references either a user or an team, and an `ownerType` field that indicates whether the owner is a `USER` or `TEAM`.
 
 <!-- ## MongoDB Queries
 
-### Between `USER` and `ORGANIZATION`
+### Between `USER` and `TEAM`
 
-#### Find organizations where a specific user is the creator
+#### Find teams where a specific user is the creator
 
 ```go
 userId := "USER_ID_HERE"
 filter := bson.M{"creatorId": userId}
-cursor, err := organizationCollection.Find(ctx, filter)
+cursor, err := teamCollection.Find(ctx, filter)
 if err != nil {
     log.Fatal(err)
 }
-var orgs []Organization
-if err = cursor.All(ctx, &orgs); err != nil {
+var teams []Team
+if err = cursor.All(ctx, &teams); err != nil {
     log.Fatal(err)
 }
-fmt.Println("Organizations created by user:", orgs)
+fmt.Println("Teams created by user:", teams)
 ```
 
-#### Find organizations where a specific user is a member
+#### Find teams where a specific user is a member
 
 ```go
 userId := "USER_ID_HERE"
 filter := bson.M{"memberIds": userId}
-cursor, err := organizationCollection.Find(ctx, filter)
+cursor, err := teamCollection.Find(ctx, filter)
 if err != nil {
     log.Fatal(err)
 }
-var orgs []Organization
-if err = cursor.All(ctx, &orgs); err != nil {
+var teams []Team
+if err = cursor.All(ctx, &teams); err != nil {
     log.Fatal(err)
 }
-fmt.Println("Organizations where user is a member:", orgs)
+fmt.Println("Teams where user is a member:", teams)
 ```
 
-### Between `PROJECT` and `USER` / `ORGANIZATION`
+### Between `PROJECT` and `USER` / `TEAM`
 
 #### Find projects owned by a specific user
 
@@ -102,11 +102,11 @@ if err = cursor.All(ctx, &projects); err != nil {
 fmt.Println("Projects owned by user:", projects)
 ```
 
-#### Find projects owned by a specific organization
+#### Find projects owned by a specific team
 
 ```go
-orgId := "ORG_ID_HERE"
-filter := bson.M{"ownerId": orgId, "ownerType": "ORGANIZATION"}
+teamId := "TEAM_ID_HERE"
+filter := bson.M{"ownerId": teamId, "ownerType": "TEAM"}
 cursor, err := projectCollection.Find(ctx, filter)
 if err != nil {
     log.Fatal(err)
@@ -115,5 +115,5 @@ var projects []Project
 if err = cursor.All(ctx, &projects); err != nil {
     log.Fatal(err)
 }
-fmt.Println("Projects owned by organization:", projects)
+fmt.Println("Projects owned by team:", projects)
 ``` -->
