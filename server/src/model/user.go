@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -34,15 +33,7 @@ func NewMongoUserRepo(db *mongo.Database) *MongoUserRepo {
 	}
 }
 
-type MockUserRepo struct {
-	Users []*User
-}
 
-func NewMockUserRepo() *MockUserRepo {
-	return &MockUserRepo{
-		Users: make([]*User, 0),
-	}
-}
 
 func (r *MongoUserRepo) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
@@ -53,19 +44,7 @@ func (r *MongoUserRepo) GetUserByUsername(ctx context.Context, username string) 
 	return &user, nil
 }
 
-func (m *MockUserRepo) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	for _, user := range m.Users {
-		if user.Username == username {
-			return user, nil
-		}
-	}
-	return nil, errors.New("user not found")
-}
-
 func (r *MongoUserRepo) CreateUser(ctx context.Context, user *User) (*User, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	res, err := r.Collection.InsertOne(ctx, user)
 	if err != nil {
 		return nil, err
@@ -74,11 +53,3 @@ func (r *MongoUserRepo) CreateUser(ctx context.Context, user *User) (*User, erro
 	return user, nil
 }
 
-func (m *MockUserRepo) CreateUser(ctx context.Context, user *User) (*User, error) {
-	if user.Username == "fail" {
-		return nil, errors.New("mock create error")
-	}
-	user.ID = primitive.NewObjectID()
-	m.Users = append(m.Users, user)
-	return user, nil
-}

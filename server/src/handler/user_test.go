@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"server/src/handler"
-	"server/src/model"
+	"server/src/mock"
 	"server/src/router"
 	"server/src/service"
 	"testing"
@@ -17,7 +17,7 @@ import (
 )
 
 func TestUserHandler_CreateUser(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	userHandler := handler.NewUserHandler(userService)
 
@@ -119,7 +119,7 @@ func TestUserHandler_CreateUser(t *testing.T) {
 }
 
 func TestUserHandler_LoginUser(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	user, err := userService.CreateUser(context.Background(), "test_user", "test_password")
 	assert.NoError(t, err)

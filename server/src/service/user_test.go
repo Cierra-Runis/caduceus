@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"server/src/mock"
 	"server/src/model"
 	"server/src/service"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func Test_UserService_CreateUser(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	ctx := context.Background()
 
@@ -57,7 +58,7 @@ func Test_UserService_CreateUser(t *testing.T) {
 }
 
 func Test_UserService_LoginUser(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	ctx := context.Background()
 
@@ -91,7 +92,7 @@ func Test_UserService_LoginUser(t *testing.T) {
 }
 
 func Test_UserService_NewUserService(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	secret := "test_secret"
 
 	userService := service.NewUserService(mockRepo, secret, 24*time.Hour, false)

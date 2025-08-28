@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"server/src/config"
 	"server/src/handler"
-	"server/src/model"
+	"server/src/mock"
 	"server/src/router"
 	"server/src/service"
 	"testing"
@@ -16,7 +16,7 @@ import (
 )
 
 func TestSetup(t *testing.T) {
-	mockRepo := model.NewMockUserRepo()
+	mockRepo := mock.NewMockUserRepo()
 	userService := service.NewUserService(mockRepo, "test_secret", 24*time.Hour, false)
 	userHandler := handler.NewUserHandler(userService)
 
