@@ -25,7 +25,7 @@ const __themes = {
 
 type ThemeVariant = keyof typeof __themes;
 
-export default function ThemeButton() {
+export function ThemeButton() {
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme, setTheme, theme } = useTheme();
 

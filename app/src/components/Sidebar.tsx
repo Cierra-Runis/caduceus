@@ -9,7 +9,7 @@ import { useParams, usePathname } from 'next/navigation';
 
 import { logout } from '@/actions/auth';
 
-export default function Sidebar() {
+export function Sidebar() {
   const { team } = useParams();
   const pathname = usePathname();
 
