@@ -20,6 +20,7 @@ type User struct {
 
 type UserRepository interface {
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
+	GetUserByID(ctx context.Context, userID string) (*User, error)
 	CreateUser(ctx context.Context, user *User) (*User, error)
 }
 
@@ -42,6 +43,20 @@ func (r *MongoUserRepo) GetUserByUsername(ctx context.Context, username string) 
 	return &user, nil
 }
 
+func (r *MongoUserRepo) GetUserByID(ctx context.Context, userID string) (*User, error) {
+	objectID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var user User
+	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *MongoUserRepo) CreateUser(ctx context.Context, user *User) (*User, error) {
 	res, err := r.Collection.InsertOne(ctx, user)
 	if err != nil {
@@ -50,4 +65,3 @@ func (r *MongoUserRepo) CreateUser(ctx context.Context, user *User) (*User, erro
 	user.ID = res.InsertedID.(primitive.ObjectID)
 	return user, nil
 }
-

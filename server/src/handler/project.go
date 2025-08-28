@@ -18,7 +18,7 @@ func NewProjectHandler(projectService *service.ProjectService) *ProjectHandler {
 type CreateProjectRequest struct {
 	Name      string `json:"name" validate:"required"`
 	OwnerID   string `json:"owner_id" validate:"required"`
-	OwnerType string `json:"owner_type" validate:"required,oneof=USER TEAM"`
+	OwnerType string `json:"owner_type" validate:"required"`
 }
 
 type CreateProjectPayload struct {

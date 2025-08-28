@@ -14,6 +14,8 @@ type RouterConfig struct {
 	CorsConfig       cors.Config
 	HealthHandler    handler.HealthHandler
 	UserHandler      handler.UserHandler
+	ProjectHandler   handler.ProjectHandler
+	JWTMiddleware    fiber.Handler
 	WebSocketHandler handler.WebSocketHandler
 }
 

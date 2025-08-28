@@ -27,6 +27,19 @@ func (m *MockUserRepo) GetUserByUsername(ctx context.Context, username string) (
 	return nil, errors.New("user not found")
 }
 
+func (m *MockUserRepo) GetUserByID(ctx context.Context, userID string) (*model.User, error) {
+	objectID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, user := range m.Users {
+		if user.ID == objectID {
+			return user, nil
+		}
+	}
+	return nil, errors.New("user not found")
+}
+
 func (m *MockUserRepo) CreateUser(ctx context.Context, user *model.User) (*model.User, error) {
 	if user.Username == "fail" {
 		return nil, errors.New("mock create error")
@@ -35,4 +48,3 @@ func (m *MockUserRepo) CreateUser(ctx context.Context, user *model.User) (*model
 	m.Users = append(m.Users, user)
 	return user, nil
 }
-

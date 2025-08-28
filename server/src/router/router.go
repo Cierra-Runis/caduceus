@@ -21,6 +21,8 @@ func Setup(config config.RouterConfig) *fiber.App {
 	api.Post("/register", config.UserHandler.CreateUser)
 	api.Post("/login", config.UserHandler.LoginUser)
 
+	api.Post("/project", config.JWTMiddleware, config.ProjectHandler.CreateProject)
+
 	ws := app.Group("/ws")
 	ws.Use(func(c fiber.Ctx) error {
 		if !websocket.IsWebSocketUpgrade(c) {

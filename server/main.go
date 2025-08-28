@@ -50,6 +50,14 @@ func main() {
 		),
 	)
 
+	projectHandler := handler.NewProjectHandler(
+		service.NewProjectService(
+			model.NewMongoProjectRepo(client.DB),
+			model.NewMongoUserRepo(client.DB),
+			model.NewMongoTeamRepo(client.DB),
+		),
+	)
+
 	app := router.Setup(config.RouterConfig{
 		FiberConfig: fiber.Config{
 			AppName:         "caduceus",
@@ -72,7 +80,9 @@ func main() {
 			},
 			AllowCredentials: true,
 		},
-		UserHandler: *userHandler,
+		JWTMiddleware:  middleware.NewJWTMiddleware(appConfig.JWTSecret),
+		UserHandler:    *userHandler,
+		ProjectHandler: *projectHandler,
 	})
 
 	log.Fatal(app.Listen(appConfig.Address, fiber.ListenConfig{
