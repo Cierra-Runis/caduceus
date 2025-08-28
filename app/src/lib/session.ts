@@ -1,4 +1,6 @@
 import { jwtVerify } from 'jose';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import 'server-only';
 
 const secretKey = process.env.JWT_SECRET;
@@ -14,4 +16,10 @@ export async function decrypt(session: string | undefined) {
   } catch (error) {
     console.error('Failed to verify session:', error);
   }
+}
+
+export async function deleteJwt() {
+  const cookie = await cookies();
+  cookie.delete('jwt');
+  redirect('/');
 }

@@ -4,7 +4,8 @@ import { Avatar } from '@heroui/avatar';
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { addToast } from '@heroui/toast';
-import { redirect } from 'next/navigation';
+
+import { logout } from '@/actions/auth';
 
 export default function Dashboard() {
   return (
@@ -54,7 +55,7 @@ const UserCard = () => {
               color: 'success',
               description: 'You have been signed out successfully.',
               // FIXME: https://github.com/heroui-inc/heroui/issues/5609
-              onClose: async () => redirect('/logout'),
+              onClose: logout,
               shouldShowTimeoutProgress: true,
               timeout: 3000,
               title: 'Signed out',

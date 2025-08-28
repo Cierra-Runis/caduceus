@@ -7,6 +7,8 @@ import { IconLogout, IconSettings } from '@tabler/icons-react';
 import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
+import { logout } from '@/actions/auth';
+
 export default function Sidebar() {
   const { team } = useParams();
   const pathname = usePathname();
@@ -64,9 +66,8 @@ export default function Sidebar() {
           variant={isInSettings ? 'solid' : 'light'}
         />
         <Button
-          as={NextLink}
-          href='/logout'
           isIconOnly
+          onPress={logout}
           startContent={<IconLogout />}
           variant='light'
         />
