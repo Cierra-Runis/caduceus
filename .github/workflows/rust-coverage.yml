@@ -2,12 +2,12 @@ name: Rust Coverage
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'server/**'
       - '.github/workflows/rust-coverage.yml'
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'server/**'
       - '.github/workflows/rust-coverage.yml'
