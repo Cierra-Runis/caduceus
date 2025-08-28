@@ -31,7 +31,10 @@ export const NavBar = () => {
       </NavbarBrand>
       <NavbarContent className='basis-full' justify='end'>
         <NavbarItem>
-          <NextLink className='text-sm font-medium' href='/docs'>
+          <NextLink
+            className='text-sm font-medium'
+            href='https://github.com/Cierra-Runis/caduceus/wiki'
+          >
             Docs
           </NextLink>
         </NavbarItem>

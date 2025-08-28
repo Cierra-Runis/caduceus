@@ -14,7 +14,7 @@ export function Providers({ children }: ProvidersProps) {
   const router = useRouter();
 
   return (
-    <HeroUIProvider navigate={router.push}>
+    <HeroUIProvider navigate={(path) => router.push(path as never)}>
       <ToastProvider />
       <NextThemesProvider attribute='class' enableSystem>
         {children}
