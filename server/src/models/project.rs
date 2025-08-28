@@ -34,7 +34,6 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        // Test that BSON serialization works for MongoDB
         let json_str = serde_json::to_string(&project).unwrap();
         let _: Project = serde_json::from_str(&json_str).unwrap();
     }

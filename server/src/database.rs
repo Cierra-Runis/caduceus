@@ -14,7 +14,6 @@ impl Database {
 
         let db = client.database(db_name);
 
-        // Test the connection by running a simple command
         db.run_command(mongodb::bson::doc! {"ping": 1}).await?;
 
         Ok(Database { db })

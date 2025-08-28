@@ -27,12 +27,9 @@ pub fn create_routes(state: AppState) -> Router {
         ));
 
     Router::new()
-        // Health check
         .route("/health", get(health::health_check))
-        // Authentication routes (no JWT required)
         .route("/auth/register", post(user::register))
         .route("/auth/login", post(user::login))
-        // Merge protected routes
         .merge(protected_routes)
         .with_state(state)
 }

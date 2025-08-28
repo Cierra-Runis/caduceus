@@ -1,5 +1,5 @@
-use mongodb::bson::oid::ObjectId;
 use chrono::{DateTime, Utc};
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -14,7 +14,6 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-// Internal model for database operations (includes password field for deserialization)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserDocument {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
@@ -88,12 +87,10 @@ mod tests {
         };
 
         let json = serde_json::to_string(&user).unwrap();
-        // Test that serialization works and password is skipped
         assert!(json.contains("testuser"));
         assert!(json.contains("Test User"));
         assert!(json.contains("created_at"));
         assert!(json.contains("updated_at"));
-        // Password should be skipped in serialization
         assert!(!json.contains("hashed_password"));
     }
 
@@ -125,7 +122,6 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        // Test that BSON serialization works
         let json_str = serde_json::to_string(&user_doc).unwrap();
         let _: UserDocument = serde_json::from_str(&json_str).unwrap();
 

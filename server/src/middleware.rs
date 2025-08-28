@@ -11,9 +11,9 @@ use crate::{error::AppError, routes::AppState};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String, // Subject (user ID)
+    pub sub: String,
     pub username: String,
-    pub exp: usize, // Expiration time
+    pub exp: usize,
 }
 
 pub async fn jwt_middleware(
@@ -42,7 +42,6 @@ pub async fn jwt_middleware(
         &validation,
     )?;
 
-    // Add claims to request extensions for use in handlers
     request.extensions_mut().insert(token_data.claims);
 
     Ok(next.run(request).await)

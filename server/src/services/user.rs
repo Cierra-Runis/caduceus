@@ -1,7 +1,7 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
-use mongodb::bson::{doc, oid::ObjectId};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
+use mongodb::bson::{doc, oid::ObjectId};
 use mongodb::{Collection, Database};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -33,12 +33,10 @@ impl UserService {
         nickname: String,
         password: String,
     ) -> Result<(User, String)> {
-        // Check if user already exists
         if self.get_user_by_username(&username).await.is_ok() {
             return Err(AppError::Conflict("Username already exists".to_string()));
         }
 
-        // Hash password
         let hashed_password = hash(password, DEFAULT_COST)?;
 
         let now = Utc::now();
@@ -232,7 +230,6 @@ mod test {
         let json_str = serde_json::to_string(&user_doc).unwrap();
         let _: UserDocument = serde_json::from_str(&json_str).unwrap();
 
-        // Test that serialization works
         assert!(json_str.contains("test_user"));
         assert!(json_str.contains("Test User"));
     }
@@ -265,16 +262,9 @@ mod test {
 
     #[test]
     fn test_email_validation() {
-        let valid_emails = vec![
-            "test@example.com",
-            "user.name@domain.co.uk",
-        ];
+        let valid_emails = vec!["test@example.com", "user.name@domain.co.uk"];
 
-        let invalid_emails = vec![
-            "invalid-email",
-            "@example.com",
-            "test@",
-        ];
+        let invalid_emails = vec!["invalid-email", "@example.com", "test@"];
 
         let email_regex =
             regex::Regex::new(r"^[a-zA-Z0-9]([a-zA-Z0-9._%-]*[a-zA-Z0-9])?@[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$").unwrap();

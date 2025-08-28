@@ -43,7 +43,6 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        // Test that serialization works
         let json_str = serde_json::to_string(&team).unwrap();
         let _: Team = serde_json::from_str(&json_str).unwrap();
     }

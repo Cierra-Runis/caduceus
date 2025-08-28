@@ -63,7 +63,6 @@ pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<Json<Response<AuthResponse>>> {
-    // Validate input
     payload
         .validate()
         .map_err(|e| crate::error::AppError::Validation(format!("Validation error: {}", e)))?;
@@ -94,7 +93,6 @@ pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<Response<AuthResponse>>> {
-    // Validate input
     payload
         .validate()
         .map_err(|e| crate::error::AppError::Validation(format!("Validation error: {}", e)))?;

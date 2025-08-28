@@ -52,7 +52,6 @@ pub async fn create_project(
     State(state): State<AppState>,
     Json(payload): Json<CreateProjectRequest>,
 ) -> Result<Json<Response<ProjectResponse>>> {
-    // Validate input
     payload
         .validate()
         .map_err(|e| crate::error::AppError::Validation(format!("Validation error: {}", e)))?;
