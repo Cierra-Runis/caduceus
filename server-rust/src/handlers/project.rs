@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, State},
     Json,
 };
-use bson::oid::ObjectId;
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 

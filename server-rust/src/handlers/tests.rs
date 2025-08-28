@@ -84,7 +84,7 @@ fn test_request_validation() {
 #[test]
 fn test_response_serialization() {
     use crate::models::user::User;
-    use bson::oid::ObjectId;
+    use mongodb::bson::oid::ObjectId;
 
     let user = User {
         id: Some(ObjectId::new()),

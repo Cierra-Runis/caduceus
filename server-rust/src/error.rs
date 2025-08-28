@@ -33,7 +33,7 @@ pub enum AppError {
     Bcrypt(#[from] bcrypt::BcryptError),
 
     #[error("BSON ObjectId error: {0}")]
-    ObjectId(#[from] bson::oid::Error),
+    ObjectId(#[from] mongodb::bson::oid::Error),
 }
 
 impl IntoResponse for AppError {

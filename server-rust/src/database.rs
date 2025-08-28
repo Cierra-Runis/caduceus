@@ -13,15 +13,12 @@ impl Database {
 
         let client = Client::with_options(client_options)?;
 
-        // Ping the server to ensure connection
-        client
-            .database("admin")
-            .run_command(bson::doc! {"ping": 1})
-            .await?;
-
-        info!("Successfully pinged MongoDB deployment");
-
         let db = client.database(db_name);
+
+        // Test the connection by running a simple command
+        db.run_command(mongodb::bson::doc! {"ping": 1}).await?;
+
+        info!("Successfully connected to MongoDB deployment");
 
         Ok(Database { db })
     }

@@ -5,52 +5,51 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["ws", "multipart", "query"] }
-tokio = { version = "1.0", features = ["full"] }
-tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+axum = { version = "0.8.4", features = ["ws", "multipart", "query"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tower = { version = "0.5.2", features = ["full"] }
+tower-http = { version = "0.6.6", features = ["fs", "cors", "trace"] }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
 
 # Database
-mongodb = "3.0"
-bson = { version = "2.11", features = ["chrono-0_4"] }
+mongodb = "3.2.5"
 
 # Authentication
-jsonwebtoken = "9.3"
-bcrypt = "0.15"
+jsonwebtoken = "9.3.1"
+bcrypt = "0.17.1"
 
 # Configuration
-config = "0.14"
+config = "0.15.14"
 
 # Error handling
-anyhow = "1.0"
-thiserror = "1.0"
+anyhow = "1.0.99"
+thiserror = "2.0.16"
 
 # Time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4.41", features = ["serde"] }
 
 # Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 # Validation
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20.0", features = ["derive"] }
 
 # Environment
-dotenvy = "0.15"
+dotenvy = "0.15.7"
 
 # UUID
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.18.0", features = ["v4", "serde"] }
 
 # Regex
-regex = "1.5"
+regex = "1.11.2"
 
 [dev-dependencies]
-tokio-test = "0.4"
-axum-test = "14.0"
-httpmock = "0.7"
-mockall = "0.12"
-serial_test = "3.0"
+tokio-test = "0.4.4"
+axum-test = "18.0.1"
+httpmock = "0.7.0"
+mockall = "0.13.1"
+serial_test = "3.2.0"

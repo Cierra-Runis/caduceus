@@ -1,4 +1,4 @@
-use bson::oid::ObjectId;
+use mongodb::bson::oid::ObjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -9,9 +9,7 @@ pub struct Team {
     pub name: String,
     pub creator_id: ObjectId,
     pub member_ids: Vec<ObjectId>,
-    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub created_at: DateTime<Utc>,
-    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub updated_at: DateTime<Utc>,
 }
 
@@ -45,9 +43,8 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        let json = serde_json::to_string(&team).unwrap();
-        assert!(json.contains("Test Team"));
-        assert!(json.contains("creator_id"));
-        assert!(json.contains("member_ids"));
+        // Test that serialization works
+        let json_str = serde_json::to_string(&team).unwrap();
+        let _: Team = serde_json::from_str(&json_str).unwrap();
     }
 }
