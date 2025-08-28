@@ -3,12 +3,16 @@
 import { Avatar } from '@heroui/avatar';
 import { Button } from '@heroui/button';
 import { Tab, Tabs } from '@heroui/tabs';
-import { IconLogout } from '@tabler/icons-react';
+import { IconLogout, IconSettings } from '@tabler/icons-react';
 import NextLink from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 
 export default function Sidebar() {
   const { team } = useParams();
+  const pathname = usePathname();
+
+  const isInSettings =
+    pathname.endsWith('/settings') || pathname.endsWith('/manage');
 
   return (
     <aside className='relative flex flex-col items-center justify-between py-3 transition-all'>
@@ -44,6 +48,21 @@ export default function Sidebar() {
       </div>
 
       <div className='flex flex-col items-center space-y-2'>
+        <Button
+          as={NextLink}
+          href={
+            isInSettings
+              ? team
+                ? `/dashboard/team/${team}`
+                : '/dashboard'
+              : team
+                ? `/dashboard/team/${team}/manage`
+                : '/dashboard/settings'
+          }
+          isIconOnly
+          startContent={<IconSettings />}
+          variant={isInSettings ? 'solid' : 'light'}
+        />
         <Button
           as={NextLink}
           href='/logout'
