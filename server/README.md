@@ -49,5 +49,5 @@ cargo test
 2. To generate a coverage report, use the following command:
 
    ```bash
-   cargo tarpaulin --out Html
+   cargo tarpaulin --out Html --output-dir target/tarpaulin
    ```
