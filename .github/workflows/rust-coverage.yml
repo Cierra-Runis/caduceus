@@ -20,20 +20,6 @@ jobs:
     name: Code Coverage
     runs-on: ubuntu-latest
 
-    services:
-      mongodb:
-        image: mongo:7.0
-        env:
-          MONGO_INITDB_ROOT_USERNAME: root
-          MONGO_INITDB_ROOT_PASSWORD: password
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -72,10 +58,6 @@ jobs:
           echo "JWT_SECRET=test_secret_key_for_testing_purposes_only" >> .env
           echo "RUST_LOG=debug" >> .env
 
-      - name: Wait for MongoDB
-        run: |
-          timeout 30 bash -c 'until mongosh --host localhost:27017 --username root --password password --authenticationDatabase admin --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do sleep 1; done'
-
       - name: Run tests with coverage
         working-directory: ./server
         run: |
@@ -99,13 +81,6 @@ jobs:
           flags: rust
           name: rust-coverage
           fail_ci_if_error: false
-
-      - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: ./server/target/tarpaulin/tarpaulin-report.html
-          retention-days: 30
 
       - name: Coverage Summary
         working-directory: ./server
