@@ -5,14 +5,14 @@ import NextLink from 'next/link';
 export default function Home() {
   const t = useTranslations('Home');
   return (
-    <section className='relative flex h-[calc(100vh_-_64px)] flex-col items-center justify-center overflow-hidden'>
-      <section className='z-20 flex flex-col items-center justify-center gap-[18px] sm:gap-6'>
-        <div className='text-center text-4xl leading-[1.2] font-bold tracking-tighter sm:text-6xl'>
-          <div className='bg-linear-91 from-[hsl(var(--heroui-primary))] to-[hsl(var(--heroui-secondary))] bg-clip-text text-transparent'>
+    <main className='flex flex-1 items-center justify-center px-6 py-16'>
+      <div className='z-20 flex flex-col items-center justify-center gap-[18px]'>
+        <div className='text-center leading-[1.2] font-bold tracking-tighter'>
+          <div className='bg-linear-91 from-[hsl(var(--heroui-primary))] to-[hsl(var(--heroui-secondary))] bg-clip-text text-6xl text-transparent'>
             Caduceus
           </div>
         </div>
-        <p className='text-default-500 text-center leading-7 font-normal sm:w-[466px] sm:text-[18px]'>
+        <p className='text-default-500 text-center leading-7 font-normal'>
           {t.rich('description', {
             typstApp: (chunks) => (
               <NextLink href='https://typst.app'>{chunks}</NextLink>
@@ -38,7 +38,7 @@ export default function Home() {
             {t('viewOnGitHub')}
           </Button>
         </div>
-      </section>
-    </section>
+      </div>
+    </main>
   );
 }
