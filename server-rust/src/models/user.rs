@@ -128,7 +128,7 @@ mod tests {
         // Test that BSON serialization works
         let json_str = serde_json::to_string(&user_doc).unwrap();
         let _: UserDocument = serde_json::from_str(&json_str).unwrap();
-        
+
         assert!(json_str.contains("username"));
         assert!(json_str.contains("nickname"));
         assert!(json_str.contains("password"));

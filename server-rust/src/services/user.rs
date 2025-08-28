@@ -231,7 +231,7 @@ mod test {
 
         let json_str = serde_json::to_string(&user_doc).unwrap();
         let _: UserDocument = serde_json::from_str(&json_str).unwrap();
-        
+
         // Test that serialization works
         assert!(json_str.contains("test_user"));
         assert!(json_str.contains("Test User"));
