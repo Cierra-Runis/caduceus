@@ -3,14 +3,13 @@
 import { Avatar } from '@heroui/avatar';
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
-import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
 import { addToast } from '@heroui/toast';
 import { redirect } from 'next/navigation';
 
 export default function Dashboard() {
   return (
-    <div className='space-y-6'>
-      <div className='flex items-center justify-between'>
+    <main className='space-y-6'>
+      {/* <div className='flex items-center justify-between'>
         <h1 className='text-default-800 text-3xl font-bold'>Dashboard</h1>
         <Popover placement='bottom-end' showArrow>
           <PopoverTrigger>
@@ -23,8 +22,8 @@ export default function Dashboard() {
             <UserCard />
           </PopoverContent>
         </Popover>
-      </div>
-    </div>
+      </div> */}
+    </main>
   );
 }
 
