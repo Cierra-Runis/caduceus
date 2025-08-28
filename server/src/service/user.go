@@ -11,17 +11,15 @@ import (
 )
 
 const (
-	MsgInvalidRequestBody = "invalid request body"
-	MsgUsernameTaken      = "username already taken"
-	MsgInvalidPassword    = "invalid password"
-	MsgUserNotFound       = "user not found"
+	MsgUsernameTaken   = "username already taken"
+	MsgInvalidPassword = "invalid password"
+	MsgUserNotFound    = "user not found"
 )
 
 var (
-	ErrInvalidRequestBody = errors.New(MsgInvalidRequestBody)
-	ErrUsernameTaken      = errors.New(MsgUsernameTaken)
-	ErrInvalidPassword    = errors.New(MsgInvalidPassword)
-	ErrUserNotFound       = errors.New(MsgUserNotFound)
+	ErrUsernameTaken   = errors.New(MsgUsernameTaken)
+	ErrInvalidPassword = errors.New(MsgInvalidPassword)
+	ErrUserNotFound    = errors.New(MsgUserNotFound)
 )
 
 type UserService struct {
