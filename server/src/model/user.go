@@ -33,8 +33,6 @@ func NewMongoUserRepo(db *mongo.Database) *MongoUserRepo {
 	}
 }
 
-
-
 func (r *MongoUserRepo) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)

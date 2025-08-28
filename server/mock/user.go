@@ -18,7 +18,6 @@ func NewMockUserRepo() *MockUserRepo {
 	}
 }
 
-
 func (m *MockUserRepo) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
 	for _, user := range m.Users {
 		if user.Username == username {

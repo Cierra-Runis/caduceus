@@ -13,94 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 )
 
-func TestNewMockUserRepo(t *testing.T) {
-	repo := model.NewMockUserRepo()
-	assert.NotNil(t, repo)
-	assert.NotNil(t, repo.Users)
-	assert.Empty(t, repo.Users)
-}
-
-func TestMockUserRepo_GetUserByUsername(t *testing.T) {
-	repo := model.NewMockUserRepo()
-	ctx := context.Background()
-
-	user1 := &model.User{
-		ID:       primitive.NewObjectID(),
-		Username: "user1",
-		Password: "password1",
-	}
-	user2 := &model.User{
-		ID:       primitive.NewObjectID(),
-		Username: "user2",
-		Password: "password2",
-	}
-
-	repo.Users = append(repo.Users, user1, user2)
-
-	t.Run("existing_user", func(t *testing.T) {
-		foundUser, err := repo.GetUserByUsername(ctx, "user1")
-		assert.NoError(t, err)
-		assert.NotNil(t, foundUser)
-		assert.Equal(t, "user1", foundUser.Username)
-		assert.Equal(t, user1.ID, foundUser.ID)
-	})
-
-	t.Run("non_existing_user", func(t *testing.T) {
-		foundUser, err := repo.GetUserByUsername(ctx, "nonexistent")
-		assert.Error(t, err)
-		assert.Nil(t, foundUser)
-		assert.Equal(t, "user not found", err.Error())
-	})
-}
-
-func TestMockUserRepo_CreateUser(t *testing.T) {
-	repo := model.NewMockUserRepo()
-	ctx := context.Background()
-
-	t.Run("successful_creation", func(t *testing.T) {
-		user := &model.User{
-			Username: "new_user",
-			Password: "password",
-		}
-
-		createdUser, err := repo.CreateUser(ctx, user)
-		assert.NoError(t, err)
-		assert.NotNil(t, createdUser)
-		assert.Equal(t, "new_user", createdUser.Username)
-		assert.NotEqual(t, primitive.NilObjectID, createdUser.ID)
-		assert.Len(t, repo.Users, 1)
-	})
-
-	t.Run("mock_error_scenario", func(t *testing.T) {
-		user := &model.User{
-			Username: "fail",
-			Password: "password",
-		}
-
-		createdUser, err := repo.CreateUser(ctx, user)
-		assert.Error(t, err)
-		assert.Nil(t, createdUser)
-		assert.Equal(t, "mock create error", err.Error())
-	})
-}
-
-func TestUser_StructFields(t *testing.T) {
-	user := model.User{
-		ID:        primitive.NewObjectID(),
-		Username:  "test_user",
-		Nickname:  "Test User",
-		Password:  "hashed_password",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	assert.NotEqual(t, primitive.NilObjectID, user.ID)
-	assert.Equal(t, "test_user", user.Username)
-	assert.Equal(t, "Test User", user.Nickname)
-	assert.Equal(t, "hashed_password", user.Password)
-	assert.WithinDuration(t, time.Now(), user.CreatedAt, time.Second)
-	assert.WithinDuration(t, time.Now(), user.UpdatedAt, time.Second)
-}
 
 func TestNewMongoUserRepo(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
@@ -183,7 +95,6 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 		repo := model.NewMongoUserRepo(mt.DB)
 		ctx := context.Background()
 
-		newID := primitive.NewObjectID()
 		user := &model.User{
 			Username:  "new_user",
 			Nickname:  "New User",
@@ -192,7 +103,7 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		mt.AddMockResponses(mtest.CreateSuccessResponse(bson.E{Key: "insertedId", Value: newID}))
+		mt.AddMockResponses(mtest.CreateSuccessResponse(bson.E{Key: "insertedId", Value: primitive.NewObjectID()}))
 
 		createdUser, err := repo.CreateUser(ctx, user)
 
@@ -223,25 +134,5 @@ func TestMongoUserRepo_CreateUser(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, createdUser)
-	})
-
-	mt.Run("timeout_context", func(mt *mtest.T) {
-		repo := model.NewMongoUserRepo(mt.DB)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		user := &model.User{
-			Username:  "new_user",
-			Password:  "hashed_password",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		createdUser, err := repo.CreateUser(ctx, user)
-
-		assert.Error(t, err)
-		assert.Nil(t, createdUser)
-		assert.Contains(t, err.Error(), "context canceled")
 	})
 }

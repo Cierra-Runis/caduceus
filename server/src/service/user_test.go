@@ -2,7 +2,7 @@ package service_test
 
 import (
 	"context"
-	"server/src/mock"
+	"server/mock"
 	"server/src/model"
 	"server/src/service"
 	"testing"

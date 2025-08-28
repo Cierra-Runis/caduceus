@@ -2,9 +2,9 @@ package router_test
 
 import (
 	"net/http/httptest"
+	"server/mock"
 	"server/src/config"
 	"server/src/handler"
-	"server/src/mock"
 	"server/src/router"
 	"server/src/service"
 	"testing"
