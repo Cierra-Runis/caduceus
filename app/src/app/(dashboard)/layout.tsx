@@ -2,7 +2,7 @@ import Sidebar from '@/components/Sidebar';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className='relative flex h-screen w-full'>
+    <div className='relative flex min-h-screen w-full'>
       <Sidebar />
       <section className='flex h-full w-full flex-col p-4'>
         <header className='rounded-medium border-small border-divider flex flex-shrink-0 items-center gap-3 p-4'>
