@@ -9,7 +9,10 @@ use validator::Validate;
 use crate::{
     error::Result,
     middleware::Claims,
-    models::{project::Project, response::Response},
+    models::{
+        project::{OwnerType, Project},
+        response::Response,
+    },
     routes::AppState,
     services::project::ProjectService,
 };
@@ -18,8 +21,8 @@ use crate::{
 pub struct CreateProjectRequest {
     #[validate(length(min = 1, max = 100))]
     pub name: String,
-    pub owner_type: String,       // "USER" or "TEAM"
-    pub owner_id: Option<String>, // Optional, defaults to current user
+    pub owner_type: OwnerType,
+    pub owner_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,7 +30,7 @@ pub struct ProjectResponse {
     pub id: String,
     pub name: String,
     pub owner_id: String,
-    pub owner_type: String,
+    pub owner_type: OwnerType,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -47,7 +50,6 @@ impl From<Project> for ProjectResponse {
 
 pub async fn create_project(
     State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
     Json(payload): Json<CreateProjectRequest>,
 ) -> Result<Json<Response<ProjectResponse>>> {
     // Validate input
@@ -57,12 +59,9 @@ pub async fn create_project(
 
     let project_service = ProjectService::new(&state.database.db);
 
-    // Determine owner ID
-    let owner_id = if let Some(owner_id_str) = payload.owner_id {
-        ObjectId::parse_str(&owner_id_str)?
-    } else {
-        ObjectId::parse_str(&claims.sub)?
-    };
+    let owner_id = ObjectId::parse_str(&payload.owner_id).map_err(|_| {
+        crate::error::AppError::Validation("Invalid owner_id: must be a valid ObjectId".to_string())
+    })?;
 
     let project = project_service
         .create_project(payload.name, owner_id, payload.owner_type)

@@ -1,7 +1,8 @@
-use mongodb::bson::oid::ObjectId;
 use chrono::Utc;
+use mongodb::bson::oid::ObjectId;
 use mongodb::{Collection, Database};
 
+use crate::models::project::OwnerType;
 use crate::{
     error::{AppError, Result},
     models::project::Project,
@@ -23,7 +24,7 @@ impl ProjectService {
         &self,
         name: String,
         owner_id: ObjectId,
-        owner_type: String,
+        owner_type: OwnerType,
     ) -> Result<Project> {
         let now = Utc::now();
         let project = Project {

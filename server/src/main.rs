@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     let env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
 
     // Load configuration
-    let config = Config::load(env)?;
+    let config = Config::load(env, "config".to_string())?;
     info!("Configuration loaded successfully");
 
     // Connect to database

@@ -1,6 +1,5 @@
 use anyhow::Result;
 use mongodb::{Client, Database as MongoDatabase};
-use tracing::info;
 
 #[derive(Clone)]
 pub struct Database {
@@ -17,8 +16,6 @@ impl Database {
 
         // Test the connection by running a simple command
         db.run_command(mongodb::bson::doc! {"ping": 1}).await?;
-
-        info!("Successfully connected to MongoDB deployment");
 
         Ok(Database { db })
     }
