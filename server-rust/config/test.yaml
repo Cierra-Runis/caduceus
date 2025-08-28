@@ -1,6 +1,0 @@
-allow_origins:
-  - http://localhost:3000
-mongo_uri: mongodb://localhost:27017
-db_name: caduceus_test
-address: localhost:8080
-jwt_secret: WVM5vYfj0QTFiC5N2D6pFuX7
