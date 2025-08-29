@@ -30,7 +30,7 @@ impl UserService {
     pub async fn create_user(
         &self,
         username: String,
-        nickname: String,
+        nickname: Option<String>,
         password: String,
     ) -> Result<(User, String)> {
         if self.get_user_by_username(&username).await.is_ok() {
@@ -40,10 +40,13 @@ impl UserService {
         let hashed_password = hash(password, DEFAULT_COST)?;
 
         let now = Utc::now();
+
+        let username_clone = username.clone();
+
         let user = User {
             id: None,
             username,
-            nickname,
+            nickname: nickname.unwrap_or(username_clone),
             password: hashed_password,
             created_at: now,
             updated_at: now,
