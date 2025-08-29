@@ -19,3 +19,22 @@ impl Database {
         Ok(Database { db })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[tokio::test]
+    async fn test_database_connection() {
+        let config = Config::load("test".to_string(), "config".to_string()).unwrap();
+        let database = Database::new(&config.mongo_uri, &config.db_name).await;
+        assert!(database.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_database_connection() {
+        let database = Database::new("invalid_uri", "test_db").await;
+        assert!(database.is_err());
+    }
+}
