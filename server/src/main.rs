@@ -1,6 +1,5 @@
 use anyhow::Result;
-use axum::{http::StatusCode, response::Json, serve};
-use std::net::SocketAddr;
+use axum::serve;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing::info;
@@ -35,18 +34,15 @@ async fn main() -> Result<()> {
         config: config.clone(),
     };
 
-    let app = create_routes(app_state)
-        .layer(CorsLayer::permissive())
-        .fallback(|| async { (StatusCode::NOT_FOUND, Json("Not Found")) });
+    let app = create_routes(app_state).layer(CorsLayer::permissive());
+    // .fallback(|| async { (StatusCode::NOT_FOUND, Json("Not Found")) });
 
-    let addr: SocketAddr = config
-        .address
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
+    let listener = TcpListener::bind(&config.address)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to bind to address {}: {}", config.address, e))?;
 
+    let addr = listener.local_addr()?;
     info!("Starting server on {}", addr);
-
-    let listener = TcpListener::bind(&addr).await?;
 
     serve(listener, app).await?;
 
