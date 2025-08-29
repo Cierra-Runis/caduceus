@@ -47,6 +47,7 @@ uuid = { version = "1.18.0", features = ["v4", "serde"] }
 
 # Regex
 regex = "1.11.2"
+axum-extra = "0.10.1"
 
 [dev-dependencies]
 tokio-test = "0.4.4"
