@@ -46,7 +46,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        run: command -v cargo-tarpaulin >/dev/null 2>&1 || cargo install cargo-tarpaulin --locked
 
       - name: Setup test environment
         working-directory: ./server
