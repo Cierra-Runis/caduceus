@@ -1,4 +1,5 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
+use bson::oid::ObjectId;
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use mongodb::bson::doc;
@@ -44,7 +45,7 @@ impl UserService {
         let username_clone = username.clone();
 
         let user = User {
-            id: None,
+            id: ObjectId::new(),
             username,
             nickname: nickname.unwrap_or(username_clone),
             password: hashed_password,
@@ -53,16 +54,13 @@ impl UserService {
         };
 
         let result = self.collection.insert_one(&user).await?;
-        let inserted_id = result
+        result
             .inserted_id
             .as_object_id()
             .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Failed to get inserted ID")))?;
 
-        let mut created_user = user;
-        created_user.id = Some(inserted_id);
-
-        let token = self.generate_token(&created_user)?;
-        Ok((created_user, token))
+        let token = self.generate_token(&user)?;
+        Ok((user, token))
     }
 
     pub async fn authenticate(&self, username: String, password: String) -> Result<(User, String)> {
@@ -89,10 +87,6 @@ impl UserService {
     }
 
     fn generate_token(&self, user: &User) -> Result<String> {
-        let user_id = user
-            .id
-            .ok_or_else(|| AppError::Internal(anyhow::anyhow!("User ID is missing")))?;
-
         let exp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| AppError::Internal(anyhow::anyhow!("System time error: {}", e)))?
@@ -100,7 +94,7 @@ impl UserService {
             + self.jwt_expires_in.as_secs();
 
         let claims = Claims {
-            sub: user_id.to_hex(),
+            sub: user.id.to_hex(),
             username: user.username.clone(),
             exp: exp as usize,
         };
@@ -117,14 +111,12 @@ impl UserService {
 
 #[cfg(test)]
 mod tests {
-    use bson::oid::ObjectId;
-
     use super::*;
 
     #[tokio::test]
     async fn test_create_user_success() {
         let user = User {
-            id: Some(ObjectId::new()),
+            id: ObjectId::new(),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
@@ -193,7 +185,7 @@ mod tests {
     #[test]
     fn test_user_model_serialization() {
         let user = User {
-            id: Some(ObjectId::new()),
+            id: ObjectId::new(),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
@@ -213,7 +205,7 @@ mod tests {
     #[test]
     fn test_user_serialization() {
         let user = User {
-            id: Some(ObjectId::new()),
+            id: ObjectId::new(),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
