@@ -78,12 +78,11 @@ pub async fn register(
         .await?;
 
     let response = Response {
-        success: true,
         data: Some(AuthResponse {
             user: user.into(),
             token,
         }),
-        message: Some("User registered successfully".to_string()),
+        message: "User registered successfully".to_string(),
     };
 
     Ok(Json(response))
@@ -108,12 +107,11 @@ pub async fn login(
         .await?;
 
     let response = Response {
-        success: true,
         data: Some(AuthResponse {
             user: user.into(),
             token,
         }),
-        message: Some("Login successful".to_string()),
+        message: "Login successful".to_string(),
     };
 
     Ok(Json(response))
@@ -132,9 +130,8 @@ pub async fn get_current_user(
     let user = user_service.get_user_by_id(&claims.sub).await?;
 
     let response = Response {
-        success: true,
         data: Some(user.into()),
-        message: None,
+        message: "User fetched successfully".to_string(),
     };
 
     Ok(Json(response))

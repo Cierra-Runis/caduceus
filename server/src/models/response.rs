@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
-    pub success: bool,
     pub data: Option<T>,
-    pub message: Option<String>,
+    pub message: String,
 }
 
 #[cfg(test)]
@@ -14,23 +13,19 @@ mod tests {
     #[test]
     fn test_response_model() {
         let success_response: Response<String> = Response {
-            success: true,
             data: Some("test data".to_string()),
-            message: None,
+            message: "Success".to_string(),
         };
 
-        assert!(success_response.success);
         assert!(success_response.data.is_some());
-        assert!(success_response.message.is_none());
+        assert!(success_response.message == "Success");
 
         let error_response: Response<()> = Response {
-            success: false,
             data: None,
-            message: Some("Error message".to_string()),
+            message: "Error message".to_string(),
         };
 
-        assert!(!error_response.success);
         assert!(error_response.data.is_none());
-        assert!(error_response.message.is_some());
+        assert!(error_response.message == "Error message");
     }
 }
