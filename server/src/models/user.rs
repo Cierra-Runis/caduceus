@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
     pub username: String,
     pub nickname: String,
     pub password: String,
@@ -18,7 +18,7 @@ pub struct User {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPayload {
-    pub id: Option<String>,
+    pub id: String,
     pub username: String,
     pub nickname: String,
     pub created_at: DateTime<Utc>,
@@ -28,7 +28,7 @@ pub struct UserPayload {
 impl From<User> for UserPayload {
     fn from(user: User) -> Self {
         UserPayload {
-            id: user.id.as_ref().map(|oid| oid.to_hex()),
+            id: user.id.to_hex(),
             username: user.username.clone(),
             nickname: user.nickname.clone(),
             created_at: user.created_at,
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn test_user_creation() {
         let user = User {
-            id: Some(ObjectId::new()),
+            id: ObjectId::new(),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
@@ -55,13 +55,12 @@ mod tests {
         assert_eq!(user.username, "test_user");
         assert_eq!(user.nickname, "Test User");
         assert_eq!(user.password, "hashed_password");
-        assert!(user.id.is_some());
     }
 
     #[test]
     fn test_user_bson_serialization() {
         let user = User {
-            id: Some(ObjectId::new()),
+            id: ObjectId::new(),
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
