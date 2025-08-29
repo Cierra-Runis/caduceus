@@ -19,7 +19,7 @@ pub struct AppState {
 
 pub fn create_routes(state: AppState) -> Router {
     let protected_routes = Router::new()
-        .route("/users/me", get(user::get_current_user))
+        .route("/users", get(user::get_current_user))
         .route("/projects", post(project::create_project))
         .layer(middleware::from_fn_with_state(
             state.clone(),
