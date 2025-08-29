@@ -21,42 +21,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      #  https://github.com/actions/checkout
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          profile: minimal
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            server/target/
-          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-coverage-
-            ${{ runner.os }}-cargo-
+      # https://github.com/marketplace/actions/mongodb-in-github-actions
+      - name: MongoDB in GitHub Action
+        uses: supercharge/mongodb-github-action@1.12.0
 
       - name: Install tarpaulin
         run: command -v cargo-tarpaulin >/dev/null 2>&1 || cargo install cargo-tarpaulin --locked
-
-      - name: Setup test environment
-        working-directory: ./server
-        run: |
-          # Copy test configuration
-          cp config/test.yaml config/config.yaml
-          # Create .env file for tests
-          echo "DATABASE_URL=mongodb://root:password@localhost:27017/caduceus_test?authSource=admin" > .env
-          echo "JWT_SECRET=test_secret_key_for_testing_purposes_only" >> .env
-          echo "RUST_LOG=debug" >> .env
 
       - name: Run tests with coverage
         working-directory: ./server
@@ -73,23 +47,11 @@ jobs:
             --exclude-files "target/*" \
             --exclude-files "tests/*"
 
+      # https://github.com/codecov/codecov-action
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./server/target/tarpaulin/cobertura.xml
-          flags: rust
           name: rust-coverage
-          fail_ci_if_error: false
-
-      - name: Coverage Summary
-        working-directory: ./server
-        run: |
-          if [ -f "target/tarpaulin/cobertura.xml" ]; then
-            echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
-            echo "Coverage report has been generated successfully." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "📊 [View detailed coverage report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Coverage report generation failed" >> $GITHUB_STEP_SUMMARY
-          fi
+          files: ./server/target/tarpaulin/cobertura.xml
+          flags: rust
+          token: ${{ secrets.CODECOV_TOKEN }}
