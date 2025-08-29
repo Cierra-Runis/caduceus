@@ -1,3 +1,4 @@
+use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -9,8 +10,31 @@ pub struct User {
     pub username: String,
     pub nickname: String,
     pub password: String,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub created_at: DateTime<Utc>,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserPayload {
+    pub id: Option<String>,
+    pub username: String,
+    pub nickname: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl From<User> for UserPayload {
+    fn from(user: User) -> Self {
+        UserPayload {
+            id: user.id.as_ref().map(|oid| oid.to_hex()),
+            username: user.username.clone(),
+            nickname: user.nickname.clone(),
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -21,14 +45,14 @@ mod tests {
     fn test_user_creation() {
         let user = User {
             id: Some(ObjectId::new()),
-            username: "testuser".to_string(),
+            username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
-        assert_eq!(user.username, "testuser");
+        assert_eq!(user.username, "test_user");
         assert_eq!(user.nickname, "Test User");
         assert_eq!(user.password, "hashed_password");
         assert!(user.id.is_some());
@@ -38,11 +62,11 @@ mod tests {
     fn test_user_bson_serialization() {
         let user = User {
             id: Some(ObjectId::new()),
-            username: "testuser".to_string(),
+            username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let json_str = serde_json::to_string(&user).unwrap();

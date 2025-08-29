@@ -1,7 +1,7 @@
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use mongodb::bson::{doc, oid::ObjectId};
+use mongodb::bson::doc;
 use mongodb::{Collection, Database};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -85,16 +85,6 @@ impl UserService {
         }
     }
 
-    pub async fn get_user_by_id(&self, user_id: &str) -> Result<User> {
-        let object_id = ObjectId::parse_str(user_id)?;
-        let user = self.collection.find_one(doc! { "_id": object_id }).await?;
-
-        match user {
-            Some(user) => Ok(user),
-            None => Err(AppError::NotFound("User not found".to_string())),
-        }
-    }
-
     fn generate_token(&self, user: &User) -> Result<String> {
         let user_id = user
             .id
@@ -124,6 +114,8 @@ impl UserService {
 
 #[cfg(test)]
 mod tests {
+    use bson::oid::ObjectId;
+
     use super::*;
 
     #[tokio::test]
@@ -133,8 +125,8 @@ mod tests {
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         assert_eq!(user.username, "test_user");
@@ -202,8 +194,8 @@ mod tests {
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let json = serde_json::to_string(&user).unwrap();
@@ -222,8 +214,8 @@ mod tests {
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let json_str = serde_json::to_string(&user).unwrap();

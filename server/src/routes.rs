@@ -18,12 +18,10 @@ pub struct AppState {
 }
 
 pub fn create_routes(state: AppState) -> Router {
-    let protected_routes = Router::new()
-        .route("/users", get(user::get_current_user))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            jwt_middleware,
-        ));
+    let protected_routes = Router::new().layer(middleware::from_fn_with_state(
+        state.clone(),
+        jwt_middleware,
+    ));
 
     Router::new()
         .route("/health", get(health::health_check))
