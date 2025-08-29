@@ -63,9 +63,8 @@ pub async fn create_project(
         .await?;
 
     let response = Response {
-        success: true,
         data: Some(project.into()),
-        message: Some("Project created successfully".to_string()),
+        message: "Project created successfully".to_string(),
     };
 
     Ok(Json(response))
