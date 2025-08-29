@@ -1,11 +1,13 @@
 use axum::{
-    extract::{Request, State},
+    extract::{FromRequest, Request, State},
     http::header::AUTHORIZATION,
     middleware::Next,
     response::Response,
+    Json,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 use crate::{error::AppError, routes::AppState};
 
@@ -45,4 +47,26 @@ pub async fn jwt_middleware(
     request.extensions_mut().insert(token_data.claims);
 
     Ok(next.run(request).await)
+}
+
+pub struct ValidatedJson<T>(pub T);
+
+impl<T, S> FromRequest<S> for ValidatedJson<T>
+where
+    T: for<'de> Deserialize<'de> + Validate,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let Json(value) = Json::<T>::from_request(req, state)
+            .await
+            .map_err(|_| AppError::Validation("Invalid JSON".to_string()))?;
+
+        value
+            .validate()
+            .map_err(|e| AppError::Validation(format!("Validation error: {}", e)))?;
+
+        Ok(ValidatedJson(value))
+    }
 }
