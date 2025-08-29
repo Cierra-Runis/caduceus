@@ -21,8 +21,8 @@ pub struct AuthPayload {
 pub struct RegisterRequest {
     #[validate(length(min = 3, max = 50))]
     pub username: String,
-    #[validate(length(min = 1, max = 100))]
-    pub nickname: String,
+    // #[validate(length(min = 1, max = 100))]
+    pub nickname: Option<String>,
     #[validate(length(min = 6))]
     pub password: String,
 }
