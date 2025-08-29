@@ -64,8 +64,6 @@ pub async fn login(
     State(state): State<AppState>,
     ValidatedJson(payload): ValidatedJson<LoginRequest>,
 ) -> Result<Json<Response<AuthPayload>>> {
-    // 验证已经在 ValidatedJson extractor 中完成了！
-
     let user_service = UserService::new(
         &state.database.db,
         state.config.jwt_secret.clone(),
