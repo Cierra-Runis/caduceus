@@ -25,6 +25,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      # https://github.com/marketplace/actions/cache
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       # https://github.com/marketplace/actions/mongodb-in-github-actions
       - name: MongoDB in GitHub Action
         uses: supercharge/mongodb-github-action@1.12.0
