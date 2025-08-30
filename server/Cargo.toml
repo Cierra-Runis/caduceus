@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 # Web framework
 axum = { version = "0.8.4", features = ["ws", "multipart", "query"] }
+axum-extra = "0.10.1"
 tokio = { version = "1.47.1", features = ["full"] }
 tower = { version = "0.5.2", features = ["full"] }
 tower-http = { version = "0.6.6", features = ["fs", "cors", "trace"] }
@@ -39,15 +40,8 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 # Validation
 validator = { version = "0.20.0", features = ["derive"] }
 
-# Environment
-dotenvy = "0.15.7"
-
-# UUID
-uuid = { version = "1.18.0", features = ["v4", "serde"] }
-
 # Regex
 regex = "1.11.2"
-axum-extra = "0.10.1"
 
 [dev-dependencies]
 tokio-test = "0.4.4"
