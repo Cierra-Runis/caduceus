@@ -23,6 +23,7 @@ pub struct AppState {
     pub user: UserService<MongoUserRepo>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[tokio::main]
 async fn main() -> Result<()> {
     fmt::init();
