@@ -27,10 +27,12 @@ impl UserRepo for MongoUserRepo {
     }
 }
 
-struct MockUserRepo {
-    users: std::sync::Mutex<Vec<User>>,
+#[cfg(test)]
+pub struct MockUserRepo {
+    pub users: std::sync::Mutex<Vec<User>>,
 }
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl UserRepo for MockUserRepo {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {

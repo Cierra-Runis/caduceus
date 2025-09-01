@@ -8,6 +8,7 @@ pub struct UserService<R: UserRepo> {
     pub repo: R,
 }
 
+#[derive(Debug)]
 pub enum UserServiceError {
     UserAlreadyExists,
     InternalError { details: String },
@@ -63,5 +64,47 @@ impl<R: UserRepo> UserService<R> {
                 details: format!("Database error: {:?}", e),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_register_user_success() {
+        let repo = crate::repo::user::MockUserRepo {
+            users: std::sync::Mutex::new(vec![]),
+        };
+        let service = UserService { repo };
+
+        let result = service
+            .register("test_user".to_string(), "test_password".to_string())
+            .await;
+
+        assert!(result.is_ok());
+        let user_payload = result.unwrap();
+        assert_eq!(user_payload.username, "test_user");
+    }
+
+    #[tokio::test]
+    async fn test_register_user_already_exists() {
+        let repo = crate::repo::user::MockUserRepo {
+            users: std::sync::Mutex::new(vec![User {
+                id: ObjectId::new(),
+                username: "existing_user".to_string(),
+                nickname: "existing_user".to_string(),
+                password: "hashed_password".to_string(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }]),
+        };
+        let service = UserService { repo };
+
+        let result = service
+            .register("existing_user".to_string(), "test_password".to_string())
+            .await;
+
+        assert!(matches!(result, Err(UserServiceError::UserAlreadyExists)));
     }
 }
