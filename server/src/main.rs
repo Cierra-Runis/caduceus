@@ -1,7 +1,10 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![warn(clippy::absolute_paths)]
 
 use actix_web::{web, App, HttpServer};
 use anyhow::Result;
+use std::env;
+use tracing_subscriber::fmt;
 
 mod config;
 mod database;
@@ -10,10 +13,9 @@ mod models;
 mod repo;
 mod services;
 
+use crate::{repo::user::MongoUserRepo, services::user::UserService};
 use config::Config;
 use database::Database;
-
-use crate::{repo::user::MongoUserRepo, services::user::UserService};
 
 pub struct AppState {
     pub database: Database,
@@ -23,9 +25,9 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    fmt::init();
 
-    let env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
+    let env = env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
 
     let config = Config::load(env, "config".to_string())?;
 

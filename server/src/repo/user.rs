@@ -28,22 +28,26 @@ impl UserRepo for MongoUserRepo {
 }
 
 #[cfg(test)]
-pub struct MockUserRepo {
-    pub users: std::sync::Mutex<Vec<User>>,
-}
-
-#[cfg(test)]
-#[async_trait::async_trait]
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl UserRepo for MockUserRepo {
-    async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
-        let users = self.users.lock().unwrap();
-        Ok(users.iter().find(|u| u.username == username).cloned())
+pub mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    pub struct MockUserRepo {
+        pub users: Mutex<Vec<User>>,
     }
 
-    async fn create(&self, user: User) -> Result<User> {
-        let mut users = self.users.lock().unwrap();
-        users.push(user.clone());
-        Ok(user)
+    #[async_trait::async_trait]
+    impl UserRepo for MockUserRepo {
+        async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
+            let users = self.users.lock().unwrap();
+            Ok(users.iter().find(|u| u.username == username).cloned())
+        }
+
+        async fn create(&self, user: User) -> Result<User> {
+            let mut users = self.users.lock().unwrap();
+            users.push(user.clone());
+            Ok(user)
+        }
     }
 }

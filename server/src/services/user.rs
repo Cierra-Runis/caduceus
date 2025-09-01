@@ -1,5 +1,6 @@
 use bcrypt::{non_truncating_hash, DEFAULT_COST};
 use bson::oid::ObjectId;
+use chrono::Utc;
 
 use crate::models::user::{User, UserPayload};
 use crate::repo::user::UserRepo;
@@ -47,8 +48,8 @@ impl<R: UserRepo> UserService<R> {
             username: username.clone(),
             nickname: username.clone(),
             password,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         let created_user = self.repo.create(user).await;
@@ -71,11 +72,13 @@ impl<R: UserRepo> UserService<R> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::repo::user::tests::MockUserRepo;
+    use std::sync::Mutex;
 
     #[tokio::test]
     async fn test_register_user_success() {
-        let repo = crate::repo::user::MockUserRepo {
-            users: std::sync::Mutex::new(vec![]),
+        let repo = MockUserRepo {
+            users: Mutex::new(vec![]),
         };
         let service = UserService { repo };
 
@@ -90,8 +93,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_already_exists() {
-        let repo = crate::repo::user::MockUserRepo {
-            users: std::sync::Mutex::new(vec![User {
+        let repo = MockUserRepo {
+            users: Mutex::new(vec![User {
                 id: ObjectId::new(),
                 username: "existing_user".to_string(),
                 nickname: "existing_user".to_string(),
