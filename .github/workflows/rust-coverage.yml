@@ -38,6 +38,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install Rust
+        run: rustup install nightly
+
       # https://github.com/marketplace/actions/mongodb-in-github-actions
       - name: MongoDB in GitHub Action
         uses: supercharge/mongodb-github-action@1.12.0

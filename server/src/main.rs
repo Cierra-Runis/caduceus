@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 use actix_web::{web, App, HttpServer};
 use anyhow::Result;
 

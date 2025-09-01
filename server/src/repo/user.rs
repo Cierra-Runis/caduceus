@@ -34,6 +34,7 @@ pub struct MockUserRepo {
 
 #[cfg(test)]
 #[async_trait::async_trait]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl UserRepo for MockUserRepo {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
         let users = self.users.lock().unwrap();

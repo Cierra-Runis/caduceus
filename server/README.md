@@ -42,10 +42,16 @@ cargo test
 
 1. First, install `cargo-llvm-cov` following the instructions at [cargo-llvm-cov GitHub repository](https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#from-source).
 
-2. To generate a coverage report, use the following command:
+2. Switch to the nightly Rust toolchain to exclude test code from the coverage report:
+
+   ```bash
+   rustup override set nightly
+   ```
+
+3. To generate a coverage report, use the following command:
 
    ```bash
    cargo llvm-cov --all-features --workspace --html
    ```
 
-3. After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
+4. After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
