@@ -18,7 +18,7 @@ impl<R: UserRepo> UserService<R> {
         username: String,
         password: String,
     ) -> Result<User, UserServiceError> {
-        let found_user = self.repo.find_user_by_username(&username).await;
+        let found_user = self.repo.find_by_username(&username).await;
 
         match found_user {
             Ok(Some(_)) => return Err(UserServiceError::UserAlreadyExists),
@@ -40,7 +40,7 @@ impl<R: UserRepo> UserService<R> {
         };
 
         self.repo
-            .create_user(user)
+            .create(user)
             .await
             .map_err(|e| UserServiceError::InternalError {
                 details: format!("Failed to create user: {:?}", e),
