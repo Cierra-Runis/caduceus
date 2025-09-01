@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
             .service(web::scope("/api").route("/user", web::post().to(handler::user::create_user)))
     })
     .bind(("127.0.0.1", 8080))?
+    .bind(("[::1]", 8080))?
     .run()
     .await?;
 
