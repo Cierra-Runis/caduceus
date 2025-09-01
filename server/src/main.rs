@@ -1,21 +1,23 @@
+use actix_web::{web, App, HttpServer};
 use anyhow::Result;
-use axum::serve;
-use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer;
-use tracing::info;
 
 mod config;
 mod database;
-mod error;
-mod handlers;
-mod middleware;
+mod handler;
 mod models;
-mod routes;
+mod repo;
 mod services;
 
 use config::Config;
 use database::Database;
-use routes::create_routes;
+
+use crate::{repo::user::MongoUserRepo, services::user::UserService};
+
+pub struct AppState {
+    pub database: Database,
+    pub config: Config,
+    pub user: UserService<MongoUserRepo>,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,27 +26,29 @@ async fn main() -> Result<()> {
     let env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
 
     let config = Config::load(env, "config".to_string())?;
-    info!("Configuration loaded successfully");
 
     let database = Database::new(&config.mongo_uri, &config.db_name).await?;
-    info!("Connected to MongoDB successfully");
 
-    let app_state = routes::AppState {
-        database,
-        config: config.clone(),
+    let user = UserService {
+        repo: MongoUserRepo {
+            collection: database.db.collection("users"),
+        },
     };
 
-    let app = create_routes(app_state).layer(CorsLayer::permissive());
-    // .fallback(|| async { (StatusCode::NOT_FOUND, Json("Not Found")) });
+    let data = web::Data::new(AppState {
+        database,
+        config,
+        user,
+    });
 
-    let listener = TcpListener::bind(&config.address)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to bind to address {}: {}", config.address, e))?;
-
-    let addr = listener.local_addr()?;
-    info!("Starting server on {}", addr);
-
-    serve(listener, app).await?;
+    HttpServer::new(move || {
+        App::new()
+            .app_data(data.clone())
+            .service(web::scope("/api").route("/user", web::post().to(handler::user::create_user)))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await?;
 
     Ok(())
 }
