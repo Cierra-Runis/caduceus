@@ -38,6 +38,7 @@ impl From<User> for UserPayload {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
 
