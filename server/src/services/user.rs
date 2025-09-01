@@ -1,6 +1,6 @@
 use bson::oid::ObjectId;
 
-use crate::models::user::User;
+use crate::models::user::{User, UserPayload};
 use crate::repo::user::UserRepo;
 
 pub struct UserService<R: UserRepo> {
@@ -17,7 +17,7 @@ impl<R: UserRepo> UserService<R> {
         &self,
         username: String,
         password: String,
-    ) -> Result<User, UserServiceError> {
+    ) -> Result<UserPayload, UserServiceError> {
         let found_user = self.repo.find_by_username(&username).await;
 
         match found_user {
@@ -39,11 +39,18 @@ impl<R: UserRepo> UserService<R> {
             updated_at: chrono::Utc::now(),
         };
 
-        self.repo
-            .create(user)
-            .await
-            .map_err(|e| UserServiceError::InternalError {
-                details: format!("Failed to create user: {:?}", e),
-            })
+        let created_user = self.repo.create(user).await;
+        match created_user {
+            Ok(u) => Ok(UserPayload {
+                id: u.id.to_hex(),
+                username: u.username,
+                nickname: u.nickname,
+                created_at: u.created_at,
+                updated_at: u.updated_at,
+            }),
+            Err(e) => Err(UserServiceError::InternalError {
+                details: format!("Database error: {:?}", e),
+            }),
+        }
     }
 }
