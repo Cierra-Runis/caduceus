@@ -815,6 +815,7 @@ dependencies = [
  "bson",
  "chrono",
  "config",
+ "derive_more 2.0.1",
  "httpmock",
  "jsonwebtoken",
  "mockall",

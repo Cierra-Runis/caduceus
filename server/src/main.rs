@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         repo: MongoUserRepo {
             collection: database.db.collection("users"),
         },
+        secret: config.jwt_secret.clone(),
     };
 
     let data = web::Data::new(AppState {

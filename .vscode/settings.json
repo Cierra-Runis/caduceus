@@ -1,5 +1,12 @@
 {
-  "cSpell.words": ["actix", "bson", "chrono", "gofiber", "prefork"],
+  "cSpell.words": [
+    "actix",
+    "bson",
+    "chrono",
+    "gofiber",
+    "jsonwebtoken",
+    "prefork"
+  ],
   "go.lintTool": "golangci-lint",
   "go.lintFlags": ["--path-mode=abs", "--fast-only"],
   "go.formatTool": "custom",

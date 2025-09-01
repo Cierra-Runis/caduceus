@@ -1,5 +1,6 @@
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::{errors, Algorithm, EncodingKey, Header};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +35,31 @@ impl From<User> for UserPayload {
             created_at: user.created_at,
             updated_at: user.updated_at,
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserClaims {
+    pub sub: String,
+    pub exp: u64,
+    pub iat: u64,
+}
+
+impl UserClaims {
+    pub fn new(user_id: String, now: DateTime<Utc>, ttl: Duration) -> Self {
+        UserClaims {
+            sub: user_id,
+            exp: (now + ttl).timestamp() as u64,
+            iat: now.timestamp() as u64,
+        }
+    }
+
+    pub fn generate(&self, secret: String) -> Result<String, errors::Error> {
+        let header = Header {
+            alg: Algorithm::HS512,
+            ..Default::default()
+        };
+        jsonwebtoken::encode(&header, &self, &EncodingKey::from_secret(secret.as_ref()))
     }
 }
 
