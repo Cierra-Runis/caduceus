@@ -1,3 +1,4 @@
+use bcrypt::{non_truncating_hash, DEFAULT_COST};
 use bson::oid::ObjectId;
 
 use crate::models::user::{User, UserPayload};
@@ -29,6 +30,16 @@ impl<R: UserRepo> UserService<R> {
             }
             _ => {}
         }
+
+        let hashed = non_truncating_hash(password, DEFAULT_COST);
+        let password = match hashed {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(UserServiceError::InternalError {
+                    details: format!("Password hashing error: {:?}", e),
+                })
+            }
+        };
 
         let user = User {
             id: ObjectId::new(),
