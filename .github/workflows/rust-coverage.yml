@@ -42,29 +42,18 @@ jobs:
       - name: MongoDB in GitHub Action
         uses: supercharge/mongodb-github-action@1.12.0
 
-      - name: Install tarpaulin
-        run: command -v cargo-tarpaulin >/dev/null 2>&1 || cargo install cargo-tarpaulin --locked
-
-      - name: Run tests with coverage
+      # https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#github-actions-and-codecov
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate code coverage
         working-directory: ./server
-        run: |
-          cargo tarpaulin \
-            --verbose \
-            --all-features \
-            --workspace \
-            --timeout 120 \
-            --out xml \
-            --out html \
-            --output-dir target/tarpaulin \
-            --exclude-files "src/main.rs" \
-            --exclude-files "target/*" \
-            --exclude-files "tests/*"
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info
 
       # https://github.com/codecov/codecov-action
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           name: rust-coverage
-          files: ./server/target/tarpaulin/cobertura.xml
+          files: ./server/target/lcov.info
           flags: rust
           token: ${{ secrets.CODECOV_TOKEN }}
