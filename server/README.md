@@ -40,14 +40,12 @@ cargo test
 
 ### Coverage Report
 
-1. First, install `cargo-tarpaulin` if you haven't already:
-
-   ```bash
-   cargo install cargo-tarpaulin
-   ```
+1. First, install `cargo-llvm-cov` following the instructions at [cargo-llvm-cov GitHub repository](https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#from-source).
 
 2. To generate a coverage report, use the following command:
 
    ```bash
-   cargo tarpaulin --out Html --output-dir target/tarpaulin
+   cargo llvm-cov --all-features --workspace --html
    ```
+
+3. After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
