@@ -39,7 +39,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install Rust
-        run: rustup install nightly
+        run: rustup override set nightly
 
       # https://github.com/marketplace/actions/mongodb-in-github-actions
       - name: MongoDB in GitHub Action
