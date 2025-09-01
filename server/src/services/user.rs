@@ -59,8 +59,14 @@ impl<R: UserRepo> UserService<R> {
         username: String,
         password: String,
     ) -> Result<AuthPayload, UserServiceError> {
-        if self.repo.find_by_username(&username).await.is_ok() {
-            return Err(UserServiceError::UserAlreadyExists);
+        match self.repo.find_by_username(&username).await {
+            Ok(Some(_)) => return Err(UserServiceError::UserAlreadyExists),
+            Ok(None) => {}
+            Err(e) => {
+                return Err(UserServiceError::InternalError {
+                    details: e.to_string(),
+                })
+            }
         }
 
         let hashed_password = non_truncating_hash(password, DEFAULT_COST).map_err(|e| {
