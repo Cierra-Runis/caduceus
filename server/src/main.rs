@@ -47,9 +47,11 @@ async fn main() -> Result<()> {
     });
 
     HttpServer::new(move || {
-        App::new()
-            .app_data(data.clone())
-            .service(web::scope("/api").route("/user", web::post().to(handler::user::create_user)))
+        App::new().app_data(data.clone()).service(
+            web::scope("/api")
+                .route("/health", web::get().to(handler::health::health))
+                .route("/user", web::post().to(handler::user::create_user)),
+        )
     })
     .bind(("127.0.0.1", 8080))?
     .bind(("[::1]", 8080))?
