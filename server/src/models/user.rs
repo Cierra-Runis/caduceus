@@ -43,7 +43,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_user_creation() {
+    fn test_user_payload_conversion() {
         let user = User {
             id: ObjectId::new(),
             username: "test_user".to_string(),
@@ -53,29 +53,11 @@ mod tests {
             updated_at: Utc::now(),
         };
 
-        assert_eq!(user.username, "test_user");
-        assert_eq!(user.nickname, "Test User");
-        assert_eq!(user.password, "hashed_password");
-    }
-
-    #[test]
-    fn test_user_bson_serialization() {
-        let user = User {
-            id: ObjectId::new(),
-            username: "test_user".to_string(),
-            nickname: "Test User".to_string(),
-            password: "hashed_password".to_string(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        let json_str = serde_json::to_string(&user).unwrap();
-        let _: User = serde_json::from_str(&json_str).unwrap();
-
-        assert!(json_str.contains("username"));
-        assert!(json_str.contains("nickname"));
-        assert!(json_str.contains("password"));
-        assert!(json_str.contains("created_at"));
-        assert!(json_str.contains("updated_at"));
+        let payload: UserPayload = user.clone().into();
+        assert_eq!(payload.id, user.id.to_hex());
+        assert_eq!(payload.username, user.username);
+        assert_eq!(payload.nickname, user.nickname);
+        assert_eq!(payload.created_at, user.created_at);
+        assert_eq!(payload.updated_at, user.updated_at);
     }
 }
