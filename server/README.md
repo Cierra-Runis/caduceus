@@ -1,5 +1,9 @@
 # Caduceus Server
 
+## Overview
+
+Caduceus server application is built with Rust. It leverages the [Actix-web](https://actix.rs) framework for handling HTTP requests and integrates with MongoDB for data storage.
+
 ## Development
 
 ### Running the Server
