@@ -2,6 +2,7 @@ use actix_web::body::BoxBody;
 use actix_web::error::ResponseError;
 use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
+use bcrypt::BcryptError;
 use bcrypt::{non_truncating_hash, DEFAULT_COST};
 use bson::oid::ObjectId;
 use chrono::Utc;
@@ -21,13 +22,13 @@ pub enum UserServiceError {
     #[display("User already exists")]
     UserAlreadyExists,
     #[display("Bcrypt error")]
-    BcryptError(bcrypt::BcryptError),
+    Bcrypt(BcryptError),
     #[display("Jwt error")]
-    JwtError(jsonwebtoken::errors::Error),
+    Jwt(jsonwebtoken::errors::Error),
     #[display("Database error")]
-    DatabaseError(mongodb::error::Error),
+    Database(mongodb::error::Error),
     #[display("Internal server error: {details}")]
-    InternalError { details: String },
+    Internal { details: String },
 }
 
 #[derive(Serialize)]
@@ -45,10 +46,10 @@ impl ResponseError for UserServiceError {
     fn status_code(&self) -> StatusCode {
         match *self {
             UserServiceError::UserAlreadyExists => StatusCode::CONFLICT,
-            UserServiceError::BcryptError { .. }
-            | UserServiceError::JwtError { .. }
-            | UserServiceError::DatabaseError { .. }
-            | UserServiceError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            UserServiceError::Bcrypt { .. }
+            | UserServiceError::Jwt { .. }
+            | UserServiceError::Database { .. }
+            | UserServiceError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -68,11 +69,11 @@ impl<R: UserRepo> UserService<R> {
         match self.repo.find_by_username(&username).await {
             Ok(Some(_)) => return Err(UserServiceError::UserAlreadyExists),
             Ok(None) => {}
-            Err(e) => return Err(UserServiceError::DatabaseError(e)),
+            Err(e) => return Err(UserServiceError::Database(e)),
         }
 
         let hashed_password =
-            non_truncating_hash(password, DEFAULT_COST).map_err(UserServiceError::BcryptError)?;
+            non_truncating_hash(password, DEFAULT_COST).map_err(UserServiceError::Bcrypt)?;
 
         let user = self
             .repo
@@ -85,12 +86,12 @@ impl<R: UserRepo> UserService<R> {
                 updated_at: Utc::now(),
             })
             .await
-            .map_err(UserServiceError::DatabaseError)?;
+            .map_err(UserServiceError::Database)?;
 
         let claims = UserClaims::new(user.id.to_hex(), Utc::now(), chrono::Duration::hours(24));
         let token = claims
             .generate(self.secret.clone())
-            .map_err(UserServiceError::JwtError)?;
+            .map_err(UserServiceError::Jwt)?;
 
         Ok(AuthPayload {
             user: user.into(),
@@ -102,6 +103,7 @@ impl<R: UserRepo> UserService<R> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+
     use super::*;
     use crate::repo::user::tests::MockUserRepo;
     use std::sync::Mutex;
@@ -159,9 +161,7 @@ mod tests {
             .await;
         assert!(matches!(
             result,
-            Err(UserServiceError::BcryptError(
-                bcrypt::BcryptError::Truncation(1001)
-            ))
+            Err(UserServiceError::Bcrypt(BcryptError::Truncation(1001)))
         ));
     }
 }
