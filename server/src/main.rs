@@ -5,28 +5,12 @@ use anyhow::Result;
 use std::env;
 use tracing_subscriber::fmt;
 
-mod config;
-mod database;
-mod handler;
-mod middleware;
-mod models;
-mod repo;
-mod services;
-
-use crate::{
-    middleware::jwt::JwtMiddleware,
+use caduceus_server::{
+    config::Config, database::Database, handler, middleware::jwt::JwtMiddleware,
     repo::{team::MongoTeamRepo, user::MongoUserRepo},
     services::{team::TeamService, user::UserService},
+    AppState,
 };
-use config::Config;
-use database::Database;
-
-pub struct AppState {
-    pub database: Database,
-    pub config: Config,
-    pub user_service: UserService<MongoUserRepo>,
-    pub team_service: TeamService<MongoTeamRepo, MongoUserRepo>,
-}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[tokio::main]
