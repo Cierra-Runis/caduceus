@@ -6,11 +6,11 @@ import 'server-only';
 const secretKey = process.env.JWT_SECRET;
 const encodedKey = new TextEncoder().encode(secretKey);
 
-export async function decrypt(session: string | undefined) {
-  if (!session) return;
+export async function decrypt(token: string | undefined) {
+  if (!token) return;
   try {
-    const { payload } = await jwtVerify(session, encodedKey, {
-      algorithms: ['HS256'],
+    const { payload } = await jwtVerify(token, encodedKey, {
+      algorithms: ['HS512'],
     });
     return payload;
   } catch (error) {
@@ -20,6 +20,6 @@ export async function decrypt(session: string | undefined) {
 
 export async function deleteJwt() {
   const cookie = await cookies();
-  cookie.delete('jwt');
+  cookie.delete('token');
   redirect('/');
 }
