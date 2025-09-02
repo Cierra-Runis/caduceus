@@ -14,7 +14,6 @@ mod repo;
 mod services;
 
 use crate::{
-    handler::user,
     middleware::jwt::JwtMiddleware,
     repo::{team::MongoTeamRepo, user::MongoUserRepo},
     services::{team::TeamService, user::UserService},

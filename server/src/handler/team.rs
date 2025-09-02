@@ -1,5 +1,4 @@
 use actix_web::{web, HttpResponse, ResponseError};
-use bson::de;
 use serde::{Deserialize, Serialize};
 
 use crate::{models::user::UserClaims, services::team::TeamServiceError};
