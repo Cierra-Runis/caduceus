@@ -21,14 +21,12 @@ pub struct UserService<R: UserRepo> {
 pub enum UserServiceError {
     #[display("User already exists")]
     UserAlreadyExists,
-    #[display("Bcrypt error")]
+    #[display("Bcrypt error: {_0}")]
     Bcrypt(BcryptError),
-    #[display("Jwt error")]
+    #[display("Jwt error: {_0}")]
     Jwt(jsonwebtoken::errors::Error),
-    #[display("Database error")]
+    #[display("Database error: {_0}")]
     Database(mongodb::error::Error),
-    #[display("Internal server error: {details}")]
-    Internal { details: String },
 }
 
 #[derive(Serialize)]
@@ -46,10 +44,9 @@ impl ResponseError for UserServiceError {
     fn status_code(&self) -> StatusCode {
         match *self {
             UserServiceError::UserAlreadyExists => StatusCode::CONFLICT,
-            UserServiceError::Bcrypt { .. }
-            | UserServiceError::Jwt { .. }
-            | UserServiceError::Database { .. }
-            | UserServiceError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            UserServiceError::Bcrypt(_)
+            | UserServiceError::Jwt(_)
+            | UserServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
