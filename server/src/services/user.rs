@@ -20,6 +20,8 @@ pub struct UserService<R: UserRepo> {
 pub enum UserServiceError {
     #[display("User already exists")]
     UserAlreadyExists,
+    #[display("Bcrypt error")]
+    BcryptError(bcrypt::BcryptError),
     #[display("Jwt error")]
     JwtError(jsonwebtoken::errors::Error),
     #[display("Database error")]
@@ -43,14 +45,15 @@ impl ResponseError for UserServiceError {
     fn status_code(&self) -> StatusCode {
         match *self {
             UserServiceError::UserAlreadyExists => StatusCode::CONFLICT,
-            UserServiceError::JwtError { .. }
+            UserServiceError::BcryptError { .. }
+            | UserServiceError::JwtError { .. }
             | UserServiceError::DatabaseError { .. }
             | UserServiceError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuthPayload {
     pub user: UserPayload,
     pub token: String,
@@ -68,11 +71,8 @@ impl<R: UserRepo> UserService<R> {
             Err(e) => return Err(UserServiceError::DatabaseError(e)),
         }
 
-        let hashed_password = non_truncating_hash(password, DEFAULT_COST).map_err(|e| {
-            UserServiceError::InternalError {
-                details: e.to_string(),
-            }
-        })?;
+        let hashed_password =
+            non_truncating_hash(password, DEFAULT_COST).map_err(UserServiceError::BcryptError)?;
 
         let user = self
             .repo
@@ -143,5 +143,25 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(UserServiceError::UserAlreadyExists)));
+    }
+
+    #[tokio::test]
+    async fn test_register_user_bcrypt_error() {
+        let repo = MockUserRepo {
+            users: Mutex::new(vec![]),
+        };
+        let secret = "test_secret".to_string();
+        let service = UserService { repo, secret };
+
+        let long_password = "a".repeat(1000);
+        let result = service
+            .register("test_user".to_string(), long_password)
+            .await;
+        assert!(matches!(
+            result,
+            Err(UserServiceError::BcryptError(
+                bcrypt::BcryptError::Truncation(1001)
+            ))
+        ));
     }
 }
