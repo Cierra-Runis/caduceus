@@ -8,11 +8,14 @@ use tracing_subscriber::fmt;
 mod config;
 mod database;
 mod handler;
+mod middleware;
 mod models;
 mod repo;
 mod services;
 
-use crate::{repo::user::MongoUserRepo, services::user::UserService};
+use crate::{
+    middleware::jwt::JwtMiddleware, repo::user::MongoUserRepo, services::user::UserService,
+};
 use config::Config;
 use database::Database;
 
@@ -49,14 +52,16 @@ async fn main() -> Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
-            .wrap(actix_web::middleware::Logger::default())
+            .route("/api/health", web::get().to(handler::health::health))
+            .route("/api/register", web::post().to(handler::user::register))
+            .route("/api/login", web::post().to(handler::user::login))
+            .route("/api/logout", web::post().to(handler::user::logout))
             .service(
                 web::scope("/api")
-                    .route("/health", web::get().to(handler::health::health))
-                    .route("/register", web::post().to(handler::user::register))
-                    .route("/login", web::post().to(handler::user::login))
-                    .route("/logout", web::post().to(handler::user::logout)),
+                    .wrap(JwtMiddleware)
+                    .route("/team", web::post().to(handler::team::create)),
             )
+            .wrap(actix_web::middleware::Logger::default())
     })
     .bind(("127.0.0.1", 8080))?
     .bind(("[::1]", 8080))?

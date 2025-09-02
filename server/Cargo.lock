@@ -816,6 +816,7 @@ dependencies = [
  "chrono",
  "config",
  "derive_more 2.0.1",
+ "futures-util",
  "httpmock",
  "jsonwebtoken",
  "mockall",
