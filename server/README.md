@@ -55,3 +55,13 @@ cargo test
    ```
 
 4. After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
+
+5. You could install VSCode extension [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) to visualize the coverage report directly in your code editor.
+
+   Then, run the following command to generate a coverage report in lcov format:
+
+   ```bash
+   cargo llvm-cov --lcov --output-path ./target/lcov.info
+   ```
+
+   Finally, use the Coverage Gutters extension to display the coverage information in your source files.
