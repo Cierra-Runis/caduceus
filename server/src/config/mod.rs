@@ -11,11 +11,9 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(env: String, config_path: String) -> Result<Self> {
-        let config_file = format!("{}/{}.yaml", config_path, env);
-
+    pub fn load(file: &str) -> Result<Self> {
         let settings = config::Config::builder()
-            .add_source(config::File::with_name(&config_file))
+            .add_source(config::File::with_name(file))
             .build()?;
 
         let config: Config = settings.try_deserialize()?;
@@ -53,7 +51,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_config_load_test() -> Result<()> {
-        let config = Config::load("test".to_string(), "config".to_string())?;
+        let config = Config::load("config/test.yaml")?;
 
         assert_eq!(config.db_name, "caduceus_test");
         assert!(!config.jwt_secret.is_empty());
@@ -64,7 +62,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_config_load_nonsexists() -> Result<()> {
-        let result = Config::load("nonsexists".to_string(), "config".to_string());
+        let result = Config::load("config/nonsexists.yaml");
         assert!(result.is_err());
         Ok(())
     }

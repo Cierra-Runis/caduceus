@@ -28,7 +28,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_database_connection() {
-        let config = Config::load("test".to_string(), "config".to_string()).unwrap();
+        let config = Config::load("config/test.yaml").unwrap();
         let database = Database::new(&config.mongo_uri, &config.db_name).await;
         assert!(database.is_ok());
     }

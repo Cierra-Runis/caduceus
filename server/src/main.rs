@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
 
     let env = env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
 
-    let config = Config::load(env, "config".to_string())?;
+    let config = Config::load(&format!("./config/{env}.yaml"))?;
 
     let database = Database::new(&config.mongo_uri, &config.db_name).await?;
 
