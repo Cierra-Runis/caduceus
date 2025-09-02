@@ -1,15 +1,16 @@
-use actix_web::{test, web, App, http::StatusCode};
+use actix_web::{http::StatusCode, test, web, App};
 
 #[tokio::test]
 async fn test_basic_api_routes() {
-    use caduceus_server::{
-        config::Config, database::Database,
+    use server::{
+        config::Config,
+        database::Database,
         repo::{team::MongoTeamRepo, user::MongoUserRepo},
         services::{team::TeamService, user::UserService},
         AppState,
     };
 
-        let config = Config {
+    let config = Config {
         address: "127.0.0.1:0".to_string(),
         allow_origins: vec!["http://localhost:3000".to_string()],
         mongo_uri: "mongodb://localhost:27017".to_string(),
@@ -17,7 +18,7 @@ async fn test_basic_api_routes() {
         jwt_secret: "test_secret_key_for_testing_purposes_only".to_string(),
     };
 
-        let database = match Database::new(&config.mongo_uri, &config.db_name).await {
+    let database = match Database::new(&config.mongo_uri, &config.db_name).await {
         Ok(db) => db,
         Err(_) => {
             println!("Skipping test - MongoDB not available");
@@ -25,14 +26,14 @@ async fn test_basic_api_routes() {
         }
     };
 
-        let user_repo = MongoUserRepo {
+    let user_repo = MongoUserRepo {
         collection: database.db.collection("users"),
     };
     let team_repo = MongoTeamRepo {
         collection: database.db.collection("teams"),
     };
 
-        let user_service = UserService {
+    let user_service = UserService {
         user_repo: user_repo.clone(),
         secret: config.jwt_secret.clone(),
     };
@@ -41,25 +42,30 @@ async fn test_basic_api_routes() {
         user_repo: user_repo.clone(),
     };
 
-        let app_state = web::Data::new(AppState {
+    let app_state = web::Data::new(AppState {
         database,
         config: config.clone(),
         user_service,
         team_service,
     });
 
-        let app = test::init_service(
+    let app = test::init_service(
         App::new()
             .app_data(app_state.clone())
-            .route("/api/health", web::get().to(caduceus_server::handler::health::health))
-            .route("/api/register", web::post().to(caduceus_server::handler::user::register))
-            .route("/api/login", web::post().to(caduceus_server::handler::user::login))
-            .route("/api/logout", web::post().to(caduceus_server::handler::user::logout))
-    ).await;
+            .route(
+                "/api/health",
+                web::get().to(server::handler::health::health),
+            )
+            .route(
+                "/api/register",
+                web::post().to(server::handler::user::register),
+            )
+            .route("/api/login", web::post().to(server::handler::user::login))
+            .route("/api/logout", web::post().to(server::handler::user::logout)),
+    )
+    .await;
 
-        let health_req = test::TestRequest::get()
-        .uri("/api/health")
-        .to_request();
+    let health_req = test::TestRequest::get().uri("/api/health").to_request();
 
     let health_resp = test::call_service(&app, health_req).await;
     assert_eq!(health_resp.status(), StatusCode::OK);
@@ -67,7 +73,7 @@ async fn test_basic_api_routes() {
     let health_body: serde_json::Value = test::read_body_json(health_resp).await;
     assert_eq!(health_body["status"], "healthy");
 
-        let register_data = serde_json::json!({
+    let register_data = serde_json::json!({
         "username": "test_user",
         "password": "test_password"
     });
@@ -78,22 +84,23 @@ async fn test_basic_api_routes() {
         .to_request();
 
     let register_resp = test::call_service(&app, register_req).await;
-            assert_ne!(register_resp.status(), StatusCode::NOT_FOUND);
+    assert_ne!(register_resp.status(), StatusCode::NOT_FOUND);
 
-        let invalid_req = test::TestRequest::get()
+    let invalid_req = test::TestRequest::get()
         .uri("/api/nonexistent")
         .to_request();
 
     let invalid_resp = test::call_service(&app, invalid_req).await;
     assert_eq!(invalid_resp.status(), StatusCode::NOT_FOUND);
 
-        let _ = app_state.database.db.drop().await;
+    let _ = app_state.database.db.drop().await;
 }
 
 #[tokio::test]
 async fn test_jwt_middleware() {
-    use caduceus_server::{
-        config::Config, database::Database,
+    use server::{
+        config::Config,
+        database::Database,
         repo::{team::MongoTeamRepo, user::MongoUserRepo},
         services::{team::TeamService, user::UserService},
         AppState,
@@ -137,11 +144,12 @@ async fn test_jwt_middleware() {
         team_service,
     });
 
-        let unprotected_app = test::init_service(
+    let unprotected_app = test::init_service(
         App::new()
             .app_data(app_state.clone())
-            .route("/api/team", web::post().to(caduceus_server::handler::team::create))
-    ).await;
+            .route("/api/team", web::post().to(server::handler::team::create)),
+    )
+    .await;
 
     let team_data = serde_json::json!({
         "name": "Test Team"
@@ -153,21 +161,24 @@ async fn test_jwt_middleware() {
         .to_request();
 
     let unprotected_resp = test::call_service(&unprotected_app, unprotected_req).await;
-        assert!(unprotected_resp.status().is_client_error() || unprotected_resp.status().is_server_error());
+    assert!(
+        unprotected_resp.status().is_client_error() || unprotected_resp.status().is_server_error()
+    );
 
-        let _ = app_state.database.db.drop().await;
+    let _ = app_state.database.db.drop().await;
 }
 
 #[tokio::test]
 async fn test_cors_and_method_handling() {
-    use caduceus_server::{
-        config::Config, database::Database,
+    use server::{
+        config::Config,
+        database::Database,
         repo::{team::MongoTeamRepo, user::MongoUserRepo},
         services::{team::TeamService, user::UserService},
         AppState,
     };
 
-        let config = Config {
+    let config = Config {
         address: "127.0.0.1:0".to_string(),
         allow_origins: vec!["http://localhost:3000".to_string()],
         mongo_uri: "mongodb://localhost:27017".to_string(),
@@ -175,7 +186,7 @@ async fn test_cors_and_method_handling() {
         jwt_secret: "test_secret_key_for_testing_purposes_only".to_string(),
     };
 
-        let database = match Database::new(&config.mongo_uri, &config.db_name).await {
+    let database = match Database::new(&config.mongo_uri, &config.db_name).await {
         Ok(db) => db,
         Err(_) => {
             println!("Skipping test - MongoDB not available");
@@ -208,13 +219,20 @@ async fn test_cors_and_method_handling() {
     let app = test::init_service(
         App::new()
             .app_data(app_state.clone())
-            .route("/api/health", web::get().to(caduceus_server::handler::health::health))
-            .route("/api/register", web::post().to(caduceus_server::handler::user::register))
-            .route("/api/login", web::post().to(caduceus_server::handler::user::login))
-            .route("/api/logout", web::post().to(caduceus_server::handler::user::logout))
-    ).await;
+            .route(
+                "/api/health",
+                web::get().to(server::handler::health::health),
+            )
+            .route(
+                "/api/register",
+                web::post().to(server::handler::user::register),
+            )
+            .route("/api/login", web::post().to(server::handler::user::login))
+            .route("/api/logout", web::post().to(server::handler::user::logout)),
+    )
+    .await;
 
-        let unsupported_methods = vec![
+    let unsupported_methods = vec![
         test::TestRequest::put().uri("/api/health"),
         test::TestRequest::delete().uri("/api/health"),
         test::TestRequest::patch().uri("/api/health"),
@@ -226,16 +244,20 @@ async fn test_cors_and_method_handling() {
     for req_builder in unsupported_methods {
         let req = req_builder.to_request();
         let resp = test::call_service(&app, req).await;
-                        assert!(resp.status() == StatusCode::NOT_FOUND || resp.status() == StatusCode::METHOD_NOT_ALLOWED);
+        assert!(
+            resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::METHOD_NOT_ALLOWED
+        );
     }
 
-        let _ = app_state.database.db.drop().await;
+    let _ = app_state.database.db.drop().await;
 }
 
 #[tokio::test]
 async fn test_request_body_validation() {
-    use caduceus_server::{
-        config::Config, database::Database,
+    use server::{
+        config::Config,
+        database::Database,
         repo::{team::MongoTeamRepo, user::MongoUserRepo},
         services::{team::TeamService, user::UserService},
         AppState,
@@ -282,11 +304,15 @@ async fn test_request_body_validation() {
     let app = test::init_service(
         App::new()
             .app_data(app_state.clone())
-            .route("/api/register", web::post().to(caduceus_server::handler::user::register))
-            .route("/api/login", web::post().to(caduceus_server::handler::user::login))
-    ).await;
+            .route(
+                "/api/register",
+                web::post().to(server::handler::user::register),
+            )
+            .route("/api/login", web::post().to(server::handler::user::login)),
+    )
+    .await;
 
-        let invalid_json_req = test::TestRequest::post()
+    let invalid_json_req = test::TestRequest::post()
         .uri("/api/register")
         .insert_header(("content-type", "application/json"))
         .set_payload("{invalid json}")
@@ -295,17 +321,17 @@ async fn test_request_body_validation() {
     let invalid_json_resp = test::call_service(&app, invalid_json_req).await;
     assert_eq!(invalid_json_resp.status(), StatusCode::BAD_REQUEST);
 
-        let missing_field_req = test::TestRequest::post()
+    let missing_field_req = test::TestRequest::post()
         .uri("/api/register")
-        .set_json(&serde_json::json!({
+        .set_json(serde_json::json!({
             "username": "testuser"
-                    }))
+        }))
         .to_request();
 
     let missing_field_resp = test::call_service(&app, missing_field_req).await;
     assert_eq!(missing_field_resp.status(), StatusCode::BAD_REQUEST);
 
-        let empty_body_req = test::TestRequest::post()
+    let empty_body_req = test::TestRequest::post()
         .uri("/api/register")
         .insert_header(("content-type", "application/json"))
         .to_request();
@@ -313,7 +339,7 @@ async fn test_request_body_validation() {
     let empty_body_resp = test::call_service(&app, empty_body_req).await;
     assert_eq!(empty_body_resp.status(), StatusCode::BAD_REQUEST);
 
-        let wrong_content_type_req = test::TestRequest::post()
+    let wrong_content_type_req = test::TestRequest::post()
         .uri("/api/register")
         .insert_header(("content-type", "text/plain"))
         .set_payload(r#"{"username": "test", "password": "test"}"#)
@@ -322,19 +348,20 @@ async fn test_request_body_validation() {
     let wrong_content_type_resp = test::call_service(&app, wrong_content_type_req).await;
     assert!(wrong_content_type_resp.status().is_client_error());
 
-        let _ = app_state.database.db.drop().await;
+    let _ = app_state.database.db.drop().await;
 }
 
 #[tokio::test]
 async fn test_application_startup_and_configuration() {
-    use caduceus_server::{
-        config::Config, database::Database,
+    use server::{
+        config::Config,
+        database::Database,
         repo::{team::MongoTeamRepo, user::MongoUserRepo},
         services::{team::TeamService, user::UserService},
         AppState,
     };
 
-        let configs = vec![
+    let configs = vec![
         Config {
             address: "127.0.0.1:8080".to_string(),
             allow_origins: vec!["http://localhost:3000".to_string()],
@@ -355,7 +382,7 @@ async fn test_application_startup_and_configuration() {
     ];
 
     for config in configs {
-                let database = match Database::new(&config.mongo_uri, &config.db_name).await {
+        let database = match Database::new(&config.mongo_uri, &config.db_name).await {
             Ok(db) => db,
             Err(_) => {
                 println!("Skipping test - MongoDB not available");
@@ -385,9 +412,9 @@ async fn test_application_startup_and_configuration() {
             team_service,
         });
 
-                assert_eq!(app_state.config.db_name, config.db_name);
+        assert_eq!(app_state.config.db_name, config.db_name);
         assert_eq!(app_state.config.jwt_secret, config.jwt_secret);
 
-                let _ = app_state.database.db.drop().await;
+        let _ = app_state.database.db.drop().await;
     }
 }

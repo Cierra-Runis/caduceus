@@ -1,5 +1,5 @@
 use actix_web::{test, web, App};
-use caduceus_server::handler;
+use server::handler;
 
 mod common;
 use common::HealthResponse;

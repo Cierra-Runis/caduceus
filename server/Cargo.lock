@@ -805,38 +805,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caduceus-server"
-version = "0.1.0"
-dependencies = [
- "actix-rt",
- "actix-web",
- "anyhow",
- "async-trait",
- "axum-test",
- "bcrypt",
- "bson",
- "chrono",
- "config",
- "derive_more 2.0.1",
- "futures-util",
- "httpmock",
- "jsonwebtoken",
- "mockall",
- "mongodb",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serial_test",
- "thiserror 2.0.16",
- "tokio",
- "tokio-test",
- "tracing",
- "tracing-subscriber",
- "validator",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3630,6 +3598,38 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "server"
+version = "0.1.0"
+dependencies = [
+ "actix-rt",
+ "actix-web",
+ "anyhow",
+ "async-trait",
+ "axum-test",
+ "bcrypt",
+ "bson",
+ "chrono",
+ "config",
+ "derive_more 2.0.1",
+ "futures-util",
+ "httpmock",
+ "jsonwebtoken",
+ "mockall",
+ "mongodb",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "thiserror 2.0.16",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-subscriber",
+ "validator",
 ]
 
 [[package]]

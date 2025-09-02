@@ -5,8 +5,11 @@ use anyhow::Result;
 use std::env;
 use tracing_subscriber::fmt;
 
-use caduceus_server::{
-    config::Config, database::Database, handler, middleware::jwt::JwtMiddleware,
+use server::{
+    config::Config,
+    database::Database,
+    handler,
+    middleware::jwt::JwtMiddleware,
     repo::{team::MongoTeamRepo, user::MongoUserRepo},
     services::{team::TeamService, user::UserService},
     AppState,
