@@ -1,4 +1,9 @@
-use actix_web::{body::BoxBody, http::StatusCode, web, HttpResponse, ResponseError};
+use actix_web::{
+    body::BoxBody,
+    cookie::{Cookie, SameSite},
+    http::StatusCode,
+    web, HttpResponse, ResponseError,
+};
 use bcrypt::BcryptError;
 use serde::{Deserialize, Serialize};
 
@@ -45,7 +50,17 @@ pub async fn register(
         .register(req.username.clone(), req.password.clone())
         .await
     {
-        Ok(auth) => Ok(HttpResponse::Ok().json(auth)),
+        Ok(auth) => {
+            let expires = actix_web::cookie::time::OffsetDateTime::now_utc()
+                .checked_add(actix_web::cookie::time::Duration::hours(24));
+            let cookie = Cookie::build("token", auth.token.clone())
+                .path("/")
+                .expires(expires)
+                .same_site(SameSite::Lax)
+                .http_only(true)
+                .finish();
+            Ok(HttpResponse::Ok().cookie(cookie).json(auth))
+        }
         Err(err) => Err(err),
     }
 }
@@ -65,7 +80,29 @@ pub async fn login(
         .login(req.username.clone(), req.password.clone())
         .await
     {
-        Ok(auth) => Ok(HttpResponse::Ok().json(auth)),
+        Ok(auth) => {
+            let expires = actix_web::cookie::time::OffsetDateTime::now_utc()
+                .checked_add(actix_web::cookie::time::Duration::hours(24));
+            let cookie = Cookie::build("token", auth.token.clone())
+                .path("/")
+                .expires(expires)
+                .same_site(SameSite::Lax)
+                .http_only(true)
+                .finish();
+            Ok(HttpResponse::Ok().cookie(cookie).json(auth))
+        }
         Err(err) => Err(err),
     }
+}
+
+pub async fn logout() -> HttpResponse {
+    let mut cookie = Cookie::build("token", "")
+        .path("/")
+        .same_site(SameSite::Lax)
+        .http_only(true)
+        .finish();
+    cookie.make_removal();
+    HttpResponse::Ok().cookie(cookie).json(Response {
+        message: "Logged out successfully".to_string(),
+    })
 }
