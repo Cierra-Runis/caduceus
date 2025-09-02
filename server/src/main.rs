@@ -14,7 +14,10 @@ mod repo;
 mod services;
 
 use crate::{
-    middleware::jwt::JwtMiddleware, repo::user::MongoUserRepo, services::user::UserService,
+    handler::user,
+    middleware::jwt::JwtMiddleware,
+    repo::{team::MongoTeamRepo, user::MongoUserRepo},
+    services::{team::TeamService, user::UserService},
 };
 use config::Config;
 use database::Database;
@@ -23,6 +26,7 @@ pub struct AppState {
     pub database: Database,
     pub config: Config,
     pub user_service: UserService<MongoUserRepo>,
+    pub team_service: TeamService<MongoTeamRepo, MongoUserRepo>,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -36,17 +40,27 @@ async fn main() -> Result<()> {
 
     let database = Database::new(&config.mongo_uri, &config.db_name).await?;
 
+    let user_repo = MongoUserRepo {
+        collection: database.db.collection("users"),
+    };
+    let team_repo = MongoTeamRepo {
+        collection: database.db.collection("teams"),
+    };
+
     let user_service = UserService {
-        repo: MongoUserRepo {
-            collection: database.db.collection("users"),
-        },
+        user_repo: user_repo.clone(),
         secret: config.jwt_secret.clone(),
+    };
+    let team_service = TeamService {
+        team_repo: team_repo.clone(),
+        user_repo: user_repo.clone(),
     };
 
     let data = web::Data::new(AppState {
         database,
         config,
         user_service,
+        team_service,
     });
 
     HttpServer::new(move || {

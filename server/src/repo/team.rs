@@ -7,6 +7,7 @@ pub trait TeamRepo {
     async fn create(&self, team: Team) -> Result<Team>;
 }
 
+#[derive(Clone)]
 pub struct MongoTeamRepo {
     pub collection: mongodb::Collection<Team>,
 }

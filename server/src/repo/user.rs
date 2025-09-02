@@ -1,18 +1,26 @@
 use crate::models::user::User;
+use bson::oid::ObjectId;
 use mongodb::{bson::doc, error::Result};
 
 #[async_trait::async_trait]
 pub trait UserRepo {
+    async fn find_by_id(&self, id: ObjectId) -> Result<Option<User>>;
     async fn find_by_username(&self, username: &str) -> Result<Option<User>>;
     async fn create(&self, user: User) -> Result<User>;
 }
 
+#[derive(Clone)]
 pub struct MongoUserRepo {
     pub collection: mongodb::Collection<User>,
 }
 
 #[async_trait::async_trait]
 impl UserRepo for MongoUserRepo {
+    async fn find_by_id(&self, id: ObjectId) -> Result<Option<User>> {
+        let filter = doc! { "_id": id };
+        self.collection.find_one(filter).await
+    }
+
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
         let filter = doc! { "username": username };
         self.collection.find_one(filter).await
@@ -39,6 +47,11 @@ pub mod tests {
 
     #[async_trait::async_trait]
     impl UserRepo for MockUserRepo {
+        async fn find_by_id(&self, id: ObjectId) -> Result<Option<User>> {
+            let users = self.users.lock().unwrap();
+            Ok(users.iter().find(|u| u.id == id).cloned())
+        }
+
         async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
             let users = self.users.lock().unwrap();
             Ok(users.iter().find(|u| u.username == username).cloned())

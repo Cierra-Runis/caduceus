@@ -7,7 +7,6 @@ pub struct Team {
     #[serde(rename = "_id")]
     pub id: ObjectId,
     pub name: String,
-    pub description: String,
     pub creator_id: ObjectId,
     pub member_ids: Vec<ObjectId>,
     #[serde(with = "chrono_datetime_as_bson_datetime")]

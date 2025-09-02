@@ -9,7 +9,7 @@ use crate::models::user::{User, UserClaims, UserPayload};
 use crate::repo::user::UserRepo;
 
 pub struct UserService<R: UserRepo> {
-    pub repo: R,
+    pub user_repo: R,
     pub secret: String,
 }
 
@@ -41,7 +41,7 @@ impl<R: UserRepo> UserService<R> {
         username: String,
         password: String,
     ) -> Result<AuthPayload, UserServiceError> {
-        match self.repo.find_by_username(&username).await {
+        match self.user_repo.find_by_username(&username).await {
             Ok(Some(_)) => return Err(UserServiceError::UserAlreadyExists),
             Ok(None) => {}
             Err(e) => return Err(UserServiceError::Database(e)),
@@ -51,7 +51,7 @@ impl<R: UserRepo> UserService<R> {
             non_truncating_hash(password, DEFAULT_COST).map_err(UserServiceError::Bcrypt)?;
 
         let user = self
-            .repo
+            .user_repo
             .create(User {
                 id: ObjectId::new(),
                 username: username.clone(),
@@ -79,7 +79,7 @@ impl<R: UserRepo> UserService<R> {
         username: String,
         password: String,
     ) -> Result<AuthPayload, UserServiceError> {
-        let user = match self.repo.find_by_username(&username).await {
+        let user = match self.user_repo.find_by_username(&username).await {
             Ok(Some(user)) => user,
             Ok(None) => return Err(UserServiceError::UserNotFound),
             Err(e) => return Err(UserServiceError::Database(e)),
@@ -111,11 +111,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_success() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let result = service
             .register("test_user".to_string(), "test_password".to_string())
@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_already_exists() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![User {
                 id: ObjectId::new(),
                 username: "existing_user".to_string(),
@@ -139,7 +139,7 @@ mod tests {
             }]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let result = service
             .register("existing_user".to_string(), "test_password".to_string())
@@ -150,11 +150,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_bcrypt_error() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let long_password = "a".repeat(1000);
         let result = service
@@ -168,7 +168,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_success() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![User {
                 id: ObjectId::new(),
                 username: "test_user".to_string(),
@@ -179,7 +179,7 @@ mod tests {
             }]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let result = service
             .login("test_user".to_string(), "test_password".to_string())
@@ -192,11 +192,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_not_found() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let result = service
             .login("nonexistent_user".to_string(), "test_password".to_string())
@@ -207,7 +207,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_password_not_matched() {
-        let repo = MockUserRepo {
+        let user_repo = MockUserRepo {
             users: Mutex::new(vec![User {
                 id: ObjectId::new(),
                 username: "test_user".to_string(),
@@ -218,7 +218,7 @@ mod tests {
             }]),
         };
         let secret = "test_secret".to_string();
-        let service = UserService { repo, secret };
+        let service = UserService { user_repo, secret };
 
         let result = service
             .login("test_user".to_string(), "wrong_password".to_string())
