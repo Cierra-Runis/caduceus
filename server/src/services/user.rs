@@ -44,9 +44,11 @@ impl ResponseError for UserServiceError {
     fn status_code(&self) -> StatusCode {
         match *self {
             UserServiceError::UserAlreadyExists => StatusCode::CONFLICT,
-            UserServiceError::Bcrypt(_)
-            | UserServiceError::Jwt(_)
-            | UserServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            UserServiceError::Bcrypt(BcryptError::Truncation(_)) => StatusCode::BAD_REQUEST,
+            UserServiceError::Bcrypt(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            UserServiceError::Jwt(_) | UserServiceError::Database(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }
