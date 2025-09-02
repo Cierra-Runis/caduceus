@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
 
     let database = Database::new(&config.mongo_uri, &config.db_name).await?;
 
-    let user = UserService {
+    let user_service = UserService {
         repo: MongoUserRepo {
             collection: database.db.collection("users"),
         },
