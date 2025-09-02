@@ -53,8 +53,9 @@ async fn main() -> Result<()> {
             .service(
                 web::scope("/api")
                     .route("/health", web::get().to(handler::health::health))
-                    .route("/user", web::post().to(handler::user::register))
-                    .route("/user", web::get().to(handler::user::login)),
+                    .route("/register", web::post().to(handler::user::register))
+                    .route("/login", web::post().to(handler::user::login))
+                    .route("/logout", web::post().to(handler::user::logout)),
             )
     })
     .bind(("127.0.0.1", 8080))?
