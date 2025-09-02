@@ -1,16 +1,17 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     http::header,
-    web, Error, FromRequest, HttpMessage, HttpRequest, Result,
+    Error, FromRequest, HttpMessage, HttpRequest, HttpResponse, Result,
 };
 use futures_util::future::{ok, LocalBoxFuture, Ready};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use serde_json;
 use std::{
     future::{ready, Ready as StdReady},
     rc::Rc,
 };
 
-use crate::{models::user::UserClaims, AppState};
+use crate::models::user::UserClaims;
 
 impl FromRequest for UserClaims {
     type Error = Error;
@@ -52,15 +53,22 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<UserClaims, jsonwebtoken:
     Ok(token_data.claims)
 }
 
-pub struct JwtMiddleware;
+pub struct JwtMiddleware {
+    jwt_secret: String,
+}
 
-impl<S, B> Transform<S, ServiceRequest> for JwtMiddleware
+impl JwtMiddleware {
+    pub fn new(jwt_secret: String) -> Self {
+        Self { jwt_secret }
+    }
+}
+
+impl<S> Transform<S, ServiceRequest> for JwtMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error> + 'static,
     S::Future: 'static,
-    B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse;
     type Error = Error;
     type Transform = JwtMiddlewareService<S>;
     type InitError = ();
@@ -69,21 +77,22 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(JwtMiddlewareService {
             service: Rc::new(service),
+            jwt_secret: self.jwt_secret.clone(),
         })
     }
 }
 
 pub struct JwtMiddlewareService<S> {
     service: Rc<S>,
+    jwt_secret: String,
 }
 
-impl<S, B> Service<ServiceRequest> for JwtMiddlewareService<S>
+impl<S> Service<ServiceRequest> for JwtMiddlewareService<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error> + 'static,
     S::Future: 'static,
-    B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -91,22 +100,88 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
+        let jwt_secret = self.jwt_secret.clone();
 
         Box::pin(async move {
-            let app_state = req.app_data::<web::Data<AppState>>();
+            let token = match extract_token_from_request(&req) {
+                Some(token) => token,
+                None => {
+                    let response = HttpResponse::Unauthorized()
+                        .json(serde_json::json!({"message": "JWT token required"}));
+                    return Ok(req.into_response(response));
+                }
+            };
 
-            let state = app_state
-                .ok_or_else(|| actix_web::error::ErrorInternalServerError("App state not found"))?;
-
-            let token = extract_token_from_request(&req)
-                .ok_or_else(|| actix_web::error::ErrorUnauthorized("JWT token required"))?;
-
-            let claims = verify_jwt(&token, &state.config.jwt_secret)
-                .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid JWT token"))?;
+            let claims = match verify_jwt(&token, &jwt_secret) {
+                Ok(claims) => claims,
+                Err(_) => {
+                    let response = HttpResponse::Unauthorized()
+                        .json(serde_json::json!({"message": "Invalid JWT token"}));
+                    return Ok(req.into_response(response));
+                }
+            };
 
             req.extensions_mut().insert(claims);
 
             service.call(req).await
         })
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use actix_web::{test, web, App, HttpResponse};
+
+    #[actix_web::test]
+    async fn test_jwt_middleware_no_token() {
+        async fn protected_handler() -> HttpResponse {
+            HttpResponse::Ok().finish()
+        }
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new("test_secret".to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/protected").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"message": "JWT token required"}))
+                .unwrap()
+                .as_bytes()
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_jwt_middleware_invalid_token() {
+        async fn protected_handler() -> HttpResponse {
+            HttpResponse::Ok().finish()
+        }
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new("test_secret".to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, "Bearer invalid_token"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"message": "Invalid JWT token"}))
+                .unwrap()
+                .as_bytes()
+        );
     }
 }

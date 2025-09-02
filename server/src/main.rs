@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
 
     let data = web::Data::new(AppState {
         database,
-        config,
+        config: config.clone(),
         user_service,
         team_service,
     });
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
             .route("/api/logout", web::post().to(handler::user::logout))
             .service(
                 web::scope("/api")
-                    .wrap(JwtMiddleware)
+                    .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
                     .route("/team", web::post().to(handler::team::create)),
             )
             .wrap(actix_web::middleware::Logger::default())
