@@ -15,18 +15,18 @@ export default async function middleware(req: NextRequest) {
 
   // Decrypt the jwt from the cookie
   const cookie = await cookies();
-  const jwt = cookie.get('jwt')?.value;
-  const payload = await decrypt(jwt);
+  const token = cookie.get('token')?.value;
+  const payload = await decrypt(token);
 
   // Redirect to /login if the user is not authenticated
-  if (isProtectedRoute && !payload?.username) {
+  if (isProtectedRoute && !payload?.sub) {
     return NextResponse.redirect(new URL('/login', req.nextUrl));
   }
 
   // Redirect to /dashboard if the user is authenticated
   if (
     isPublicRoute &&
-    payload?.username &&
+    payload?.sub &&
     !req.nextUrl.pathname.startsWith('/dashboard')
   ) {
     return NextResponse.redirect(new URL('/dashboard', req.nextUrl));
