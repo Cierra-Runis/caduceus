@@ -1,11 +1,11 @@
 use actix_web::body::BoxBody;
+use actix_web::error::ResponseError;
 use actix_web::http::StatusCode;
-use actix_web::{error, HttpResponse};
+use actix_web::HttpResponse;
 use bcrypt::{non_truncating_hash, DEFAULT_COST};
 use bson::oid::ObjectId;
 use chrono::Utc;
 use derive_more::Display;
-use jsonwebtoken::errors::Error;
 use serde::{Deserialize, Serialize};
 
 use crate::models::user::{User, UserClaims, UserPayload};
@@ -20,8 +20,10 @@ pub struct UserService<R: UserRepo> {
 pub enum UserServiceError {
     #[display("User already exists")]
     UserAlreadyExists,
-    #[display("Token creation error")]
-    TokenCreationError(Error),
+    #[display("Jwt error")]
+    JwtError(jsonwebtoken::errors::Error),
+    #[display("Database error")]
+    DatabaseError(mongodb::error::Error),
     #[display("Internal server error: {details}")]
     InternalError { details: String },
 }
@@ -31,7 +33,7 @@ struct Response {
     message: String,
 }
 
-impl error::ResponseError for UserServiceError {
+impl ResponseError for UserServiceError {
     fn error_response(&self) -> HttpResponse<BoxBody> {
         HttpResponse::build(self.status_code()).json(Response {
             message: self.to_string(),
@@ -41,8 +43,9 @@ impl error::ResponseError for UserServiceError {
     fn status_code(&self) -> StatusCode {
         match *self {
             UserServiceError::UserAlreadyExists => StatusCode::CONFLICT,
-            UserServiceError::TokenCreationError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            UserServiceError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            UserServiceError::JwtError { .. }
+            | UserServiceError::DatabaseError { .. }
+            | UserServiceError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -62,11 +65,7 @@ impl<R: UserRepo> UserService<R> {
         match self.repo.find_by_username(&username).await {
             Ok(Some(_)) => return Err(UserServiceError::UserAlreadyExists),
             Ok(None) => {}
-            Err(e) => {
-                return Err(UserServiceError::InternalError {
-                    details: e.to_string(),
-                })
-            }
+            Err(e) => return Err(UserServiceError::DatabaseError(e)),
         }
 
         let hashed_password = non_truncating_hash(password, DEFAULT_COST).map_err(|e| {
@@ -75,27 +74,23 @@ impl<R: UserRepo> UserService<R> {
             }
         })?;
 
-        let new_user = User {
-            id: ObjectId::new(),
-            username: username.clone(),
-            nickname: username.clone(),
-            password: hashed_password,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        let user =
-            self.repo
-                .create(new_user)
-                .await
-                .map_err(|e| UserServiceError::InternalError {
-                    details: e.to_string(),
-                })?;
+        let user = self
+            .repo
+            .create(User {
+                id: ObjectId::new(),
+                username: username.clone(),
+                nickname: username.clone(),
+                password: hashed_password,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+            .await
+            .map_err(UserServiceError::DatabaseError)?;
 
         let claims = UserClaims::new(user.id.to_hex(), Utc::now(), chrono::Duration::hours(24));
         let token = claims
             .generate(self.secret.clone())
-            .map_err(UserServiceError::TokenCreationError)?;
+            .map_err(UserServiceError::JwtError)?;
 
         Ok(AuthPayload {
             user: user.into(),
