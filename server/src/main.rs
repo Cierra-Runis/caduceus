@@ -19,7 +19,7 @@ use database::Database;
 pub struct AppState {
     pub database: Database,
     pub config: Config,
-    pub user: UserService<MongoUserRepo>,
+    pub user_service: UserService<MongoUserRepo>,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -43,15 +43,19 @@ async fn main() -> Result<()> {
     let data = web::Data::new(AppState {
         database,
         config,
-        user,
+        user_service,
     });
 
     HttpServer::new(move || {
-        App::new().app_data(data.clone()).service(
-            web::scope("/api")
-                .route("/health", web::get().to(handler::health::health))
-                .route("/user", web::post().to(handler::user::register)),
-        )
+        App::new()
+            .app_data(data.clone())
+            .wrap(actix_web::middleware::Logger::default())
+            .service(
+                web::scope("/api")
+                    .route("/health", web::get().to(handler::health::health))
+                    .route("/user", web::post().to(handler::user::register))
+                    .route("/user", web::get().to(handler::user::login)),
+            )
     })
     .bind(("127.0.0.1", 8080))?
     .bind(("[::1]", 8080))?

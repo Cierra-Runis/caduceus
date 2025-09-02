@@ -41,8 +41,28 @@ pub async fn register(
     data: web::Data<crate::AppState>,
 ) -> Result<HttpResponse, UserServiceError> {
     match data
-        .user
+        .user_service
         .register(req.username.clone(), req.password.clone())
+        .await
+    {
+        Ok(auth) => Ok(HttpResponse::Ok().json(auth)),
+        Err(err) => Err(err),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn login(
+    req: web::Json<LoginRequest>,
+    data: web::Data<crate::AppState>,
+) -> Result<HttpResponse, UserServiceError> {
+    match data
+        .user_service
+        .login(req.username.clone(), req.password.clone())
         .await
     {
         Ok(auth) => Ok(HttpResponse::Ok().json(auth)),
