@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
         App::new().app_data(data.clone()).service(
             web::scope("/api")
                 .route("/health", web::get().to(handler::health::health))
-                .route("/user", web::post().to(handler::user::create_user)),
+                .route("/user", web::post().to(handler::user::register)),
         )
     })
     .bind(("127.0.0.1", 8080))?

@@ -31,13 +31,13 @@ impl ResponseError for UserServiceError {
 }
 
 #[derive(Deserialize)]
-pub struct CreateUserRequest {
+pub struct RegisterRequest {
     pub username: String,
     pub password: String,
 }
 
-pub async fn create_user(
-    req: web::Json<CreateUserRequest>,
+pub async fn register(
+    req: web::Json<RegisterRequest>,
     data: web::Data<crate::AppState>,
 ) -> Result<HttpResponse, UserServiceError> {
     match data
