@@ -1,5 +1,4 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-#![warn(clippy::absolute_paths)]
 
 use actix_web::{web, App, HttpServer};
 use anyhow::Result;
