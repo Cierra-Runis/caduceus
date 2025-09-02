@@ -14,6 +14,7 @@ impl Config {
     pub fn load(file: &str) -> Result<Self> {
         let settings = config::Config::builder()
             .add_source(config::File::with_name(file))
+            .add_source(config::Environment::with_prefix("APP"))
             .build()?;
 
         let config: Config = settings.try_deserialize()?;
