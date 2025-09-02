@@ -5,7 +5,6 @@ use actix_web::{
 };
 use futures_util::future::{ok, LocalBoxFuture, Ready};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
-use serde::{Deserialize, Serialize};
 use std::{
     future::{ready, Ready as StdReady},
     rc::Rc,
@@ -42,8 +41,7 @@ pub fn extract_token_from_request(req: &ServiceRequest) -> Option<String> {
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> Result<UserClaims, jsonwebtoken::errors::Error> {
-    let mut validation = Validation::new(Algorithm::HS512);
-    validation.validate_exp = true;
+    let validation = Validation::new(Algorithm::HS512);
 
     let token_data = decode::<UserClaims>(
         token,
