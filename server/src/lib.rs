@@ -8,9 +8,7 @@ pub mod models;
 pub mod repo;
 pub mod services;
 
-use actix_web::web;
 use crate::{
-    middleware::jwt::JwtMiddleware,
     repo::{team::MongoTeamRepo, user::MongoUserRepo},
     services::{team::TeamService, user::UserService},
 };
