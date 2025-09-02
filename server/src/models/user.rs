@@ -38,7 +38,7 @@ impl From<User> for UserPayload {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserClaims {
     pub sub: String,
     pub exp: u64,

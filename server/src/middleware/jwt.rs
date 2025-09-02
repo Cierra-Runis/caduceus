@@ -13,20 +13,7 @@ use std::{
 
 use crate::{models::user::UserClaims, AppState};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct JwtUser {
-    pub user_id: String,
-}
-
-impl From<UserClaims> for JwtUser {
-    fn from(claims: UserClaims) -> Self {
-        JwtUser {
-            user_id: claims.sub,
-        }
-    }
-}
-
-impl FromRequest for JwtUser {
+impl FromRequest for UserClaims {
     type Error = Error;
     type Future = StdReady<Result<Self, Self::Error>>;
 
@@ -36,9 +23,9 @@ impl FromRequest for JwtUser {
     }
 }
 
-fn get_user_from_request(req: &HttpRequest) -> Result<JwtUser, Error> {
+fn get_user_from_request(req: &HttpRequest) -> Result<UserClaims, Error> {
     req.extensions()
-        .get::<JwtUser>()
+        .get::<UserClaims>()
         .cloned()
         .ok_or_else(|| actix_web::error::ErrorUnauthorized("JWT token required"))
 }
@@ -119,7 +106,7 @@ where
             let claims = verify_jwt(&token, &state.config.jwt_secret)
                 .map_err(|_| actix_web::error::ErrorUnauthorized("Invalid JWT token"))?;
 
-            req.extensions_mut().insert(JwtUser::from(claims));
+            req.extensions_mut().insert(claims);
 
             service.call(req).await
         })
