@@ -31,14 +31,15 @@ fn get_user_from_request(req: &HttpRequest) -> Result<UserClaims, Error> {
 }
 
 pub fn extract_token_from_request(req: &ServiceRequest) -> Option<String> {
-    let auth_header = req.headers().get(header::AUTHORIZATION)?;
-    let auth_str = auth_header.to_str().ok()?;
-
-    if let Some(token) = auth_str.strip_prefix("Bearer ") {
-        return Some(token.to_string());
+    if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+                return Some(token.to_string());
+            }
+        }
     }
 
-    Some(req.cookie("token")?.value().to_string())
+    req.cookie("token").map(|c| c.value().to_string())
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> Result<UserClaims, jsonwebtoken::errors::Error> {
@@ -135,6 +136,46 @@ mod tests {
     use actix_web::{test, web, App, HttpResponse};
 
     #[actix_web::test]
+    async fn test_jwt_middleware_valid_token() {
+        async fn protected_handler(user: UserClaims) -> HttpResponse {
+            HttpResponse::Ok().json(serde_json::json!({"user_id": user.sub}))
+        }
+
+        let secret = "test_secret";
+        let claims = UserClaims::new(
+            "user123".to_string(),
+            chrono::Utc::now(),
+            chrono::Duration::hours(1),
+        );
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS512),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_ref()),
+        )
+        .unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new(secret.to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, format!("Bearer {}", token)))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"user_id": "user123"}))
+                .unwrap()
+                .as_bytes()
+        );
+    }
+
+    #[actix_web::test]
     async fn test_jwt_middleware_no_token() {
         async fn protected_handler() -> HttpResponse {
             HttpResponse::Ok().finish()
@@ -159,7 +200,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_jwt_middleware_invalid_token() {
+    async fn test_jwt_middleware_header_invalid_token() {
         async fn protected_handler() -> HttpResponse {
             HttpResponse::Ok().finish()
         }
@@ -174,6 +215,59 @@ mod tests {
         let req = test::TestRequest::get()
             .uri("/protected")
             .insert_header((header::AUTHORIZATION, "Bearer invalid_token"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"message": "Invalid JWT token"}))
+                .unwrap()
+                .as_bytes()
+        );
+
+        let req_no_bearer = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, "invalid_token"))
+            .to_request();
+        let resp_no_bearer = test::call_service(&app, req_no_bearer).await;
+        assert_eq!(resp_no_bearer.status(), 401);
+        assert_eq!(
+            test::read_body(resp_no_bearer).await,
+            serde_json::to_string(&serde_json::json!({"message": "JWT token required"}))
+                .unwrap()
+                .as_bytes()
+        );
+
+        let req_not_ascii_header = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, "你好"))
+            .to_request();
+        let resp_not_ascii_header = test::call_service(&app, req_not_ascii_header).await;
+        assert_eq!(resp_not_ascii_header.status(), 401);
+        assert_eq!(
+            test::read_body(resp_not_ascii_header).await,
+            serde_json::to_string(&serde_json::json!({"message": "JWT token required"}))
+                .unwrap()
+                .as_bytes()
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_jwt_middleware_cookie_invalid_token() {
+        async fn protected_handler() -> HttpResponse {
+            HttpResponse::Ok().finish()
+        }
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new("test_secret".to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/protected")
+            .cookie(actix_web::cookie::Cookie::new("token", "invalid_token"))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
