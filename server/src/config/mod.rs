@@ -24,20 +24,19 @@ impl Config {
             .add_source(config::Environment::with_prefix("APP"))
             .build();
 
-        let s = match settings {
+        let result = match settings {
             Err(e) => return Err(Error::Parse(e)),
-            Ok(s) => s,
+            Ok(s) => s.try_deserialize(),
         };
 
-        let config = s.try_deserialize();
-        let c: Config = match config {
+        let config: Config = match result {
             Err(e) => return Err(Error::Parse(e)),
             Ok(c) => c,
         };
 
-        c.validate()?;
+        config.validate()?;
 
-        Ok(c)
+        Ok(config)
     }
 
     fn validate(&self) -> Result<(), Error> {
@@ -81,6 +80,16 @@ mod tests {
     async fn test_config_load_nonsexists() {
         let result = Config::load("config/nonsexists.yaml");
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_config_load_invalid() {
+        let invalid_config_path = "config/invalid.yaml";
+        let invalid_content = r#"allow_origins: []"#;
+        std::fs::write(invalid_config_path, invalid_content).unwrap();
+        let result = Config::load(invalid_config_path);
+        assert!(result.is_err());
+        std::fs::remove_file(invalid_config_path).unwrap();
     }
 
     #[test]
