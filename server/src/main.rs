@@ -1,7 +1,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use actix_web::{web, App, HttpServer};
-use anyhow::Result;
 use std::env;
 use tracing_subscriber::fmt;
 
@@ -17,14 +16,16 @@ use server::{
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     fmt::init();
 
     let env = env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
 
-    let config = Config::load(&format!("./config/{env}.yaml"))?;
+    let config = Config::load(&format!("./config/{env}.yaml")).expect("Failed to load config");
 
-    let database = Database::new(&config.mongo_uri, &config.db_name).await?;
+    let database = Database::new(&config.mongo_uri, &config.db_name)
+        .await
+        .expect("Failed to connect to database");
 
     let user_repo = MongoUserRepo {
         collection: database.db.collection("users"),

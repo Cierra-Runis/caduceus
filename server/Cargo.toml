@@ -13,7 +13,6 @@ mongodb = "3.2.5"
 jsonwebtoken = "9.3.1"
 bcrypt = "0.17.1"
 config = "0.15.15"
-anyhow = "1.0.99"
 thiserror = "2.0.16"
 chrono = { version = "0.4.41", features = ["serde"] }
 tracing = "0.1.41"

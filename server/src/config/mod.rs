@@ -1,5 +1,12 @@
-use anyhow::Result;
 use serde::Deserialize;
+
+#[derive(Debug)]
+pub enum Error {
+    MissingField(String),
+    InvalidField(String),
+    Io(std::io::Error),
+    Parse(config::ConfigError),
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -11,33 +18,43 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(file: &str) -> Result<Self> {
+    pub fn load(file: &str) -> Result<Self, Error> {
         let settings = config::Config::builder()
             .add_source(config::File::with_name(file))
             .add_source(config::Environment::with_prefix("APP"))
-            .build()?;
+            .build();
 
-        let config: Config = settings.try_deserialize()?;
-        config.validate()?;
+        let s = match settings {
+            Err(e) => return Err(Error::Parse(e)),
+            Ok(s) => s,
+        };
 
-        Ok(config)
+        let config = s.try_deserialize();
+        let c: Config = match config {
+            Err(e) => return Err(Error::Parse(e)),
+            Ok(c) => c,
+        };
+
+        c.validate()?;
+
+        Ok(c)
     }
 
-    fn validate(&self) -> Result<()> {
+    fn validate(&self) -> Result<(), Error> {
         if self.allow_origins.is_empty() {
-            return Err(anyhow::anyhow!("allow_origins cannot be empty"));
+            return Err(Error::MissingField("allow_origins".to_string()));
         }
         if self.mongo_uri.is_empty() {
-            return Err(anyhow::anyhow!("mongo_uri cannot be empty"));
+            return Err(Error::MissingField("mongo_uri".to_string()));
         }
         if self.db_name.is_empty() {
-            return Err(anyhow::anyhow!("db_name cannot be empty"));
+            return Err(Error::MissingField("db_name".to_string()));
         }
         if self.address.is_empty() {
-            return Err(anyhow::anyhow!("address cannot be empty"));
+            return Err(Error::MissingField("address".to_string()));
         }
         if self.jwt_secret.is_empty() {
-            return Err(anyhow::anyhow!("jwt_secret cannot be empty"));
+            return Err(Error::MissingField("jwt_secret".to_string()));
         }
         Ok(())
     }
@@ -51,21 +68,19 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_config_load_test() -> Result<()> {
-        let config = Config::load("config/test.yaml")?;
-
+    async fn test_config_load_test() {
+        let result = Config::load("config/test.yaml");
+        assert!(result.is_ok());
+        let config = result.unwrap();
         assert_eq!(config.db_name, "caduceus_test");
         assert!(!config.jwt_secret.is_empty());
-
-        Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_config_load_nonsexists() -> Result<()> {
+    async fn test_config_load_nonsexists() {
         let result = Config::load("config/nonsexists.yaml");
         assert!(result.is_err());
-        Ok(())
     }
 
     #[test]
