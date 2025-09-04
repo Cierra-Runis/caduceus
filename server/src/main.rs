@@ -45,7 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let data = web::Data::new(AppState {
         database,
-        config: config.clone(),
         user_service,
         team_service,
     });
