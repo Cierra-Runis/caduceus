@@ -30,16 +30,22 @@ fn get_user_from_request(req: &HttpRequest) -> Result<UserClaims, Error> {
         .ok_or_else(|| actix_web::error::ErrorUnauthorized("JWT token required"))
 }
 
-pub fn extract_token_from_request(req: &ServiceRequest) -> Option<String> {
-    if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return Some(token.to_string());
-            }
-        }
-    }
+fn extract_token_from_request_header(req: &ServiceRequest) -> Option<String> {
+    let auth_header = req.headers().get(header::AUTHORIZATION)?;
+    let Ok(auth_str) = auth_header.to_str() else {
+        return None;
+    };
+    auth_str
+        .strip_prefix("Bearer ")
+        .map(|token| token.to_string())
+}
 
+fn extract_token_from_request_cookie(req: &ServiceRequest) -> Option<String> {
     req.cookie("token").map(|c| c.value().to_string())
+}
+
+pub fn extract_token_from_request(req: &ServiceRequest) -> Option<String> {
+    extract_token_from_request_header(req).or_else(|| extract_token_from_request_cookie(req))
 }
 
 pub fn verify_jwt(token: &str, secret: &str) -> Result<UserClaims, jsonwebtoken::errors::Error> {
