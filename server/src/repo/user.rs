@@ -38,6 +38,8 @@ impl UserRepo for MongoUserRepo {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
+    use crate::config;
+
     use super::*;
     use std::sync::Mutex;
 
@@ -62,5 +64,40 @@ pub mod tests {
             users.push(user.clone());
             Ok(user)
         }
+    }
+
+    #[tokio::test]
+    async fn test_mongo_user_repo() {
+        let config = config::Config::load("config/test.yaml").unwrap();
+        let repo = MongoUserRepo {
+            collection: mongodb::Client::with_uri_str(config.mongo_uri)
+                .await
+                .unwrap()
+                .database("test_db")
+                .collection("users"),
+        };
+
+        let user = User {
+            id: ObjectId::new(),
+            username: ObjectId::new().to_hex(),
+            nickname: "Test User".to_string(),
+            password: "hashed_password".to_string(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        // Test create
+        let created_user = repo.create(user.clone()).await.unwrap();
+        assert_eq!(created_user.username, user.username);
+
+        // Test find_by_id
+        let found_user = repo.find_by_id(created_user.id).await.unwrap();
+        assert!(found_user.is_some());
+        assert_eq!(found_user.unwrap().username, user.username);
+
+        // Test find_by_username
+        let found_user = repo.find_by_username(&user.username).await.unwrap();
+        assert!(found_user.is_some());
+        assert_eq!(found_user.unwrap().id, user.id);
     }
 }
