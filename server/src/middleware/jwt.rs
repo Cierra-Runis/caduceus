@@ -32,12 +32,9 @@ fn get_user_from_request(req: &HttpRequest) -> Result<UserClaims, Error> {
 
 fn extract_token_from_request_header(req: &ServiceRequest) -> Option<String> {
     let auth_header = req.headers().get(header::AUTHORIZATION)?;
-    let Ok(auth_str) = auth_header.to_str() else {
-        return None;
-    };
-    auth_str
-        .strip_prefix("Bearer ")
-        .map(|token| token.to_string())
+    let auth_str = auth_header.to_str().ok()?;
+    let token = auth_str.strip_prefix("Bearer ")?;
+    token.to_string().into()
 }
 
 fn extract_token_from_request_cookie(req: &ServiceRequest) -> Option<String> {
