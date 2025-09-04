@@ -1,4 +1,4 @@
-use mongodb::{error::Error, options::ClientOptions, Client, Database as MongoDatabase};
+use mongodb::{error::Error, Client, Database as MongoDatabase};
 
 #[derive(Clone)]
 pub struct Database {
@@ -7,14 +7,9 @@ pub struct Database {
 
 impl Database {
     pub async fn new(uri: &str, db_name: &str) -> Result<Self, Error> {
-        let client_options = ClientOptions::parse(uri).await?;
-
-        let client = Client::with_options(client_options)?;
-
+        let client = Client::with_uri_str(uri).await?;
         let db = client.database(db_name);
-
         db.run_command(mongodb::bson::doc! {"ping": 1}).await?;
-
         Ok(Database { db })
     }
 }
