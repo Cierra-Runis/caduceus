@@ -58,12 +58,12 @@ pub fn verify_jwt(token: &str, secret: &str) -> Result<UserClaims, jsonwebtoken:
 }
 
 pub struct JwtMiddleware {
-    jwt_secret: String,
+    secret: String,
 }
 
 impl JwtMiddleware {
-    pub fn new(jwt_secret: String) -> Self {
-        Self { jwt_secret }
+    pub fn new(secret: String) -> Self {
+        Self { secret }
     }
 }
 
@@ -81,14 +81,14 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(JwtMiddlewareService {
             service: Rc::new(service),
-            jwt_secret: self.jwt_secret.clone(),
+            secret: self.secret.clone(),
         })
     }
 }
 
 pub struct JwtMiddlewareService<S> {
     service: Rc<S>,
-    jwt_secret: String,
+    secret: String,
 }
 
 impl<S> Service<ServiceRequest> for JwtMiddlewareService<S>
@@ -104,7 +104,7 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
-        let jwt_secret = self.jwt_secret.clone();
+        let secret = self.secret.clone();
 
         Box::pin(async move {
             let token = match extract_token_from_request(&req) {
@@ -116,7 +116,7 @@ where
                 }
             };
 
-            let claims = match verify_jwt(&token, &jwt_secret) {
+            let claims = match verify_jwt(&token, &secret) {
                 Ok(claims) => claims,
                 Err(_) => {
                     let response = HttpResponse::Unauthorized()
