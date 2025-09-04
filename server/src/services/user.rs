@@ -1,9 +1,9 @@
 use bcrypt::BcryptError;
 use bcrypt::{non_truncating_hash, DEFAULT_COST};
 use bson::oid::ObjectId;
-use chrono::Utc;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
+use time::{Duration, OffsetDateTime};
 
 use crate::models::user::{User, UserClaims, UserPayload};
 use crate::repo::user::UserRepo;
@@ -57,13 +57,17 @@ impl<R: UserRepo> UserService<R> {
                 username: username.clone(),
                 nickname: username.clone(),
                 password: hashed_password,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             })
             .await
             .map_err(UserServiceError::Database)?;
 
-        let claims = UserClaims::new(user.id.to_hex(), Utc::now(), chrono::Duration::hours(24));
+        let claims = UserClaims::new(
+            user.id.to_hex(),
+            OffsetDateTime::now_utc(),
+            Duration::hours(24),
+        );
         let token = claims
             .generate(self.secret.clone())
             .map_err(UserServiceError::Jwt)?;
@@ -89,7 +93,11 @@ impl<R: UserRepo> UserService<R> {
             return Err(UserServiceError::PasswordNotMatched);
         }
 
-        let claims = UserClaims::new(user.id.to_hex(), Utc::now(), chrono::Duration::hours(24));
+        let claims = UserClaims::new(
+            user.id.to_hex(),
+            OffsetDateTime::now_utc(),
+            Duration::hours(24),
+        );
         let token = claims
             .generate(self.secret.clone())
             .map_err(UserServiceError::Jwt)?;
@@ -134,8 +142,8 @@ mod tests {
                 username: "existing_user".to_string(),
                 nickname: "existing_user".to_string(),
                 password: "hashed_password".to_string(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             }]),
         };
         let secret = "test_secret".to_string();
@@ -174,8 +182,8 @@ mod tests {
                 username: "test_user".to_string(),
                 nickname: "test_user".to_string(),
                 password: bcrypt::hash("test_password", DEFAULT_COST).unwrap(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             }]),
         };
         let secret = "test_secret".to_string();
@@ -213,8 +221,8 @@ mod tests {
                 username: "test_user".to_string(),
                 nickname: "test_user".to_string(),
                 password: bcrypt::hash("correct_password", DEFAULT_COST).unwrap(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             }]),
         };
         let secret = "test_secret".to_string();

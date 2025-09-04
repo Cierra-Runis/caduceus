@@ -8,13 +8,12 @@ actix-web = "4"
 tokio = { version = "1.47.1", features = ["full"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
-bson = { version = "2.15.0", features = ["chrono-0_4"] }
+bson = { version = "2.15.0", features = ["chrono-0_4", "time-0_3"] }
 mongodb = "3.2.5"
 jsonwebtoken = "9.3.1"
 bcrypt = "0.17.1"
 config = "0.15.15"
 thiserror = "2.0.16"
-chrono = { version = "0.4.41", features = ["serde"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 validator = { version = "0.20.0", features = ["derive"] }
@@ -22,6 +21,7 @@ regex = "1.11.2"
 async-trait = "0.1.89"
 derive_more = "2.0.1"
 futures-util = "0.3"
+time = { version = "0.3.43", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4.4"

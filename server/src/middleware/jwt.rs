@@ -134,6 +134,7 @@ where
 mod tests {
     use super::*;
     use actix_web::{test, web, App, HttpResponse};
+    use time::{Duration, OffsetDateTime};
 
     #[actix_web::test]
     async fn test_jwt_middleware_valid_token() {
@@ -144,8 +145,8 @@ mod tests {
         let secret = "test_secret";
         let claims = UserClaims::new(
             "user123".to_string(),
-            chrono::Utc::now(),
-            chrono::Duration::hours(1),
+            OffsetDateTime::now_utc(),
+            Duration::hours(24),
         );
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS512),

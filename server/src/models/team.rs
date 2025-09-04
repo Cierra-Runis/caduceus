@@ -1,6 +1,7 @@
 use bson::oid::ObjectId;
-use bson::serde_helpers::chrono_datetime_as_bson_datetime;
+use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Team {
@@ -9,8 +10,8 @@ pub struct Team {
     pub name: String,
     pub creator_id: ObjectId,
     pub member_ids: Vec<ObjectId>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
+    pub updated_at: OffsetDateTime,
 }

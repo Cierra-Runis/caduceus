@@ -1,6 +1,7 @@
 use bson::oid::ObjectId;
 use derive_more::Display;
 use serde::Serialize;
+use time::OffsetDateTime;
 
 use crate::{
     models::team::Team,
@@ -48,8 +49,8 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
                 name: name.clone(),
                 creator_id: id,
                 member_ids: vec![id],
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             })
             .await
             .map_err(TeamServiceError::Database)?;
@@ -76,8 +77,8 @@ mod tests {
                 username: "test_user".to_string(),
                 nickname: "Test User".to_string(),
                 password: "hashed_password".to_string(),
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
             }]),
         };
         let team_repo = MockTeamRepo {

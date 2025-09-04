@@ -1,8 +1,9 @@
-use bson::serde_helpers::chrono_datetime_as_bson_datetime;
-use chrono::{DateTime, Duration, Utc};
+use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use jsonwebtoken::{errors, Algorithm, EncodingKey, Header};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use time::serde::rfc3339;
+use time::{Duration, OffsetDateTime};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
@@ -11,10 +12,10 @@ pub struct User {
     pub username: String,
     pub nickname: String,
     pub password: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub created_at: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub updated_at: DateTime<Utc>,
+    #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -22,8 +23,10 @@ pub struct UserPayload {
     pub id: String,
     pub username: String,
     pub nickname: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[serde(with = "rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "rfc3339")]
+    pub updated_at: OffsetDateTime,
 }
 
 impl From<User> for UserPayload {
@@ -41,16 +44,16 @@ impl From<User> for UserPayload {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserClaims {
     pub sub: String,
-    pub exp: u64,
-    pub iat: u64,
+    pub exp: i64,
+    pub iat: i64,
 }
 
 impl UserClaims {
-    pub fn new(user_id: String, now: DateTime<Utc>, ttl: Duration) -> Self {
+    pub fn new(user_id: String, now: OffsetDateTime, ttl: Duration) -> Self {
         UserClaims {
             sub: user_id,
-            exp: (now + ttl).timestamp() as u64,
-            iat: now.timestamp() as u64,
+            exp: now.saturating_add(ttl).unix_timestamp(),
+            iat: now.unix_timestamp(),
         }
     }
 
@@ -75,8 +78,8 @@ mod tests {
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
         };
 
         let payload: UserPayload = user.clone().into();

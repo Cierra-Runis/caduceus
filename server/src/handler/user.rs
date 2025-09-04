@@ -6,6 +6,7 @@ use actix_web::{
 };
 use bcrypt::BcryptError;
 use serde::{Deserialize, Serialize};
+use time::{Duration, OffsetDateTime};
 
 use crate::services::user::UserServiceError;
 
@@ -51,8 +52,7 @@ pub async fn register(
         .await
     {
         Ok(auth) => {
-            let expires = actix_web::cookie::time::OffsetDateTime::now_utc()
-                .checked_add(actix_web::cookie::time::Duration::hours(24));
+            let expires = OffsetDateTime::now_utc().checked_add(Duration::hours(24));
             let cookie = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)
@@ -81,8 +81,7 @@ pub async fn login(
         .await
     {
         Ok(auth) => {
-            let expires = actix_web::cookie::time::OffsetDateTime::now_utc()
-                .checked_add(actix_web::cookie::time::Duration::hours(24));
+            let expires = OffsetDateTime::now_utc().checked_add(Duration::hours(24));
             let cookie = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)

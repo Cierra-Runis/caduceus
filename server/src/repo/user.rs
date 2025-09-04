@@ -38,6 +38,8 @@ impl UserRepo for MongoUserRepo {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
+    use time::OffsetDateTime;
+
     use crate::config;
 
     use super::*;
@@ -82,8 +84,8 @@ pub mod tests {
             username: ObjectId::new().to_hex(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
         };
 
         // Test create
