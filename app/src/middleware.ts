@@ -9,7 +9,7 @@ const publicRoutes = ['/login', '/register', '/'];
 export default async function middleware(req: NextRequest) {
   // Check if the current route is protected or public
   const path = req.nextUrl.pathname;
-  const isProtectedRoute = protectedRoutes.includes(path);
+  const isProtectedRoute = protectedRoutes.some((r) => path.startsWith(r));
   const isPublicRoute = publicRoutes.includes(path);
 
   // Decrypt the jwt from the cookie
@@ -36,5 +36,5 @@ export default async function middleware(req: NextRequest) {
 
 // Routes Middleware should not run on
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)'],
+  matcher: ['/dashboard/:path*', '/login', '/register', '/'],
 };
