@@ -4,6 +4,7 @@ import NextLink from 'next/link';
 import { ServerBadge } from '@/components/badges/ServerBadge';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { NavBar } from '@/components/roots/NavBar';
+import '@/styles/globals.css';
 
 export default function Layout({
   children,

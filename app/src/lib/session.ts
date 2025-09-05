@@ -1,4 +1,4 @@
-import { jwtVerify } from 'jose';
+import { JWTPayload, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import 'server-only';
@@ -6,7 +6,9 @@ import 'server-only';
 const secretKey = process.env.JWT_SECRET;
 const encodedKey = new TextEncoder().encode(secretKey);
 
-export async function decrypt(token: string | undefined) {
+export async function decrypt(
+  token: string | undefined,
+): Promise<JWTPayload | undefined> {
   if (!token) return;
   try {
     const { payload } = await jwtVerify(token, encodedKey, {

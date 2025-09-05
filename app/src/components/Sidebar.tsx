@@ -29,7 +29,7 @@ export function Sidebar() {
       <Button
         as={NextLink}
         className='aspect-square h-auto w-full flex-shrink-0'
-        href='/dashboard'
+        href='/'
         isIconOnly
         radius='none'
         variant={!team ? 'solid' : 'light'}
@@ -68,7 +68,7 @@ export function Sidebar() {
               isInSettings
                 ? team
                   ? `/dashboard/team/${team}`
-                  : '/dashboard'
+                  : '/'
                 : team
                   ? `/dashboard/team/${team}/manage`
                   : '/dashboard/settings'

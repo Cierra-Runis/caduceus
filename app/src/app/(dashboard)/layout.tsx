@@ -9,6 +9,7 @@ import Link from 'next/link';
 
 import { logout } from '@/actions/auth';
 import { Sidebar } from '@/components/Sidebar';
+import '@/styles/globals.css';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -23,7 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 content={
                   <Listbox>
                     <ListboxItem key='about'>About Caduceus</ListboxItem>
-                    <ListboxItem href='/dashboard/settings' key='settings'>
+                    <ListboxItem href='/settings' key='settings'>
                       About Caduceus
                     </ListboxItem>
                     <ListboxItem key='logout' onPress={logout}>
