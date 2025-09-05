@@ -19,7 +19,7 @@ use server::{
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     fmt::init();
 
-    let env = env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
+    let env = env::var("APP_ENV").unwrap_or("dev".to_string());
 
     let config = Config::load(&format!("./config/{env}.yaml")).expect("Failed to load config");
 
@@ -45,7 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let data = web::Data::new(AppState {
-        database,
         user_service,
         team_service,
     });
