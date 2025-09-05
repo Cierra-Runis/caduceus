@@ -38,7 +38,7 @@ export function Sidebar() {
       </Button>
 
       <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
-        {teams?.map((t) => (
+        {teams?.payload?.map((t) => (
           <Button
             as={NextLink}
             className='aspect-square h-auto w-full flex-shrink-0'
