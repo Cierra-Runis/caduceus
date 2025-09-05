@@ -40,6 +40,7 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
             .create(Team {
                 id: ObjectId::new(),
                 name: name.clone(),
+                avatar_uri: None,
                 creator_id: id,
                 member_ids: vec![id],
                 created_at: OffsetDateTime::now_utc(),
@@ -50,8 +51,6 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
 
         Ok(team.into())
     }
-
-
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ pub struct Team {
     #[serde(rename = "_id")]
     pub id: ObjectId,
     pub name: String,
+    pub avatar_uri: Option<String>,
     pub creator_id: ObjectId,
     pub member_ids: Vec<ObjectId>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
@@ -21,6 +22,7 @@ pub struct Team {
 pub struct TeamPayload {
     pub id: String,
     pub name: String,
+    pub avatar_uri: Option<String>,
     pub creator_id: String,
     pub member_ids: Vec<String>,
     #[serde(with = "rfc3339")]
@@ -34,6 +36,7 @@ impl From<Team> for TeamPayload {
         TeamPayload {
             id: team.id.to_hex(),
             name: team.name,
+            avatar_uri: team.avatar_uri,
             creator_id: team.creator_id.to_hex(),
             member_ids: team.member_ids.iter().map(|id| id.to_hex()).collect(),
             created_at: team.created_at,
