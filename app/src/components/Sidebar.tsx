@@ -22,49 +22,46 @@ export function Sidebar() {
     pathname.endsWith('/settings') || pathname.endsWith('/manage');
 
   return (
-    <aside className='relative flex h-full flex-col items-center transition-all'>
-      <div className='flex min-h-0 flex-1 flex-col items-center'>
-        <Button
-          as={NextLink}
-          className='h-16 w-16 flex-shrink-0'
-          href='/dashboard'
-          isIconOnly
-          radius='none'
-          variant={!team ? 'solid' : 'light'}
-        >
-          <Avatar src='https://i.pravatar.cc?img=1' />
-        </Button>
+    <ScrollShadow
+      className='relative flex h-full w-16 flex-col items-center overflow-auto transition-all'
+      hideScrollBar
+    >
+      <Button
+        as={NextLink}
+        className='aspect-square h-auto w-full flex-shrink-0'
+        href='/dashboard'
+        isIconOnly
+        radius='none'
+        variant={!team ? 'solid' : 'light'}
+      >
+        <Avatar src='https://i.pravatar.cc?img=1' />
+      </Button>
 
-        <ScrollShadow
-          className='flex min-h-0 flex-1 flex-col overflow-y-auto'
-          hideScrollBar
-        >
-          {teams?.map((t) => (
-            <Button
-              as={NextLink}
-              className='h-16 w-16 flex-shrink-0'
-              href={`/dashboard/team/${t.id}`}
-              isIconOnly
-              key={t.id}
-              radius='none'
-              variant={team === t.id ? 'solid' : 'light'}
-            >
-              <Tooltip content={t.name} placement='right'>
-                <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
-              </Tooltip>
-            </Button>
-          ))}
-        </ScrollShadow>
-
+      <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
+        {teams?.map((t) => (
+          <Button
+            as={NextLink}
+            className='aspect-square h-auto w-full flex-shrink-0'
+            href={`/dashboard/team/${t.id}`}
+            isIconOnly
+            key={t.id}
+            radius='none'
+            variant={team === t.id ? 'solid' : 'light'}
+          >
+            <Tooltip content={t.name} placement='right'>
+              <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
+            </Tooltip>
+          </Button>
+        ))}
         <CreateTeamButton
-          className='h-16 w-16 flex-shrink-0'
+          className='aspect-square h-auto w-full flex-shrink-0'
           radius='none'
           variant='light'
         />
-      </div>
+      </ScrollShadow>
 
-      <div className='flex flex-col items-center'>
-        <div className='flex h-16 w-16 items-center justify-center'>
+      <div className='flex w-full flex-shrink-0 flex-col items-center'>
+        <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
           <Button
             as={NextLink}
             href={
@@ -81,7 +78,7 @@ export function Sidebar() {
             variant={isInSettings ? 'solid' : 'light'}
           />
         </div>
-        <div className='flex h-16 w-16 items-center justify-center'>
+        <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
           <Button
             isIconOnly
             onPress={logout}
@@ -90,6 +87,6 @@ export function Sidebar() {
           />
         </div>
       </div>
-    </aside>
+    </ScrollShadow>
   );
 }
