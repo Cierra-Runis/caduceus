@@ -5,11 +5,14 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 
+use crate::models::team::TeamPayload;
 use crate::models::user::{User, UserClaims, UserPayload};
+use crate::repo::team::TeamRepo;
 use crate::repo::user::UserRepo;
 
-pub struct UserService<R: UserRepo> {
+pub struct UserService<R: UserRepo, T: TeamRepo> {
     pub user_repo: R,
+    pub team_repo: T,
     pub secret: String,
 }
 
@@ -35,7 +38,7 @@ pub struct AuthPayload {
     pub token: String,
 }
 
-impl<R: UserRepo> UserService<R> {
+impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
     pub async fn register(
         &self,
         username: String,
@@ -107,6 +110,27 @@ impl<R: UserRepo> UserService<R> {
             token,
         })
     }
+
+    pub async fn list_teams(&self, user_id: String) -> Result<Vec<TeamPayload>, UserServiceError> {
+        let id = ObjectId::parse_str(&user_id).map_err(|_| {
+            UserServiceError::Jwt(jsonwebtoken::errors::ErrorKind::InvalidToken.into())
+        })?;
+        match self.user_repo.find_by_id(id).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return Err(UserServiceError::UserNotFound),
+            Err(e) => return Err(UserServiceError::Database(e)),
+        };
+
+        let teams = self
+            .team_repo
+            .list_by_member_id(id)
+            .await
+            .map_err(UserServiceError::Database)?;
+
+        let payloads = teams.into_iter().map(|team| team.into()).collect();
+
+        Ok(payloads)
+    }
 }
 
 #[cfg(test)]
@@ -114,7 +138,7 @@ impl<R: UserRepo> UserService<R> {
 mod tests {
 
     use super::*;
-    use crate::repo::user::tests::MockUserRepo;
+    use crate::repo::{team::tests::MockTeamRepo, user::tests::MockUserRepo};
     use std::sync::Mutex;
 
     #[tokio::test]
@@ -122,8 +146,15 @@ mod tests {
         let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let result = service
             .register("test_user".to_string(), "test_password".to_string())
@@ -146,8 +177,15 @@ mod tests {
                 updated_at: OffsetDateTime::now_utc(),
             }]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let result = service
             .register("existing_user".to_string(), "test_password".to_string())
@@ -161,8 +199,15 @@ mod tests {
         let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let long_password = "a".repeat(1000);
         let result = service
@@ -186,8 +231,15 @@ mod tests {
                 updated_at: OffsetDateTime::now_utc(),
             }]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let result = service
             .login("test_user".to_string(), "test_password".to_string())
@@ -203,8 +255,15 @@ mod tests {
         let user_repo = MockUserRepo {
             users: Mutex::new(vec![]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let result = service
             .login("nonexistent_user".to_string(), "test_password".to_string())
@@ -225,8 +284,15 @@ mod tests {
                 updated_at: OffsetDateTime::now_utc(),
             }]),
         };
+        let team_repo = MockTeamRepo {
+            teams: Mutex::new(vec![]),
+        };
         let secret = "test_secret".to_string();
-        let service = UserService { user_repo, secret };
+        let service = UserService {
+            user_repo,
+            team_repo,
+            secret,
+        };
 
         let result = service
             .login("test_user".to_string(), "wrong_password".to_string())

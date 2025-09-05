@@ -1,10 +1,9 @@
 use bson::oid::ObjectId;
 use derive_more::Display;
-use serde::Serialize;
 use time::OffsetDateTime;
 
 use crate::{
-    models::team::Team,
+    models::team::{Team, TeamPayload},
     repo::{team::TeamRepo, user::UserRepo},
 };
 
@@ -21,12 +20,6 @@ pub enum TeamServiceError {
     UserNotFound,
     #[display("Database error: {_0}")]
     Database(mongodb::error::Error),
-}
-
-#[derive(Serialize)]
-pub struct TeamPayload {
-    pub id: String,
-    pub name: String,
 }
 
 impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
@@ -55,11 +48,10 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
             .await
             .map_err(TeamServiceError::Database)?;
 
-        Ok(TeamPayload {
-            id: team.id.to_hex(),
-            name: team.name,
-        })
+        Ok(team.into())
     }
+
+
 }
 
 #[cfg(test)]

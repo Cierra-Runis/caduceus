@@ -8,7 +8,7 @@ use bcrypt::BcryptError;
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 
-use crate::services::user::UserServiceError;
+use crate::{models::user::UserClaims, services::user::UserServiceError};
 
 #[derive(Serialize)]
 struct Response {
@@ -104,4 +104,14 @@ pub async fn logout() -> HttpResponse {
     HttpResponse::Ok().cookie(cookie).json(Response {
         message: "Logged out successfully".to_string(),
     })
+}
+
+pub async fn teams(
+    data: web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, UserServiceError> {
+    match data.user_service.list_teams(user.sub).await {
+        Ok(teams) => Ok(HttpResponse::Ok().json(teams)),
+        Err(e) => Err(e),
+    }
 }

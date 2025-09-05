@@ -36,6 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_service = UserService {
         user_repo: user_repo.clone(),
+        team_repo: team_repo.clone(),
         secret: config.jwt_secret.clone(),
     };
     let team_service = TeamService {
@@ -59,7 +60,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .service(
                 web::scope("/api")
                     .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
-                    .route("/team", web::post().to(handler::team::create)),
+                    .route("/team", web::post().to(handler::team::create))
+                    .service(
+                        web::scope("/user").route("/teams", web::get().to(handler::user::teams)),
+                    ),
             )
             .wrap(actix_web::middleware::Logger::default())
     })

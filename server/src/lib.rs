@@ -16,6 +16,6 @@ use database::Database;
 
 pub struct AppState {
     pub database: Database,
-    pub user_service: UserService<MongoUserRepo>,
+    pub user_service: UserService<MongoUserRepo, MongoTeamRepo>,
     pub team_service: TeamService<MongoTeamRepo, MongoUserRepo>,
 }

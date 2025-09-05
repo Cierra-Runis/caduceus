@@ -1,3 +1,5 @@
+use bson::{doc, oid::ObjectId};
+use futures_util::TryStreamExt;
 use mongodb::error::Result;
 
 use crate::models::team::Team;
@@ -5,6 +7,7 @@ use crate::models::team::Team;
 #[async_trait::async_trait]
 pub trait TeamRepo {
     async fn create(&self, team: Team) -> Result<Team>;
+    async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>>;
 }
 
 #[derive(Clone)]
@@ -20,6 +23,13 @@ impl TeamRepo for MongoTeamRepo {
             Ok(_) => Ok(team),
             Err(e) => Err(e),
         }
+    }
+
+    async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>> {
+        let filter = doc! { "member_ids": member_id };
+        let cursor = self.collection.find(filter).await?;
+        let teams: Vec<Team> = cursor.try_collect().await?;
+        Ok(teams)
     }
 }
 
@@ -39,6 +49,16 @@ pub mod tests {
             let mut teams = self.teams.lock().unwrap();
             teams.push(team.clone());
             Ok(team)
+        }
+
+        async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>> {
+            let teams = self.teams.lock().unwrap();
+            let filtered_teams: Vec<Team> = teams
+                .iter()
+                .filter(|team| team.member_ids.contains(&member_id))
+                .cloned()
+                .collect();
+            Ok(filtered_teams)
         }
     }
 }
