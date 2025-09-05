@@ -1,4 +1,4 @@
-use crate::models::user::User;
+use crate::models::user::{self, User};
 use bson::oid::ObjectId;
 use mongodb::{bson::doc, error::Result};
 
@@ -17,12 +17,12 @@ pub struct MongoUserRepo {
 #[async_trait::async_trait]
 impl UserRepo for MongoUserRepo {
     async fn find_by_id(&self, id: ObjectId) -> Result<Option<User>> {
-        let filter = doc! { "_id": id };
+        let filter = doc! { user::FIELD_ID: id };
         self.collection.find_one(filter).await
     }
 
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
-        let filter = doc! { "username": username };
+        let filter = doc! { user::FIELD_USERNAME: username };
         self.collection.find_one(filter).await
     }
 

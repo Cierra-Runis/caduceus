@@ -5,6 +5,13 @@ use serde::{Deserialize, Serialize};
 use time::serde::rfc3339;
 use time::{Duration, OffsetDateTime};
 
+pub const FIELD_ID: &str = "_id";
+pub const FIELD_USERNAME: &str = "username";
+pub const FIELD_NICKNAME: &str = "nickname";
+pub const FIELD_PASSWORD: &str = "password";
+pub const FIELD_CREATED_AT: &str = "created_at";
+pub const FIELD_UPDATED_AT: &str = "updated_at";
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     #[serde(rename = "_id")]
