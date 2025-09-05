@@ -23,7 +23,7 @@ export function Sidebar() {
 
   return (
     <ScrollShadow
-      className='relative flex h-full w-16 flex-col items-center overflow-auto transition-all'
+      className='bg-default-50 relative flex h-full w-18 flex-col items-center overflow-auto pt-11 transition-all'
       hideScrollBar
     >
       <Button
