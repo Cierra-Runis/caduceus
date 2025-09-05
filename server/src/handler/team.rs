@@ -1,18 +1,15 @@
 use actix_web::{web, HttpResponse, ResponseError};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::{models::user::UserClaims, services::team::TeamServiceError};
-
-#[derive(Serialize)]
-struct Response {
-    message: String,
-}
+use crate::{
+    models::{response::ApiResponse, user::UserClaims},
+    services::team::TeamServiceError,
+};
 
 impl ResponseError for TeamServiceError {
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code()).json(Response {
-            message: self.to_string(),
-        })
+        let response = ApiResponse::error(&self.to_string());
+        HttpResponse::build(self.status_code()).json(response)
     }
 
     fn status_code(&self) -> actix_web::http::StatusCode {
@@ -35,7 +32,10 @@ pub async fn create(
     user: UserClaims,
 ) -> Result<HttpResponse, TeamServiceError> {
     match data.team_service.create(user.sub, req.name.clone()).await {
-        Ok(team) => Ok(HttpResponse::Ok().json(team)),
+        Ok(team) => {
+            let response = ApiResponse::success("Team created successfully", team);
+            Ok(HttpResponse::Ok().json(response))
+        }
         Err(e) => Err(e),
     }
 }

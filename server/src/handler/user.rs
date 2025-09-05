@@ -5,21 +5,18 @@ use actix_web::{
     web, HttpResponse, ResponseError,
 };
 use bcrypt::BcryptError;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use time::{Duration, OffsetDateTime};
 
-use crate::{models::user::UserClaims, services::user::UserServiceError};
-
-#[derive(Serialize)]
-struct Response {
-    message: String,
-}
+use crate::{
+    models::{response::ApiResponse, user::UserClaims},
+    services::user::UserServiceError,
+};
 
 impl ResponseError for UserServiceError {
     fn error_response(&self) -> HttpResponse<BoxBody> {
-        HttpResponse::build(self.status_code()).json(Response {
-            message: self.to_string(),
-        })
+        let response = ApiResponse::error(&self.to_string());
+        HttpResponse::build(self.status_code()).json(response)
     }
 
     fn status_code(&self) -> StatusCode {
@@ -59,7 +56,8 @@ pub async fn register(
                 .same_site(SameSite::Lax)
                 .http_only(true)
                 .finish();
-            Ok(HttpResponse::Ok().cookie(cookie).json(auth))
+            let response = ApiResponse::success("User registered successfully", auth);
+            Ok(HttpResponse::Ok().cookie(cookie).json(response))
         }
         Err(err) => Err(err),
     }
@@ -88,7 +86,8 @@ pub async fn login(
                 .same_site(SameSite::Lax)
                 .http_only(true)
                 .finish();
-            Ok(HttpResponse::Ok().cookie(cookie).json(auth))
+            let response = ApiResponse::success("User logged in successfully", auth);
+            Ok(HttpResponse::Ok().cookie(cookie).json(response))
         }
         Err(err) => Err(err),
     }
@@ -101,9 +100,8 @@ pub async fn logout() -> HttpResponse {
         .http_only(true)
         .finish();
     cookie.make_removal();
-    HttpResponse::Ok().cookie(cookie).json(Response {
-        message: "Logged out successfully".to_string(),
-    })
+    let response = ApiResponse::success_no_payload("Logged out successfully");
+    HttpResponse::Ok().cookie(cookie).json(response)
 }
 
 pub async fn teams(
@@ -111,7 +109,10 @@ pub async fn teams(
     user: UserClaims,
 ) -> Result<HttpResponse, UserServiceError> {
     match data.user_service.list_teams(user.sub).await {
-        Ok(teams) => Ok(HttpResponse::Ok().json(teams)),
+        Ok(teams) => {
+            let response = ApiResponse::success("Teams retrieved successfully", teams);
+            Ok(HttpResponse::Ok().json(response))
+        }
         Err(e) => Err(e),
     }
 }

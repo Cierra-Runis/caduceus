@@ -1,6 +1,8 @@
 use actix_web::{HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::models::response::ApiResponse;
+
 #[derive(Serialize, Deserialize, Default)]
 enum HealthStatus {
     #[default]
@@ -14,5 +16,6 @@ pub struct HealthPayload {
 }
 
 pub async fn health() -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().json(HealthPayload::default()))
+    let response = ApiResponse::success("Service is healthy", HealthPayload::default());
+    Ok(HttpResponse::Ok().json(response))
 }
