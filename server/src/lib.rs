@@ -9,11 +9,12 @@ pub mod repo;
 pub mod services;
 
 use crate::{
-    repo::{team::MongoTeamRepo, user::MongoUserRepo},
-    services::{team::TeamService, user::UserService},
+    repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
+    services::{project::ProjectService, team::TeamService, user::UserService},
 };
 
 pub struct AppState {
     pub user_service: UserService<MongoUserRepo, MongoTeamRepo>,
     pub team_service: TeamService<MongoTeamRepo, MongoUserRepo>,
+    pub project_service: ProjectService<MongoProjectRepo, MongoUserRepo, MongoTeamRepo>,
 }

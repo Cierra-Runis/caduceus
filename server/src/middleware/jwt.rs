@@ -137,17 +137,18 @@ where
 mod tests {
     use super::*;
     use actix_web::{test, web, App, HttpResponse};
+    use bson::oid::ObjectId;
     use time::{Duration, OffsetDateTime};
 
     #[actix_web::test]
     async fn test_jwt_middleware_valid_token() {
         async fn protected_handler(user: UserClaims) -> HttpResponse {
-            HttpResponse::Ok().json(serde_json::json!({"user_id": user.sub}))
+            HttpResponse::Ok().json(serde_json::json!({"user_id": user.sub.to_hex()}))
         }
 
         let secret = "test_secret";
         let claims = UserClaims::new(
-            "user123".to_string(),
+            ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
             OffsetDateTime::now_utc(),
             Duration::hours(24),
         );
@@ -173,7 +174,7 @@ mod tests {
         assert_eq!(resp.status(), 200);
         assert_eq!(
             test::read_body(resp).await,
-            serde_json::to_string(&serde_json::json!({"user_id": "user123"}))
+            serde_json::to_string(&serde_json::json!({"user_id": "64b64c4f2f9b256e1c8e4d3a"}))
                 .unwrap()
                 .as_bytes()
         );

@@ -66,11 +66,7 @@ impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
             .await
             .map_err(UserServiceError::Database)?;
 
-        let claims = UserClaims::new(
-            user.id.to_hex(),
-            OffsetDateTime::now_utc(),
-            Duration::hours(24),
-        );
+        let claims = UserClaims::new(user.id, OffsetDateTime::now_utc(), Duration::hours(24));
         let token = claims
             .generate(self.secret.clone())
             .map_err(UserServiceError::Jwt)?;
@@ -96,11 +92,7 @@ impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
             return Err(UserServiceError::PasswordNotMatched);
         }
 
-        let claims = UserClaims::new(
-            user.id.to_hex(),
-            OffsetDateTime::now_utc(),
-            Duration::hours(24),
-        );
+        let claims = UserClaims::new(user.id, OffsetDateTime::now_utc(), Duration::hours(24));
         let token = claims
             .generate(self.secret.clone())
             .map_err(UserServiceError::Jwt)?;
@@ -111,11 +103,11 @@ impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
         })
     }
 
-    pub async fn list_teams(&self, user_id: String) -> Result<Vec<TeamPayload>, UserServiceError> {
-        let id = ObjectId::parse_str(&user_id).map_err(|_| {
-            UserServiceError::Jwt(jsonwebtoken::errors::ErrorKind::InvalidToken.into())
-        })?;
-        match self.user_repo.find_by_id(id).await {
+    pub async fn list_teams(
+        &self,
+        user_id: ObjectId,
+    ) -> Result<Vec<TeamPayload>, UserServiceError> {
+        match self.user_repo.find_by_id(user_id).await {
             Ok(Some(_)) => {}
             Ok(None) => return Err(UserServiceError::UserNotFound),
             Err(e) => return Err(UserServiceError::Database(e)),
@@ -123,7 +115,7 @@ impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
 
         let teams = self
             .team_repo
-            .list_by_member_id(id)
+            .list_by_member_id(user_id)
             .await
             .map_err(UserServiceError::Database)?;
 

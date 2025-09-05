@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, ResponseError};
+use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
 use serde::Deserialize;
 
 use crate::{
@@ -12,11 +12,10 @@ impl ResponseError for TeamServiceError {
         HttpResponse::build(self.status_code()).json(response)
     }
 
-    fn status_code(&self) -> actix_web::http::StatusCode {
+    fn status_code(&self) -> StatusCode {
         match *self {
-            TeamServiceError::InvalidUserId => actix_web::http::StatusCode::BAD_REQUEST,
-            TeamServiceError::UserNotFound => actix_web::http::StatusCode::NOT_FOUND,
-            TeamServiceError::Database(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            TeamServiceError::UserNotFound => StatusCode::NOT_FOUND,
+            TeamServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

@@ -1,3 +1,4 @@
+use bson::serde_helpers::serialize_object_id_as_hex_string;
 use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use jsonwebtoken::{errors, Algorithm, EncodingKey, Header};
 use mongodb::bson::oid::ObjectId;
@@ -50,13 +51,14 @@ impl From<User> for UserPayload {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserClaims {
-    pub sub: String,
+    #[serde(serialize_with = "serialize_object_id_as_hex_string")]
+    pub sub: ObjectId,
     pub exp: i64,
     pub iat: i64,
 }
 
 impl UserClaims {
-    pub fn new(user_id: String, now: OffsetDateTime, ttl: Duration) -> Self {
+    pub fn new(user_id: ObjectId, now: OffsetDateTime, ttl: Duration) -> Self {
         UserClaims {
             sub: user_id,
             exp: now.saturating_add(ttl).unix_timestamp(),

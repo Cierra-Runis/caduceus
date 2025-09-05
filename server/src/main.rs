@@ -9,8 +9,8 @@ use server::{
     database::Database,
     handler,
     middleware::jwt::JwtMiddleware,
-    repo::{team::MongoTeamRepo, user::MongoUserRepo},
-    services::{team::TeamService, user::UserService},
+    repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
+    services::{project::ProjectService, team::TeamService, user::UserService},
     AppState,
 };
 
@@ -33,20 +33,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let team_repo = MongoTeamRepo {
         collection: database.db.collection("teams"),
     };
-
-    let user_service = UserService {
-        user_repo: user_repo.clone(),
-        team_repo: team_repo.clone(),
-        secret: config.jwt_secret.clone(),
-    };
-    let team_service = TeamService {
-        team_repo: team_repo.clone(),
-        user_repo: user_repo.clone(),
+    let project_repo = MongoProjectRepo {
+        collection: database.db.collection("projects"),
     };
 
     let data = web::Data::new(AppState {
-        user_service,
-        team_service,
+        user_service: UserService {
+            user_repo: user_repo.clone(),
+            team_repo: team_repo.clone(),
+            secret: config.jwt_secret.clone(),
+        },
+        team_service: TeamService {
+            team_repo: team_repo.clone(),
+            user_repo: user_repo.clone(),
+        },
+        project_service: ProjectService {
+            project_repo: project_repo.clone(),
+            user_repo: user_repo.clone(),
+            team_repo: team_repo.clone(),
+        },
     });
 
     HttpServer::new(move || {

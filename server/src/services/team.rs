@@ -14,8 +14,6 @@ pub struct TeamService<R: TeamRepo, U: UserRepo> {
 
 #[derive(Debug, Display)]
 pub enum TeamServiceError {
-    #[display("Invalid user ID")]
-    InvalidUserId,
     #[display("User not found")]
     UserNotFound,
     #[display("Database error: {_0}")]
@@ -25,12 +23,11 @@ pub enum TeamServiceError {
 impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
     pub async fn create(
         &self,
-        creator_id: String,
+        creator_id: ObjectId,
         name: String,
     ) -> Result<TeamPayload, TeamServiceError> {
-        let id = ObjectId::parse_str(&creator_id).map_err(|_| TeamServiceError::InvalidUserId)?;
-        match self.user_repo.find_by_id(id).await {
-            Ok(Some(_)) => {}
+        let creator = match self.user_repo.find_by_id(creator_id).await {
+            Ok(Some(user)) => user,
             Ok(None) => return Err(TeamServiceError::UserNotFound),
             Err(e) => return Err(TeamServiceError::Database(e)),
         };
@@ -41,8 +38,8 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
                 id: ObjectId::new(),
                 name: name.clone(),
                 avatar_uri: None,
-                creator_id: id,
-                member_ids: vec![id],
+                creator_id: creator.id,
+                member_ids: vec![creator.id],
                 created_at: OffsetDateTime::now_utc(),
                 updated_at: OffsetDateTime::now_utc(),
             })
@@ -82,7 +79,7 @@ mod tests {
 
         let result = service
             .create(
-                "64b64c4f2f9b256e1c8e4d3a".to_string(),
+                ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
                 "Test Team".to_string(),
             )
             .await;
@@ -106,30 +103,11 @@ mod tests {
 
         let result = service
             .create(
-                "64b64c4f2f9b256e1c8e4d3a".to_string(),
+                ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
                 "Test Team".to_string(),
             )
             .await;
 
         assert!(matches!(result, Err(TeamServiceError::UserNotFound)));
-    }
-
-    #[tokio::test]
-    async fn test_create_invalid_user_id() {
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![]),
-        };
-        let team_repo = MockTeamRepo {
-            teams: Mutex::new(vec![]),
-        };
-        let service = TeamService {
-            user_repo,
-            team_repo,
-        };
-
-        let result = service
-            .create("invalid_object_id".to_string(), "Test Team".to_string())
-            .await;
-        assert!(matches!(result, Err(TeamServiceError::InvalidUserId)));
     }
 }

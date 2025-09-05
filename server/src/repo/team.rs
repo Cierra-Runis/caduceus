@@ -7,6 +7,7 @@ use crate::models::team::Team;
 #[async_trait::async_trait]
 pub trait TeamRepo {
     async fn create(&self, team: Team) -> Result<Team>;
+    async fn find_by_id(&self, id: ObjectId) -> Result<Option<Team>>;
     async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>>;
 }
 
@@ -23,6 +24,11 @@ impl TeamRepo for MongoTeamRepo {
             Ok(_) => Ok(team),
             Err(e) => Err(e),
         }
+    }
+
+    async fn find_by_id(&self, id: ObjectId) -> Result<Option<Team>> {
+        let filter = doc! { "_id": id };
+        self.collection.find_one(filter).await
     }
 
     async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>> {
@@ -49,6 +55,16 @@ pub mod tests {
             let mut teams = self.teams.lock().unwrap();
             teams.push(team.clone());
             Ok(team)
+        }
+
+        async fn find_by_id(&self, id: ObjectId) -> Result<Option<Team>> {
+            let teams = self.teams.lock().unwrap();
+            for team in teams.iter() {
+                if team.id == id {
+                    return Ok(Some(team.clone()));
+                }
+            }
+            Ok(None)
         }
 
         async fn list_by_member_id(&self, member_id: ObjectId) -> Result<Vec<Team>> {
