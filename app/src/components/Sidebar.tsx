@@ -2,7 +2,7 @@
 
 import { Avatar } from '@heroui/avatar';
 import { Button } from '@heroui/button';
-import { Tab, Tabs } from '@heroui/tabs';
+import { Tooltip } from '@heroui/tooltip';
 import { IconLogout, IconSettings } from '@tabler/icons-react';
 import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
@@ -21,36 +21,36 @@ export function Sidebar() {
     pathname.endsWith('/settings') || pathname.endsWith('/manage');
 
   return (
-    <aside className='relative flex flex-col items-center justify-between py-3 transition-all'>
+    <aside className='relative flex flex-col items-center justify-between pb-4 transition-all'>
       <div className='flex flex-col items-center'>
-        <Tabs
-          classNames={{
-            tab: 'w-auto h-auto p-2',
-            tabList: 'space-y-4 bg-transparent',
-          }}
-          isVertical
-          selectedKey={team ? `/dashboard/team/${team}` : '/dashboard'}
+        <Button
+          as={NextLink}
+          className='h-16 w-16'
+          href='/dashboard'
+          isIconOnly
+          radius='none'
+          variant={!team ? 'solid' : 'light'}
         >
-          <Tab
+          <Avatar src='https://i.pravatar.cc?img=1' />
+        </Button>
+
+        {teams?.map((t) => (
+          <Button
             as={NextLink}
-            href='/dashboard'
-            key='/dashboard'
-            title={<Avatar src='https://i.pravatar.cc?img=1' />}
-          />
+            className='h-16 w-16'
+            href={`/dashboard/team/${t.id}`}
+            isIconOnly
+            key={t.id}
+            radius='none'
+            variant={team === t.id ? 'solid' : 'light'}
+          >
+            <Tooltip content={t.name} placement='right'>
+              <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
+            </Tooltip>
+          </Button>
+        ))}
 
-          {teams?.map((t) => (
-            <Tab
-              as={NextLink}
-              href={`/dashboard/team/${t.id}`}
-              key={`/dashboard/team/${t.id}`}
-              title={<Avatar>{t.name.charAt(0).toUpperCase()}</Avatar>}
-            />
-          ))}
-
-          <Tab as='div'>
-            <CreateTeamButton />
-          </Tab>
-        </Tabs>
+        <CreateTeamButton className='h-16 w-16' radius='none' variant='light' />
       </div>
 
       <div className='flex flex-col items-center space-y-2'>

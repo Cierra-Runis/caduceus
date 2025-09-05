@@ -3,6 +3,7 @@ import useSWR from 'swr';
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export type Team = {
+  avatar_uri?: string;
   id: string;
   name: string;
 };

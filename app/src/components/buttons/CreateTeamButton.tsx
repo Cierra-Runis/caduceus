@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@heroui/button';
+import { Button, ButtonProps } from '@heroui/button';
 import { Form } from '@heroui/form';
 import { Input } from '@heroui/input';
 import {
@@ -16,7 +16,7 @@ import { IconPlus } from '@tabler/icons-react';
 import axios from 'axios';
 import { FormEvent, useState } from 'react';
 
-export function CreateTeamButton() {
+export function CreateTeamButton({ ...props }: ButtonProps) {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +47,7 @@ export function CreateTeamButton() {
       addToast({
         color: 'success',
         description: 'Team created successfully!',
+        timeout: 3000,
         title: res.data.message,
       });
     } catch (err: unknown) {
@@ -66,7 +67,9 @@ export function CreateTeamButton() {
 
   return (
     <>
-      <Button isIconOnly onPress={onOpen} startContent={<IconPlus />} />
+      <Button isIconOnly onPress={onOpen} {...props}>
+        <IconPlus />
+      </Button>
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <ModalContent>
           {(onClose) => (
@@ -74,7 +77,7 @@ export function CreateTeamButton() {
               <ModalHeader className='flex flex-col gap-1'>
                 Create Team
               </ModalHeader>
-              <Form onSubmit={onSubmit}>
+              <Form className='contents' onSubmit={onSubmit}>
                 <ModalBody>
                   <Input
                     label='Team Name'
