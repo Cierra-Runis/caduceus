@@ -8,10 +8,14 @@ import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
 import { logout } from '@/actions/auth';
+import { useUserTeams } from '@/hooks/useUserTeams';
+
+import { CreateTeamButton } from './buttons/CreateTeamButton';
 
 export function Sidebar() {
   const { team } = useParams();
   const pathname = usePathname();
+  const { teams } = useUserTeams();
 
   const isInSettings =
     pathname.endsWith('/settings') || pathname.endsWith('/manage');
@@ -34,18 +38,18 @@ export function Sidebar() {
             title={<Avatar src='https://i.pravatar.cc?img=1' />}
           />
 
-          <Tab
-            as={NextLink}
-            href='/dashboard/team/grjfkesghzishfkjhwf'
-            key='/dashboard/team/grjfkesghzishfkjhwf'
-            title={<Avatar src='https://i.pravatar.cc?img=2' />}
-          />
-          <Tab
-            as={NextLink}
-            href='/dashboard/team/esglihURGbwkfhaqwih'
-            key='/dashboard/team/esglihURGbwkfhaqwih'
-            title={<Avatar src='https://i.pravatar.cc?img=3' />}
-          />
+          {teams?.map((t) => (
+            <Tab
+              as={NextLink}
+              href={`/dashboard/team/${t.id}`}
+              key={`/dashboard/team/${t.id}`}
+              title={<Avatar>{t.name.charAt(0).toUpperCase()}</Avatar>}
+            />
+          ))}
+
+          <Tab as='div'>
+            <CreateTeamButton />
+          </Tab>
         </Tabs>
       </div>
 
