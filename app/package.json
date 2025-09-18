@@ -49,6 +49,7 @@
     "@heroui/toast": "^2.0.14",
     "@heroui/tooltip": "^2.2.21",
     "@heroui/user": "^2.2.20",
+    "@hookform/resolvers": "^5.2.2",
     "@tabler/icons-react": "^3.34.1",
     "axios": "^1.11.0",
     "framer-motion": "12.23.12",
@@ -59,7 +60,9 @@
     "next-themes": "^0.4.6",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "swr": "^2.3.6"
+    "react-hook-form": "^7.62.0",
+    "swr": "^2.3.6",
+    "zod": "^4.1.9"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
