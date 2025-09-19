@@ -1,15 +1,10 @@
 import useSWR from 'swr';
 
+import { TeamPayload } from '@/lib/models/team';
 import { api } from '@/lib/request';
 import { ApiResponse, ErrorResponse } from '@/lib/response';
 
-export type Team = {
-  avatar_uri?: string;
-  id: string;
-  name: string;
-};
-
-type UserTeamsResponse = ApiResponse<Team[]>;
+type UserTeamsResponse = ApiResponse<TeamPayload[]>;
 
 export function useUserTeams() {
   return useSWR<UserTeamsResponse, ErrorResponse, string>(
