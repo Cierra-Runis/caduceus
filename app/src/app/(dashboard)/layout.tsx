@@ -5,6 +5,7 @@ import { Listbox, ListboxItem } from '@heroui/listbox';
 import { Navbar, NavbarBrand, NavbarContent } from '@heroui/navbar';
 import { Tooltip } from '@heroui/tooltip';
 import { IconCloud } from '@tabler/icons-react';
+import NextLink from 'next/link';
 
 import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
@@ -49,16 +50,16 @@ function CaduceusButton() {
     <Tooltip
       content={
         <Listbox>
-          <ListboxItem href='/about' key='about'>
+          <ListboxItem as={NextLink} href='/about' key='about'>
             About Caduceus
           </ListboxItem>
-          <ListboxItem href='/dashboard/settings' key='settings'>
+          <ListboxItem as={NextLink} href='/dashboard/settings' key='settings'>
             Account Settings
           </ListboxItem>
           <ListboxItem key='logout' onPress={logout}>
             Logout
           </ListboxItem>
-          <ListboxItem href='/home' key='home'>
+          <ListboxItem as={NextLink} href='/home' key='home'>
             Go to landing page
           </ListboxItem>
         </Listbox>
@@ -85,14 +86,22 @@ function HelpButton() {
     <Tooltip
       content={
         <Listbox>
-          <ListboxItem href='https://typst.app/docs/tutorial' key='tutorial'>
+          <ListboxItem
+            as={NextLink}
+            href='https://typst.app/docs/tutorial'
+            key='tutorial'
+          >
             Tutorial
           </ListboxItem>
-          <ListboxItem href='https://typst.app/docs/reference/' key='reference'>
+          <ListboxItem
+            as={NextLink}
+            href='https://typst.app/docs/reference/'
+            key='reference'
+          >
             Reference
           </ListboxItem>
           <ListboxItem key='feedback'>Feedback</ListboxItem>
-          <ListboxItem href='/contact' key='contact'>
+          <ListboxItem as={NextLink} href='/contact' key='contact'>
             Contact
           </ListboxItem>
         </Listbox>
