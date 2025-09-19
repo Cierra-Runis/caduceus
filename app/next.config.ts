@@ -3,6 +3,10 @@ import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const nextConfig: NextConfig = {
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
+  },
   reactStrictMode: true,
   async rewrites() {
     // Proxy the front-end /api/*request to the local Go service (development environment)
