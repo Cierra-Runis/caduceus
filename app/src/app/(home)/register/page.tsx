@@ -7,9 +7,8 @@ import NextLink from 'next/link';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { useRegister } from '@/hooks/useRegister';
 import { RegisterRequest } from '@/lib/api/register';
-
-import { useRegister } from './_lib/hook';
 
 export default function RegisterPage() {
   const { isMutating, trigger } = useRegister();

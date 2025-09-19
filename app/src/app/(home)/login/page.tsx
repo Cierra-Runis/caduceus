@@ -6,12 +6,12 @@ import NextLink from 'next/link';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { useLogin } from '@/hooks/useLogin';
 import { LoginSchema } from '@/lib/api/login';
-
-import { useLogin } from './_lib/hook';
 
 export default function LoginPage() {
   const { isMutating, trigger } = useLogin();
+
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
