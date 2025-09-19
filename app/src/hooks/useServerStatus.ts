@@ -2,20 +2,22 @@ import { BadgeProps } from '@heroui/badge';
 import { useMemo } from 'react';
 import useSWR from 'swr';
 
-import { ApiResponse } from '@/lib/response';
+import { api } from '@/lib/request';
+import { ApiResponse, ErrorResponse } from '@/lib/response';
 
 export type ServerStatus = {
   status: 'healthy';
   timestamp: string;
 };
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+type HealthResponse = ApiResponse<ServerStatus>;
 
 export function useServerStatus() {
-  const { data, error, isLoading } = useSWR<ApiResponse<ServerStatus>>(
-    '/api/health',
-    fetcher,
-  );
+  const { data, error, isLoading } = useSWR<
+    HealthResponse,
+    ErrorResponse,
+    string
+  >('/api/health', (key) => api.get(key).json());
 
   const color = useMemo<BadgeProps['color']>(() => {
     if (isLoading) return 'default';

@@ -1,8 +1,7 @@
 import useSWR from 'swr';
 
-import { ApiResponse } from '@/lib/response';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+import { api } from '@/lib/request';
+import { ApiResponse, ErrorResponse } from '@/lib/response';
 
 export type Team = {
   avatar_uri?: string;
@@ -10,11 +9,14 @@ export type Team = {
   name: string;
 };
 
+type UserTeamsResponse = ApiResponse<Team[]>;
+
 export function useUserTeams() {
-  const { data, error, isLoading } = useSWR<ApiResponse<Team[]>>(
-    '/api/user/teams',
-    fetcher,
-  );
+  const { data, error, isLoading } = useSWR<
+    UserTeamsResponse,
+    ErrorResponse,
+    string
+  >('/api/user/teams', (key) => api.get(key).json());
 
   return {
     isError: error,
