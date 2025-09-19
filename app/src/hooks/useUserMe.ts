@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 
-import { UserPayload } from '@/lib/api/register';
+import { UserPayload } from '@/lib/models/user';
 import { api } from '@/lib/request';
 import { ApiResponse, ErrorResponse } from '@/lib/response';
 
