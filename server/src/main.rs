@@ -66,7 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
                     .route("/team", web::post().to(handler::team::create))
                     .service(
-                        web::scope("/user").route("/teams", web::get().to(handler::user::teams)),
+                        web::scope("/user")
+                            .route("/me", web::get().to(handler::user::me))
+                            .route("/teams", web::get().to(handler::user::teams)),
                     ),
             )
             .wrap(actix_web::middleware::Logger::default())
