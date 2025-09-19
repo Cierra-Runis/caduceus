@@ -13,7 +13,6 @@ import {
 } from '@heroui/modal';
 import { addToast } from '@heroui/toast';
 import { IconPlus } from '@tabler/icons-react';
-import axios from 'axios';
 import { FormEvent, useState } from 'react';
 
 export function CreateTeamButton({ ...props }: ButtonProps) {
@@ -22,8 +21,6 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    console.log('Submitting form');
 
     const form = new FormData(e.currentTarget);
     const payload = {
@@ -38,31 +35,31 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
       });
     }
 
-    try {
-      setSubmitting(true);
-      const res = await axios.post('/api/team', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true,
-      });
-      addToast({
-        color: 'success',
-        description: 'Team created successfully!',
-        timeout: 3000,
-        title: res.data.message,
-      });
-    } catch (err: unknown) {
-      let message = 'An unexpected error occurred';
-      if (err instanceof Error) {
-        message = err.message;
-      }
-      addToast({
-        color: 'danger',
-        description: message,
-        title: 'Creation Failed',
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    // try {
+    //   setSubmitting(true);
+    //   const res = await axios.post('/api/team', payload, {
+    //     headers: { 'Content-Type': 'application/json' },
+    //     withCredentials: true,
+    //   });
+    //   addToast({
+    //     color: 'success',
+    //     description: 'Team created successfully!',
+    //     timeout: 3000,
+    //     title: res.data.message,
+    //   });
+    // } catch (err: unknown) {
+    //   let message = 'An unexpected error occurred';
+    //   if (err instanceof Error) {
+    //     message = err.message;
+    //   }
+    //   addToast({
+    //     color: 'danger',
+    //     description: message,
+    //     title: 'Creation Failed',
+    //   });
+    // } finally {
+    //   setSubmitting(false);
+    // }
   };
 
   return (

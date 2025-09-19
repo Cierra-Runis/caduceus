@@ -3,78 +3,21 @@
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { Link } from '@heroui/link';
-import { addToast } from '@heroui/toast';
-import axios, { AxiosError } from 'axios';
 import NextLink from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { SubmitHandler } from 'react-hook-form';
-import z from 'zod';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { RegisterRequest } from '@/lib/api/register';
 
-const RegisterSchema = z.object({
-  nickname: z.string().optional(),
-  password: z
-    .string()
-    .min(1, 'Password is required')
-    .regex(
-      /^(?=.{15,}$)|(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/,
-      'Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.',
-    ),
-  username: z
-    .string()
-    .min(1, 'Username is required')
-    .regex(
-      /^(?!-)[a-zA-Z0-9-]{1,39}(?<!-)$/,
-      'Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen.',
-    ),
-});
+import { useRegister } from './_lib/hook';
 
 export default function RegisterPage() {
-  const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
-
-  const onValid: SubmitHandler<z.infer<typeof RegisterSchema>> = async (
-    payload,
-  ) => {
-    // TODO: Find a better way to avoid try-catch
-    try {
-      setSubmitting(true);
-      const res = await axios.post('/api/register', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true,
-      });
-      addToast({
-        color: 'success',
-        description: 'Redirecting to login page...',
-        onClose: () => router.push('/login'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
-        shouldShowTimeoutProgress: true,
-        timeout: 3000,
-        title: res.data.message,
-      });
-    } catch (err: unknown) {
-      let message = 'An unexpected error occurred';
-      if (err instanceof AxiosError) {
-        message = err.response?.data?.message || err.message;
-      } else if (err instanceof Error) {
-        message = err.message;
-      }
-      addToast({
-        color: 'danger',
-        description: message,
-        title: 'Register Failed',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const { isMutating, trigger } = useRegister();
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
-        <ZodForm onValid={onValid} schema={RegisterSchema}>
+        <ZodForm onValid={(data) => trigger(data)} schema={RegisterRequest}>
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>
@@ -115,6 +58,16 @@ export default function RegisterPage() {
                     type='password'
                     variant='bordered'
                   />
+                  <Input
+                    control={control}
+                    isRequired
+                    label='Confirm Password'
+                    labelPlacement='outside'
+                    name='confirmPassword'
+                    placeholder='Confirm Password'
+                    type='password'
+                    variant='bordered'
+                  />
                 </div>
                 <p className='mt-4 text-sm'>
                   By signing up, you confirm that you have read and accepted our{' '}
@@ -130,8 +83,8 @@ export default function RegisterPage() {
                 </Button>
                 <Button
                   color='primary'
-                  isDisabled={submitting}
-                  isLoading={submitting}
+                  isDisabled={isMutating}
+                  isLoading={isMutating}
                   type='submit'
                 >
                   Register

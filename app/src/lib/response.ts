@@ -1,4 +1,6 @@
 export type ApiResponse<T> = {
   message: string;
-  payload?: T;
+  payload: T;
 };
+
+export type ErrorResponse = ApiResponse<undefined>;

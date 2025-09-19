@@ -2,64 +2,20 @@
 
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
-import { addToast } from '@heroui/toast';
-import axios, { AxiosError } from 'axios';
 import NextLink from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { SubmitHandler } from 'react-hook-form';
-import z from 'zod';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { LoginSchema } from '@/lib/api/login';
 
-const LoginSchema = z.object({
-  password: z.string().min(1, 'Password is required'),
-  username: z.string().min(1, 'Username is required'),
-});
+import { useLogin } from './_lib/hook';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [submitting, setSubmitting] = useState(false);
-
-  const onValid: SubmitHandler<z.infer<typeof LoginSchema>> = async (
-    payload,
-  ) => {
-    try {
-      setSubmitting(true);
-      const res = await axios.post('/api/login', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true,
-      });
-      addToast({
-        color: 'success',
-        description: 'Redirecting to homepage...',
-        onClose: () => router.push('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
-        shouldShowTimeoutProgress: true,
-        timeout: 3000,
-        title: res.data.message,
-      });
-    } catch (err: unknown) {
-      let message = 'An unexpected error occurred';
-      if (err instanceof AxiosError) {
-        message = err.response?.data?.message || err.message;
-      } else if (err instanceof Error) {
-        message = err.message;
-      }
-      addToast({
-        color: 'danger',
-        description: message,
-        title: 'Login Failed',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+  const { isMutating, trigger } = useLogin();
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
-        <ZodForm onValid={onValid} schema={LoginSchema}>
+        <ZodForm onValid={(data) => trigger(data)} schema={LoginSchema}>
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>
@@ -102,8 +58,8 @@ export default function LoginPage() {
                 </Button>
                 <Button
                   color='primary'
-                  isDisabled={submitting}
-                  isLoading={submitting}
+                  isDisabled={isMutating}
+                  isLoading={isMutating}
                   type='submit'
                 >
                   Login

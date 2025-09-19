@@ -8,6 +8,7 @@ import {
   SubmitHandler,
   useForm,
 } from 'react-hook-form';
+import { format } from 'util';
 import z from 'zod';
 
 export function ZodForm<T extends z.ZodObject>({
@@ -27,12 +28,21 @@ export function ZodForm<T extends z.ZodObject>({
   const { control, handleSubmit } = useForm({
     resolver: zodResolver(schema),
   });
+  const log: SubmitErrorHandler<z.input<T>> = (e) =>
+    console.error(
+      'Form submission failed. Please check the form for errors.',
+      format(e),
+    );
 
   return (
     <Form
       onSubmit={async (e) => {
         e.preventDefault();
-        await handleSubmit(onValid, onInvalid)(e);
+        try {
+          await handleSubmit(onValid, onInvalid ?? log)(e);
+        } catch {
+          // noop
+        }
       }}
       validationBehavior='aria'
       {...props}
