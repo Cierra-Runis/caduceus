@@ -1,5 +1,6 @@
 import z from 'zod';
 
+import { AuthPayload } from '../models/user';
 import { ApiResponse } from '../response';
 
 export const RegisterRequest = z
@@ -25,19 +26,6 @@ export const RegisterRequest = z
     error: 'Passwords do not match',
     path: ['confirmPassword'],
   });
-export interface AuthPayload {
-  token: string;
-  user: UserPayload;
-}
 
 export type RegisterRequest = z.infer<typeof RegisterRequest>;
-
 export type RegisterResponse = ApiResponse<AuthPayload>;
-
-export interface UserPayload {
-  createAt: Date;
-  id: string;
-  nickname: string;
-  updateAt: Date;
-  username: string;
-}
