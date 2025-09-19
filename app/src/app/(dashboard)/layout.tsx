@@ -53,7 +53,7 @@ function CaduceusButton() {
             About Caduceus
           </ListboxItem>
           <ListboxItem href='/dashboard/settings' key='settings'>
-            Settings
+            Account Settings
           </ListboxItem>
           <ListboxItem key='logout' onPress={logout}>
             Logout
