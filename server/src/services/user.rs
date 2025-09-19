@@ -123,6 +123,17 @@ impl<R: UserRepo, T: TeamRepo> UserService<R, T> {
 
         Ok(payloads)
     }
+
+    pub async fn get_user_by_id(
+        &self,
+        user_id: &ObjectId,
+    ) -> Result<UserPayload, UserServiceError> {
+        match self.user_repo.find_by_id(*user_id).await {
+            Ok(Some(user)) => Ok(user.into()),
+            Ok(None) => Err(UserServiceError::UserNotFound),
+            Err(e) => Err(UserServiceError::Database(e)),
+        }
+    }
 }
 
 #[cfg(test)]
