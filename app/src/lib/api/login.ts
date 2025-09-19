@@ -1,15 +1,11 @@
-import z from 'zod/mini';
+import z from 'zod';
 
 import { ApiResponse } from '../response';
 import { AuthPayload } from './register';
 
 export const LoginSchema = z.object({
-  password: z
-    .string('Password is required')
-    .check(z.minLength(1, 'Password is required')),
-  username: z
-    .string('Username is required')
-    .check(z.minLength(1, 'Username is required')),
+  password: z.string('Password is required').nonempty('Password is required'),
+  username: z.string('Username is required').nonempty('Username is required'),
 });
 
 export type LoginRequest = z.infer<typeof LoginSchema>;
