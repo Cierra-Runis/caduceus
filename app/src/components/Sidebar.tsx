@@ -17,7 +17,6 @@ import { UserMeTooltip } from './tooltips/UserMeTooltip';
 export function Sidebar() {
   const { team } = useParams();
   const pathname = usePathname();
-  const { data: teams } = useUserTeams();
 
   const isInSettings =
     pathname.endsWith('/settings') || pathname.endsWith('/manage');
@@ -37,30 +36,7 @@ export function Sidebar() {
       >
         <UserMeTooltip />
       </Button>
-
-      <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
-        {teams?.payload?.map((t) => (
-          <Button
-            as={NextLink}
-            className='aspect-square h-auto w-full flex-shrink-0'
-            href={`/dashboard/team/${t.id}`}
-            isIconOnly
-            key={t.id}
-            radius='none'
-            variant={team === t.id ? 'solid' : 'light'}
-          >
-            <Tooltip content={t.name} placement='right'>
-              <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
-            </Tooltip>
-          </Button>
-        ))}
-        <CreateTeamButton
-          className='aspect-square h-auto w-full flex-shrink-0'
-          radius='none'
-          variant='light'
-        />
-      </ScrollShadow>
-
+      <TeamList />
       <div className='flex w-full flex-shrink-0 flex-col items-center'>
         <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
           <Button
@@ -88,6 +64,36 @@ export function Sidebar() {
           />
         </div>
       </div>
+    </ScrollShadow>
+  );
+}
+
+function TeamList() {
+  const { team } = useParams();
+  const { data } = useUserTeams();
+
+  return (
+    <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
+      {data?.payload?.map((t) => (
+        <Button
+          as={NextLink}
+          className='aspect-square h-auto w-full flex-shrink-0'
+          href={`/dashboard/team/${t.id}`}
+          isIconOnly
+          key={t.id}
+          radius='none'
+          variant={team === t.id ? 'solid' : 'light'}
+        >
+          <Tooltip content={t.name} placement='right'>
+            <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
+          </Tooltip>
+        </Button>
+      ))}
+      <CreateTeamButton
+        className='aspect-square h-auto w-full flex-shrink-0'
+        radius='none'
+        variant='light'
+      />
     </ScrollShadow>
   );
 }
