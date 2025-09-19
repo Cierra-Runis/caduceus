@@ -10,14 +10,12 @@ export const RegisterRequest = z
     nickname: z.string().optional(),
     password: z
       .string('Password is required')
-      .nonempty('Password is required')
       .regex(
         /^(?=.{15,}$)|(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/,
         'Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.',
       ),
     username: z
       .string('Username is required')
-      .nonempty('Username is required')
       .regex(
         /^(?!-)[a-zA-Z0-9-]{1,39}(?<!-)$/,
         'Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen.',
