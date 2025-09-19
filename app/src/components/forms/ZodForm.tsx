@@ -9,9 +9,9 @@ import {
   useForm,
 } from 'react-hook-form';
 import { format } from 'util';
-import z from 'zod';
+import z from 'zod/mini';
 
-export function ZodForm<T extends z.ZodObject>({
+export function ZodForm<T extends z.ZodMiniObject>({
   children,
   onInvalid,
   onValid,
