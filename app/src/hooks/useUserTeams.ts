@@ -12,15 +12,8 @@ export type Team = {
 type UserTeamsResponse = ApiResponse<Team[]>;
 
 export function useUserTeams() {
-  const { data, error, isLoading } = useSWR<
-    UserTeamsResponse,
-    ErrorResponse,
-    string
-  >('/api/user/teams', (key) => api.get(key).json());
-
-  return {
-    isError: error,
-    isLoading,
-    teams: data,
-  };
+  return useSWR<UserTeamsResponse, ErrorResponse, string>(
+    '/api/user/teams',
+    (key) => api.get(key).json(),
+  );
 }

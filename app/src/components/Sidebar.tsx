@@ -12,11 +12,12 @@ import { logout } from '@/actions/auth';
 import { useUserTeams } from '@/hooks/useUserTeams';
 
 import { CreateTeamButton } from './buttons/CreateTeamButton';
+import { UserMeTooltip } from './tooltips/UserMeTooltip';
 
 export function Sidebar() {
   const { team } = useParams();
   const pathname = usePathname();
-  const { teams } = useUserTeams();
+  const { data: teams } = useUserTeams();
 
   const isInSettings =
     pathname.endsWith('/settings') || pathname.endsWith('/manage');
@@ -34,7 +35,7 @@ export function Sidebar() {
         radius='none'
         variant={!team ? 'solid' : 'light'}
       >
-        <Avatar src='https://i.pravatar.cc?img=1' />
+        <UserMeTooltip />
       </Button>
 
       <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
