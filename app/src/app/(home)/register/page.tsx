@@ -3,7 +3,9 @@
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { Link } from '@heroui/link';
+import { addToast } from '@heroui/toast';
 import NextLink from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
@@ -11,12 +13,40 @@ import { useRegister } from '@/hooks/useRegister';
 import { RegisterRequest } from '@/lib/api/register';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const { isMutating, trigger } = useRegister();
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
-        <ZodForm onValid={(data) => trigger(data)} schema={RegisterRequest}>
+        <ZodForm
+          onValid={(data) =>
+            trigger(data, {
+              onError: (error) => {
+                addToast({
+                  color: 'danger',
+                  description: error.message,
+                  title: 'Register Failed',
+                });
+              },
+              onSuccess: ({
+                payload: {
+                  user: { username },
+                },
+              }) => {
+                addToast({
+                  color: 'success',
+                  description: `Redirecting to login page...`,
+                  onClose: () => router.push('/login'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+                  shouldShowTimeoutProgress: true,
+                  timeout: 3000,
+                  title: `Welcome, ${username}`,
+                });
+              },
+            })
+          }
+          schema={RegisterRequest}
+        >
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>

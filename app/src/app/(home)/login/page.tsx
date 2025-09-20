@@ -2,7 +2,9 @@
 
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
+import { addToast } from '@heroui/toast';
 import NextLink from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
@@ -10,12 +12,40 @@ import { useLogin } from '@/hooks/useLogin';
 import { LoginSchema } from '@/lib/api/login';
 
 export default function LoginPage() {
+  const router = useRouter();
   const { isMutating, trigger } = useLogin();
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <Card className='w-full max-w-3xl p-4'>
-        <ZodForm onValid={(data) => trigger(data)} schema={LoginSchema}>
+        <ZodForm
+          onValid={(data) =>
+            trigger(data, {
+              onError: (error) => {
+                addToast({
+                  color: 'danger',
+                  description: error.message,
+                  title: 'Login Failed',
+                });
+              },
+              onSuccess: ({
+                payload: {
+                  user: { username },
+                },
+              }) => {
+                addToast({
+                  color: 'success',
+                  description: 'Redirecting to homepage...',
+                  onClose: () => router.push('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+                  shouldShowTimeoutProgress: true,
+                  timeout: 3000,
+                  title: `Welcome, ${username}`,
+                });
+              },
+            })
+          }
+          schema={LoginSchema}
+        >
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>
