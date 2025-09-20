@@ -12,7 +12,7 @@ export function UserMeTooltip() {
       isDisabled={isLoading || !data}
       placement='right'
     >
-      <Avatar src='https://i.pravatar.cc?img=1' />
+      <Avatar src={data?.payload.avatar_uri ?? '/icon.svg'} />
     </Tooltip>
   );
 }

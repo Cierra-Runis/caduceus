@@ -3,6 +3,7 @@ export interface AuthPayload {
   user: UserPayload;
 }
 export interface UserPayload {
+  avatar_uri?: string;
   createAt: Date;
   id: string;
   nickname: string;

@@ -84,6 +84,7 @@ pub mod tests {
             username: ObjectId::new().to_hex(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
+            avatar_uri: None,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
         };

@@ -54,17 +54,19 @@ impl<R: TeamRepo, U: UserRepo> TeamService<R, U> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::models::user::User;
     use crate::repo::{team::tests::MockTeamRepo, user::tests::MockUserRepo};
     use std::sync::Mutex;
 
     #[tokio::test]
     async fn test_create_success() {
         let user_repo = MockUserRepo {
-            users: Mutex::new(vec![crate::models::user::User {
+            users: Mutex::new(vec![User {
                 id: ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
                 username: "test_user".to_string(),
                 nickname: "Test User".to_string(),
                 password: "hashed_password".to_string(),
+                avatar_uri: None,
                 created_at: OffsetDateTime::now_utc(),
                 updated_at: OffsetDateTime::now_utc(),
             }]),

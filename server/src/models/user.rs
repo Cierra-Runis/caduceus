@@ -20,6 +20,7 @@ pub struct User {
     pub username: String,
     pub nickname: String,
     pub password: String,
+    pub avatar_uri: Option<String>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
@@ -31,6 +32,7 @@ pub struct UserPayload {
     pub id: String,
     pub username: String,
     pub nickname: String,
+    pub avatar_uri: Option<String>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
@@ -43,6 +45,7 @@ impl From<User> for UserPayload {
             id: user.id.to_hex(),
             username: user.username.clone(),
             nickname: user.nickname.clone(),
+            avatar_uri: user.avatar_uri.clone(),
             created_at: user.created_at,
             updated_at: user.updated_at,
         }
@@ -87,6 +90,7 @@ mod tests {
             username: "test_user".to_string(),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
+            avatar_uri: None,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
         };
@@ -95,6 +99,7 @@ mod tests {
         assert_eq!(payload.id, user.id.to_hex());
         assert_eq!(payload.username, user.username);
         assert_eq!(payload.nickname, user.nickname);
+        assert_eq!(payload.avatar_uri, user.avatar_uri);
         assert_eq!(payload.created_at, user.created_at);
         assert_eq!(payload.updated_at, user.updated_at);
     }
