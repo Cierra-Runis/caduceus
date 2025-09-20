@@ -7,7 +7,6 @@
 
 ```mermaid
 erDiagram
-  direction LR
   USER ||--o{ TEAM : "USER is creator and/or member of TEAM"
   TEAM ||--o{ PROJECT : "TEAM could be owner of PROJECT"
   USER ||--o{ PROJECT : "USER could be owner of PROJECT"
