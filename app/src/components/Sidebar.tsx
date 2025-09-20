@@ -85,7 +85,7 @@ function TeamList() {
           variant={team === t.id ? 'solid' : 'light'}
         >
           <Tooltip content={t.name} placement='right'>
-            <Avatar radius='sm' src={t.avatar_uri || '/icon.svg'} />
+            <Avatar radius='sm' src={t.avatar_uri ?? '/icon.svg'} />
           </Tooltip>
         </Button>
       ))}

@@ -1,8 +1,6 @@
 'use client';
 
 import { Button, ButtonProps } from '@heroui/button';
-import { Form } from '@heroui/form';
-import { Input } from '@heroui/input';
 import {
   Modal,
   ModalBody,
@@ -13,54 +11,18 @@ import {
 } from '@heroui/modal';
 import { addToast } from '@heroui/toast';
 import { IconPlus } from '@tabler/icons-react';
-import { FormEvent, useState } from 'react';
+import { mutate } from 'swr';
+
+import { useCreateTeam } from '@/hooks/useCreateTeam';
+import { CreateTeamRequest } from '@/lib/api/team';
+
+import { Input } from '../forms/Input';
+import { ZodForm } from '../forms/ZodForm';
 
 export function CreateTeamButton({ ...props }: ButtonProps) {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
-  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    const form = new FormData(e.currentTarget);
-    const payload = {
-      name: String(form.get('name') || ''),
-    };
-
-    if (!payload.name) {
-      return addToast({
-        color: 'warning',
-        description: 'Please provide a team name.',
-        title: 'Creation Failed',
-      });
-    }
-
-    // try {
-    //   setSubmitting(true);
-    //   const res = await axios.post('/api/team', payload, {
-    //     headers: { 'Content-Type': 'application/json' },
-    //     withCredentials: true,
-    //   });
-    //   addToast({
-    //     color: 'success',
-    //     description: 'Team created successfully!',
-    //     timeout: 3000,
-    //     title: res.data.message,
-    //   });
-    // } catch (err: unknown) {
-    //   let message = 'An unexpected error occurred';
-    //   if (err instanceof Error) {
-    //     message = err.message;
-    //   }
-    //   addToast({
-    //     color: 'danger',
-    //     description: message,
-    //     title: 'Creation Failed',
-    //   });
-    // } finally {
-    //   setSubmitting(false);
-    // }
-  };
+  const { isMutating, trigger } = useCreateTeam();
 
   return (
     <>
@@ -74,27 +36,55 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
               <ModalHeader className='flex flex-col gap-1'>
                 Create Team
               </ModalHeader>
-              <Form className='contents' onSubmit={onSubmit}>
-                <ModalBody>
-                  <Input
-                    label='Team Name'
-                    name='name'
-                    placeholder='Enter your team name'
-                    variant='bordered'
-                  />
-                </ModalBody>
-                <ModalFooter>
-                  <Button
-                    color='primary'
-                    isDisabled={submitting}
-                    isLoading={submitting}
-                    onPress={onClose}
-                    type='submit'
-                  >
-                    Create
-                  </Button>
-                </ModalFooter>
-              </Form>
+              <ZodForm
+                className='contents' // Prevent extra div breaking Modal layout
+                onValid={(data) =>
+                  trigger(data, {
+                    onError: (error) => {
+                      addToast({
+                        color: 'danger',
+                        description: error.message,
+                        title: 'Creation Failed',
+                      });
+                    },
+                    onSuccess: () => {
+                      addToast({
+                        color: 'success',
+                        description: 'Team created successfully!',
+                        timeout: 3000,
+                        title: 'Creation Successful',
+                      });
+                      onClose();
+                      mutate('/api/user/teams');
+                    },
+                  })
+                }
+                schema={CreateTeamRequest}
+              >
+                {(control) => (
+                  <>
+                    <ModalBody>
+                      <Input
+                        control={control}
+                        label='Team Name'
+                        name='name'
+                        placeholder='Enter your team name'
+                        variant='bordered'
+                      />
+                    </ModalBody>
+                    <ModalFooter>
+                      <Button
+                        color='primary'
+                        isDisabled={isMutating}
+                        isLoading={isMutating}
+                        type='submit'
+                      >
+                        Create
+                      </Button>
+                    </ModalFooter>
+                  </>
+                )}
+              </ZodForm>
             </>
           )}
         </ModalContent>
