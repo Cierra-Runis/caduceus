@@ -1,16 +1,10 @@
 'use client';
 
+import { Button } from '@heroui/button';
 import { Divider } from '@heroui/divider';
 import { Navbar, NavbarContent } from '@heroui/navbar';
-import { Spinner } from '@heroui/spinner';
-import CodeMirror from '@uiw/react-codemirror';
-import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useState } from 'react';
-
-import { logout } from '@/actions/auth';
-import { ThemeButtons } from '@/components/buttons/ThemeButton';
-import { Button } from '@heroui/button';
 import { ScrollShadow } from '@heroui/scroll-shadow';
+import { Spinner } from '@heroui/spinner';
 import {
   IconArchive,
   IconLogout,
@@ -19,6 +13,12 @@ import {
   IconSearch,
   IconSettings,
 } from '@tabler/icons-react';
+import CodeMirror from '@uiw/react-codemirror';
+import { useTheme } from 'next-themes';
+import { useCallback, useEffect, useState } from 'react';
+
+import { logout } from '@/actions/auth';
+import { ThemeButtons } from '@/components/buttons/ThemeButton';
 
 export default function Page() {
   const [value, setValue] = useState("console.log('hello world!');");
