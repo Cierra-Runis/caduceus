@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { decrypt } from '@/lib/session';
 
 // Specify protected and public routes
-const protectedRoutes = ['/dashboard'];
+const protectedRoutes = ['/dashboard', '/project'];
 const publicRoutes = ['/login', '/register'];
 
 // Middleware to handle authentication and route protection
