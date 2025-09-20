@@ -57,7 +57,9 @@ impl ProjectRepo for MongoProjectRepo {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
     use super::*;
+    use crate::config;
     use std::sync::Mutex;
+    use time::OffsetDateTime;
 
     #[derive(Default)]
     pub struct MockProjectRepo {
@@ -90,5 +92,43 @@ pub mod tests {
                 .collect();
             Ok(filtered_projects)
         }
+    }
+
+    #[tokio::test]
+    async fn test_mongo_project_repo() {
+        let config = config::Config::load("config/test.yaml").unwrap();
+        let repo = MongoProjectRepo {
+            collection: mongodb::Client::with_uri_str(config.mongo_uri)
+                .await
+                .unwrap()
+                .database("test_db")
+                .collection::<Project>("projects"),
+        };
+
+        let project = Project {
+            id: ObjectId::new(),
+            name: "Test Project".to_string(),
+            owner_id: ObjectId::new(),
+            owner_type: OwnerType::User,
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+        };
+
+        // Test create
+        let created_project = repo.create(project.clone()).await.unwrap();
+        assert_eq!(created_project.name, project.name);
+
+        // Test find_by_id
+        let found_project = repo.find_by_id(created_project.id).await.unwrap();
+        assert!(found_project.is_some());
+        assert_eq!(found_project.unwrap().name, project.name);
+
+        // Test find_by_owner
+        let found_projects = repo
+            .find_by_owner(project.owner_id, OwnerType::User)
+            .await
+            .unwrap();
+        assert!(!found_projects.is_empty());
+        assert_eq!(found_projects[0].owner_id, project.owner_id);
     }
 }
