@@ -71,9 +71,7 @@ mod tests {
                 updated_at: OffsetDateTime::now_utc(),
             }]),
         };
-        let team_repo = MockTeamRepo {
-            teams: Mutex::new(vec![]),
-        };
+        let team_repo = MockTeamRepo::default();
         let service = TeamService {
             user_repo,
             team_repo,
@@ -92,12 +90,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_user_not_found() {
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![]),
-        };
-        let team_repo = MockTeamRepo {
-            teams: Mutex::new(vec![]),
-        };
+        let user_repo = MockUserRepo::default();
+        let team_repo = MockTeamRepo::default();
         let service = TeamService {
             user_repo,
             team_repo,
