@@ -43,8 +43,10 @@ impl TeamRepo for MongoTeamRepo {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
     use super::*;
+    use crate::config;
     use std::sync::Mutex;
 
+    #[derive(Default)]
     pub struct MockTeamRepo {
         pub teams: Mutex<Vec<Team>>,
     }
@@ -76,5 +78,41 @@ pub mod tests {
                 .collect();
             Ok(filtered_teams)
         }
+    }
+
+    #[tokio::test]
+    async fn test_mongo_team_repo() {
+        let config = config::Config::load("config/test.yaml").unwrap();
+        let repo = MongoTeamRepo {
+            collection: mongodb::Client::with_uri_str(config.mongo_uri)
+                .await
+                .unwrap()
+                .database("test_db")
+                .collection::<Team>("teams"),
+        };
+
+        let team = Team {
+            id: ObjectId::new(),
+            name: "Test Team".to_string(),
+            avatar_uri: None,
+            creator_id: ObjectId::new(),
+            member_ids: vec![],
+            created_at: time::OffsetDateTime::now_utc(),
+            updated_at: time::OffsetDateTime::now_utc(),
+        };
+
+        // Test create
+        let created_team = repo.create(team.clone()).await.unwrap();
+        assert_eq!(created_team.name, team.name);
+
+        // Test find_by_id
+        let found_team = repo.find_by_id(created_team.id).await.unwrap();
+        assert!(found_team.is_some());
+        assert_eq!(found_team.unwrap().name, team.name);
+
+        // Test list_by_member_id
+        let member_id = ObjectId::new();
+        let found_teams = repo.list_by_member_id(member_id).await.unwrap();
+        assert!(found_teams.is_empty());
     }
 }

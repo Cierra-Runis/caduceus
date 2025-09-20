@@ -59,6 +59,7 @@ pub mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    #[derive(Default)]
     pub struct MockProjectRepo {
         pub projects: Mutex<Vec<Project>>,
     }
