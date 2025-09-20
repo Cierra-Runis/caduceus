@@ -9,7 +9,7 @@ export function UserMeTooltip() {
   return (
     <Tooltip
       content={data?.payload?.username}
-      isDisabled={isLoading}
+      isDisabled={isLoading || !data}
       placement='right'
     >
       <Avatar src='https://i.pravatar.cc?img=1' />
