@@ -105,7 +105,6 @@ export default function Page() {
         <div className='flex h-full overflow-auto'>
           <div className='flex-1 overflow-auto scroll-auto'>
             <CodeMirror
-              className=''
               onChange={onChange}
               theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
               value={value}
