@@ -37,7 +37,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         owner_type: OwnerType,
         name: String,
     ) -> Result<ProjectPayload, ProjectServiceError> {
-        // Validate creator exists, here we assume creator must be a user
+        // Validate creator exists, creator must be a user
         let creator = match self.user_repo.find_by_id(creator_id).await {
             Ok(Some(user)) => user,
             Ok(None) => return Err(ProjectServiceError::UserNotFound),
@@ -78,6 +78,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 name,
                 owner_id,
                 owner_type,
+                creator_id: creator.id,
                 created_at: OffsetDateTime::now_utc(),
                 updated_at: OffsetDateTime::now_utc(),
             })

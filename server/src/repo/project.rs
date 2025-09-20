@@ -110,6 +110,7 @@ pub mod tests {
             name: "Test Project".to_string(),
             owner_id: ObjectId::new(),
             owner_type: OwnerType::User,
+            creator_id: ObjectId::new(),
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
         };

@@ -21,6 +21,7 @@ pub struct Project {
     pub name: String,
     pub owner_id: ObjectId,
     pub owner_type: OwnerType,
+    pub creator_id: ObjectId,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
@@ -33,6 +34,7 @@ pub struct ProjectPayload {
     pub name: String,
     pub owner_id: String,
     pub owner_type: OwnerType,
+    pub creator_id: String,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
@@ -46,6 +48,7 @@ impl From<Project> for ProjectPayload {
             name: project.name,
             owner_id: project.owner_id.to_hex(),
             owner_type: project.owner_type,
+            creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
         }

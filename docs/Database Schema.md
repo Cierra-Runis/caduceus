@@ -8,9 +8,9 @@
 ```mermaid
 erDiagram
   direction LR
-  USER ||--o{ TEAM : "member or creator"
-  TEAM ||--o{ PROJECT : "owner"
-  USER ||--o{ PROJECT : "owner"
+  USER ||--o{ TEAM : "USER is creator and/or member of TEAM"
+  TEAM ||--o{ PROJECT : "TEAM could be owner of PROJECT"
+  USER ||--o{ PROJECT : "USER could be owner of PROJECT"
 
   USER {
     ObjectId _id
@@ -20,15 +20,16 @@ erDiagram
   TEAM {
     ObjectId _id
     string name
-    ObjectId creatorId
-    ObjectId[] memberIds
+    ObjectId creatorId "Must be USER._id"
+    ObjectId[] memberIds "Initially includes creatorId"
   }
 
   PROJECT {
     ObjectId _id
     string name
-    ObjectId ownerId
+    ObjectId ownerId "USER._id or TEAM._id"
     string ownerType "USER or TEAM"
+    ObjectId creatorId "Must be USER._id"
   }
 ```
 
@@ -42,78 +43,8 @@ Represents an individual user in the system. Each user has a unique identifier (
 
 ### `TEAM`
 
-Represents a group or team that can have multiple users as members. Each team has a unique identifier (`_id`), a `name`, a `creatorId` that references the user who created the team, and an array of `memberIds` that contains the IDs of users who are part of the team.
+Represents a team that can be created by a user and can have multiple members. Each team has a unique identifier (`_id`), a `name`, a `creatorId` that references the user who created the team, and a list of `memberIds` that reference users who are members of the team.
 
 ### `PROJECT`
 
-Represents a project that can be owned by either a user or an team. Each project has a unique identifier (`_id`), a `name`, an `ownerId` that references either a user or an team, and an `ownerType` field that indicates whether the owner is a `USER` or `TEAM`.
-
-<!-- ## MongoDB Queries
-
-### Between `USER` and `TEAM`
-
-#### Find teams where a specific user is the creator
-
-```go
-userId := "USER_ID_HERE"
-filter := bson.M{"creatorId": userId}
-cursor, err := teamCollection.Find(ctx, filter)
-if err != nil {
-    log.Fatal(err)
-}
-var teams []Team
-if err = cursor.All(ctx, &teams); err != nil {
-    log.Fatal(err)
-}
-fmt.Println("Teams created by user:", teams)
-```
-
-#### Find teams where a specific user is a member
-
-```go
-userId := "USER_ID_HERE"
-filter := bson.M{"memberIds": userId}
-cursor, err := teamCollection.Find(ctx, filter)
-if err != nil {
-    log.Fatal(err)
-}
-var teams []Team
-if err = cursor.All(ctx, &teams); err != nil {
-    log.Fatal(err)
-}
-fmt.Println("Teams where user is a member:", teams)
-```
-
-### Between `PROJECT` and `USER` / `TEAM`
-
-#### Find projects owned by a specific user
-
-```go
-userId := "USER_ID_HERE"
-filter := bson.M{"ownerId": userId, "ownerType": "USER"}
-cursor, err := projectCollection.Find(ctx, filter)
-if err != nil {
-    log.Fatal(err)
-}
-var projects []Project
-if err = cursor.All(ctx, &projects); err != nil {
-    log.Fatal(err)
-}
-fmt.Println("Projects owned by user:", projects)
-```
-
-#### Find projects owned by a specific team
-
-```go
-teamId := "TEAM_ID_HERE"
-filter := bson.M{"ownerId": teamId, "ownerType": "TEAM"}
-cursor, err := projectCollection.Find(ctx, filter)
-if err != nil {
-    log.Fatal(err)
-}
-var projects []Project
-if err = cursor.All(ctx, &projects); err != nil {
-    log.Fatal(err)
-}
-fmt.Println("Projects owned by team:", projects)
-``` -->
+Represents a project that can be owned by either a user or a team. Each project has a unique identifier (`_id`), a `name`, an `ownerId` that references either a user or a team, an `ownerType` that indicates whether the owner is a user or a team, and a `creatorId` that references the user who created the project.
