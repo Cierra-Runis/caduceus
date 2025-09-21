@@ -65,6 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 web::scope("/api")
                     .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
                     .route("/team", web::post().to(handler::team::create))
+                    .route("/project", web::post().to(handler::project::create))
                     .service(
                         web::scope("/user")
                             .route("/me", web::get().to(handler::user::me))
