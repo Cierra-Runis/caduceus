@@ -117,6 +117,19 @@ pub async fn teams(
     }
 }
 
+pub async fn projects(
+    data: web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, UserServiceError> {
+    match data.user_service.list_projects(user.sub).await {
+        Ok(projects) => {
+            let response = ApiResponse::success("Projects retrieved successfully", projects);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub async fn me(
     data: web::Data<crate::AppState>,
     user: UserClaims,

@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub struct AppState {
-    pub user_service: UserService<MongoUserRepo, MongoTeamRepo>,
+    pub user_service: UserService<MongoUserRepo, MongoTeamRepo, MongoProjectRepo>,
     pub team_service: TeamService<MongoTeamRepo, MongoUserRepo>,
     pub project_service: ProjectService<MongoProjectRepo, MongoUserRepo, MongoTeamRepo>,
 }

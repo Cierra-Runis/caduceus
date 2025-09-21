@@ -41,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         user_service: UserService {
             user_repo: user_repo.clone(),
             team_repo: team_repo.clone(),
+            project_repo: project_repo.clone(),
             secret: config.jwt_secret.clone(),
         },
         team_service: TeamService {
@@ -69,7 +70,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .service(
                         web::scope("/user")
                             .route("/me", web::get().to(handler::user::me))
-                            .route("/teams", web::get().to(handler::user::teams)),
+                            .route("/teams", web::get().to(handler::user::teams))
+                            .route("/projects", web::get().to(handler::user::projects)),
                     ),
             )
             .wrap(actix_web::middleware::Logger::default())
