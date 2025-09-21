@@ -1,6 +1,5 @@
 import z from 'zod';
 
-import { AuthPayload } from '../models/user';
 import { ApiResponse } from '../response';
 
 export const RegisterRequest = z
@@ -27,5 +26,18 @@ export const RegisterRequest = z
     path: ['confirmPassword'],
   });
 
+export interface AuthPayload {
+  token: string;
+  user: UserPayload;
+}
 export type RegisterRequest = z.infer<typeof RegisterRequest>;
+
 export type RegisterResponse = ApiResponse<AuthPayload>;
+export interface UserPayload {
+  avatar_uri?: string;
+  createAt: Date;
+  id: string;
+  nickname: string;
+  updateAt: Date;
+  username: string;
+}

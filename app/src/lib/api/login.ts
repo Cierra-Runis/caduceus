@@ -1,7 +1,7 @@
 import z from 'zod';
 
-import { AuthPayload } from '../models/user';
 import { ApiResponse } from '../response';
+import { AuthPayload } from './register';
 
 export const LoginSchema = z.object({
   password: z.string('Password is required').nonempty('Password is required'),

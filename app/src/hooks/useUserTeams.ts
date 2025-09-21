@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 
-import { TeamPayload } from '@/lib/models/team';
+import { TeamPayload } from '@/lib/api/team';
 import { api } from '@/lib/request';
 import { ApiResponse, ErrorResponse } from '@/lib/response';
 

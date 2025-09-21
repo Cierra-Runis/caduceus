@@ -1,6 +1,5 @@
 import z from 'zod';
 
-import { TeamPayload } from '../models/team';
 import { ApiResponse } from '../response';
 
 export const CreateTeamRequest = z.object({
@@ -9,3 +8,9 @@ export const CreateTeamRequest = z.object({
 
 export type CreateTeamRequest = z.infer<typeof CreateTeamRequest>;
 export type CreateTeamResponse = ApiResponse<TeamPayload>;
+
+export type TeamPayload = {
+  avatar_uri?: string;
+  id: string;
+  name: string;
+};
