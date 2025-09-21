@@ -155,7 +155,7 @@ impl<R: UserRepo, T: TeamRepo, P: ProjectRepo> UserService<R, T, P> {
             .await
             .map_err(UserServiceError::Database)?;
 
-        let payloads = projects.into_iter().map(|project| project.into()).collect();
+        let payloads = projects.into_iter().map(|p| p.into()).collect();
 
         Ok(payloads)
     }

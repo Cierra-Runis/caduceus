@@ -47,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         team_service: TeamService {
             team_repo: team_repo.clone(),
             user_repo: user_repo.clone(),
+            project_repo: project_repo.clone(),
         },
         project_service: ProjectService {
             project_repo: project_repo.clone(),
@@ -66,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 web::scope("/api")
                     .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
                     .route("/team", web::post().to(handler::team::create))
+                    .route("/team/projects", web::get().to(handler::team::projects))
                     .route("/project", web::post().to(handler::project::create))
                     .service(
                         web::scope("/user")
