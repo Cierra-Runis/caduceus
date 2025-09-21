@@ -10,7 +10,6 @@ import {
   useDisclosure,
 } from '@heroui/modal';
 import { addToast } from '@heroui/toast';
-import { IconPlus } from '@tabler/icons-react';
 import { mutate } from 'swr';
 
 import { useCreateProject } from '@/hooks/useCreateProject';
@@ -20,7 +19,12 @@ import { CreateProjectRequest } from '@/lib/api/project';
 import { Input } from '../forms/Input';
 import { ZodForm } from '../forms/ZodForm';
 
-export function CreateProjectButton({ ...props }: ButtonProps) {
+export function CreateProjectButton({
+  ownerType: ownerType,
+  ...props
+}: {
+  ownerType: 'team' | 'user';
+} & ButtonProps) {
   const { data: user } = useUserMe();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
@@ -28,9 +32,7 @@ export function CreateProjectButton({ ...props }: ButtonProps) {
 
   return (
     <>
-      <Button isIconOnly onPress={onOpen} {...props}>
-        <IconPlus />
-      </Button>
+      <Button {...props} onPress={onOpen} />
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <ModalContent>
           {(onClose) => (
@@ -47,7 +49,7 @@ export function CreateProjectButton({ ...props }: ButtonProps) {
                     {
                       ...data,
                       owner_id: user.payload.id,
-                      owner_type: 'user',
+                      owner_type: ownerType,
                     },
                     {
                       onError: (error) => {
@@ -65,7 +67,7 @@ export function CreateProjectButton({ ...props }: ButtonProps) {
                           title: 'Creation Successful',
                         });
                         onClose();
-                        mutate('/api/user/teams');
+                        mutate('/api/user/projects');
                       },
                     },
                   );
