@@ -16,11 +16,13 @@ import {
 import CodeMirror from '@uiw/react-codemirror';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useState } from 'react';
+import useSWR from 'swr';
 
 import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 
 export default function Page() {
+  const { data } = useSWR('/api/project');
   const [value, setValue] = useState("console.log('hello world!');");
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -98,6 +100,7 @@ export default function Page() {
           classNames={{ wrapper: 'pl-0 pr-1.5' }}
           maxWidth='full'
         >
+          <NavbarContent justify='center'>Project: {data?.name}</NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />
           </NavbarContent>
@@ -106,6 +109,7 @@ export default function Page() {
           <div className='flex-1 overflow-auto scroll-auto'>
             <CodeMirror
               onChange={onChange}
+              placeholder='Please enter some code...'
               theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
               value={value}
             />
