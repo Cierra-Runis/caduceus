@@ -20,9 +20,15 @@ import useSWR from 'swr';
 
 import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
+import { ProjectPayload } from '@/lib/api/project';
+import { api } from '@/lib/request';
+import { ErrorResponse } from '@/lib/response';
 
-export default function Page() {
-  const { data } = useSWR('/api/project');
+export function ClientPage({ projectId }: { projectId: string }) {
+  const { data, error } = useSWR<ProjectPayload, ErrorResponse, string>(
+    `/api/project/${projectId}`,
+    (key) => api.get(key).json(),
+  );
   const [value, setValue] = useState("console.log('hello world!');");
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -35,6 +41,12 @@ export default function Page() {
   }, []);
 
   if (!mounted) return <Spinner className='h-full' />;
+  if (error)
+    return (
+      <div className='flex h-screen items-center justify-center'>
+        <p>{error.message}</p>
+      </div>
+    );
 
   return (
     <div className='flex h-screen'>
