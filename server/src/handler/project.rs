@@ -58,6 +58,7 @@ pub async fn create(
     }
 }
 
+// FIXME: unsupported type: 'any'
 pub async fn find_by_id(
     req: actix_web::web::Path<ObjectId>,
     data: actix_web::web::Data<crate::AppState>,
