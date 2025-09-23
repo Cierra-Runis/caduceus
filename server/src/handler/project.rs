@@ -58,12 +58,13 @@ pub async fn create(
     }
 }
 
-// FIXME: unsupported type: 'any'
 pub async fn find_by_id(
-    req: actix_web::web::Path<ObjectId>,
+    id: actix_web::web::Path<String>,
     data: actix_web::web::Data<crate::AppState>,
 ) -> Result<HttpResponse, ProjectServiceError> {
-    match data.project_service.find_by_id(req.into_inner()).await {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+    match data.project_service.find_by_id(project_id).await {
         Ok(project) => {
             let response = ApiResponse::success("Project fetched successfully", project);
             Ok(HttpResponse::Ok().json(response))
