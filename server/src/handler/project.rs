@@ -16,8 +16,9 @@ impl ResponseError for ProjectServiceError {
 
     fn status_code(&self) -> StatusCode {
         match *self {
-            ProjectServiceError::UserNotFound => StatusCode::NOT_FOUND,
-            ProjectServiceError::OwnerNotFound(_) => StatusCode::NOT_FOUND,
+            ProjectServiceError::UserNotFound
+            | ProjectServiceError::OwnerNotFound(_)
+            | ProjectServiceError::ProjectNotFound => StatusCode::NOT_FOUND,
             ProjectServiceError::CreatorNotMatchOwner => StatusCode::FORBIDDEN,
             ProjectServiceError::CreatorNotMemberOfTeam => StatusCode::FORBIDDEN,
             ProjectServiceError::InvalidOwnerType => StatusCode::BAD_REQUEST,
@@ -51,6 +52,19 @@ pub async fn create(
     {
         Ok(project) => {
             let response = ApiResponse::success("Project created successfully", project);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn find_by_id(
+    req: actix_web::web::Path<ObjectId>,
+    data: actix_web::web::Data<crate::AppState>,
+) -> Result<HttpResponse, ProjectServiceError> {
+    match data.project_service.find_by_id(req.into_inner()).await {
+        Ok(project) => {
+            let response = ApiResponse::success("Project fetched successfully", project);
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => Err(e),

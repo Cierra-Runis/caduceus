@@ -13,6 +13,8 @@ pub enum ProjectServiceError {
     UserNotFound,
     #[display("Owner not found: {_0}")]
     OwnerNotFound(OwnerType),
+    #[display("Project not found")]
+    ProjectNotFound,
     #[display("Creator does not match owner")]
     CreatorNotMatchOwner,
     #[display("Creator is not a member of the team")]
@@ -86,6 +88,17 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             .map_err(ProjectServiceError::Database)?;
 
         Ok(project.into())
+    }
+
+    pub async fn find_by_id(
+        &self,
+        project_id: ObjectId,
+    ) -> Result<ProjectPayload, ProjectServiceError> {
+        match self.project_repo.find_by_id(project_id).await {
+            Ok(Some(project)) => Ok(project.into()),
+            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => Err(ProjectServiceError::Database(e)),
+        }
     }
 }
 

@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .route("/team", web::post().to(handler::team::create))
                     .route("/team/projects", web::get().to(handler::team::projects))
                     .route("/project", web::post().to(handler::project::create))
+                    .route("/project/{id}", web::get().to(handler::project::find_by_id))
                     .service(
                         web::scope("/user")
                             .route("/me", web::get().to(handler::user::me))
