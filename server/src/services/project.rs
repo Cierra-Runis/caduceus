@@ -157,9 +157,8 @@ mod tests {
     async fn test_create_project_user_owner_success() {
         let creator_id = ObjectId::new();
         let user = dummy_user(creator_id);
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
+            project_repo: MockProjectRepo::default(),
             user_repo: MockUserRepo {
                 users: Mutex::new(vec![user.clone()]),
             },
@@ -178,15 +177,12 @@ mod tests {
     async fn test_create_project_owner_user_not_found() {
         let creator_id = ObjectId::new();
         let user = dummy_user(creator_id);
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![user.clone()]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
-            user_repo,
-            team_repo,
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![user.clone()]),
+            },
+            team_repo: MockTeamRepo::default(),
         };
         let owner_id = ObjectId::new();
         let res = service
@@ -202,15 +198,12 @@ mod tests {
     async fn test_create_project_owner_user_not_match() {
         let creator_id = ObjectId::new();
         let owner_id = ObjectId::new();
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![dummy_user(creator_id), dummy_user(owner_id)]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
-            user_repo,
-            team_repo,
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![dummy_user(creator_id), dummy_user(owner_id)]),
+            },
+            team_repo: MockTeamRepo::default(),
         };
         let res = service
             .create(creator_id, owner_id, OwnerType::User, "p5".to_string())
@@ -227,17 +220,14 @@ mod tests {
         let team_id = ObjectId::new();
         let user = dummy_user(creator_id);
         let team = dummy_team(team_id, vec![creator_id]);
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![user.clone()]),
-        };
-        let team_repo = MockTeamRepo {
-            teams: Mutex::new(vec![team.clone()]),
-        };
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
-            user_repo,
-            team_repo,
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![user.clone()]),
+            },
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team.clone()]),
+            },
         };
         let res = service
             .create(creator_id, team_id, OwnerType::Team, "p7".to_string())
@@ -254,17 +244,14 @@ mod tests {
         let team_id = ObjectId::new();
         let user = dummy_user(creator_id);
         let team = dummy_team(team_id, vec![ObjectId::new()]);
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![user.clone()]),
-        };
-        let team_repo = MockTeamRepo {
-            teams: Mutex::new(vec![team.clone()]),
-        };
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
-            user_repo,
-            team_repo,
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![user.clone()]),
+            },
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team.clone()]),
+            },
         };
         let res = service
             .create(creator_id, team_id, OwnerType::Team, "p8".to_string())
@@ -280,15 +267,12 @@ mod tests {
         let creator_id = ObjectId::new();
         let team_id = ObjectId::new();
         let user = dummy_user(creator_id);
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![user.clone()]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let project_repo = MockProjectRepo::default();
         let service = ProjectService {
-            project_repo,
-            user_repo,
-            team_repo,
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![user.clone()]),
+            },
+            team_repo: MockTeamRepo::default(),
         };
         let res = service
             .create(creator_id, team_id, OwnerType::Team, "p9".to_string())

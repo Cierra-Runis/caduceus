@@ -176,12 +176,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_success() {
-        let secret = "test_secret".to_string();
         let service = UserService {
             user_repo: MockUserRepo::default(),
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service
@@ -195,24 +194,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_user_already_exists() {
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![User {
-                id: ObjectId::new(),
-                username: "existing_user".to_string(),
-                nickname: "existing_user".to_string(),
-                password: "hashed_password".to_string(),
-                avatar_uri: None,
-                created_at: OffsetDateTime::now_utc(),
-                updated_at: OffsetDateTime::now_utc(),
-            }]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let secret = "test_secret".to_string();
         let service = UserService {
-            user_repo,
-            team_repo,
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![User {
+                    id: ObjectId::new(),
+                    username: "existing_user".to_string(),
+                    nickname: "existing_user".to_string(),
+                    password: "hashed_password".to_string(),
+                    avatar_uri: None,
+                    created_at: OffsetDateTime::now_utc(),
+                    updated_at: OffsetDateTime::now_utc(),
+                }]),
+            },
+            team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service
@@ -243,24 +239,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_success() {
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![User {
-                id: ObjectId::new(),
-                username: "test_user".to_string(),
-                nickname: "test_user".to_string(),
-                password: bcrypt::hash("test_password", DEFAULT_COST).unwrap(),
-                avatar_uri: None,
-                created_at: OffsetDateTime::now_utc(),
-                updated_at: OffsetDateTime::now_utc(),
-            }]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let secret = "test_secret".to_string();
         let service = UserService {
-            user_repo,
-            team_repo,
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![User {
+                    id: ObjectId::new(),
+                    username: "test_user".to_string(),
+                    nickname: "test_user".to_string(),
+                    password: bcrypt::hash("test_password", DEFAULT_COST).unwrap(),
+                    avatar_uri: None,
+                    created_at: OffsetDateTime::now_utc(),
+                    updated_at: OffsetDateTime::now_utc(),
+                }]),
+            },
+            team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service
@@ -274,12 +267,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_not_found() {
-        let secret = "test_secret".to_string();
         let service = UserService {
             user_repo: MockUserRepo::default(),
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service
@@ -291,23 +283,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_password_not_matched() {
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![User {
-                id: ObjectId::new(),
-                username: "test_user".to_string(),
-                nickname: "test_user".to_string(),
-                password: bcrypt::hash("correct_password", DEFAULT_COST).unwrap(),
-                avatar_uri: None,
-                created_at: OffsetDateTime::now_utc(),
-                updated_at: OffsetDateTime::now_utc(),
-            }]),
-        };
-        let secret = "test_secret".to_string();
         let service = UserService {
-            user_repo,
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![User {
+                    id: ObjectId::new(),
+                    username: "test_user".to_string(),
+                    nickname: "test_user".to_string(),
+                    password: bcrypt::hash("correct_password", DEFAULT_COST).unwrap(),
+                    avatar_uri: None,
+                    created_at: OffsetDateTime::now_utc(),
+                    updated_at: OffsetDateTime::now_utc(),
+                }]),
+            },
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service
@@ -348,7 +338,6 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
         };
 
-        let secret = "test_secret".to_string();
         let service = UserService {
             user_repo: MockUserRepo {
                 users: Mutex::new(vec![user]),
@@ -357,7 +346,7 @@ mod tests {
                 teams: Mutex::new(vec![team1.clone(), team2.clone()]),
             },
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service.list_teams(user_id).await;
@@ -371,12 +360,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_teams_user_not_found() {
-        let secret = "test_secret".to_string();
         let service = UserService {
             user_repo: MockUserRepo::default(),
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service.list_teams(ObjectId::new()).await;
@@ -397,16 +385,13 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
         };
 
-        let user_repo = MockUserRepo {
-            users: Mutex::new(vec![user.clone()]),
-        };
-        let team_repo = MockTeamRepo::default();
-        let secret = "test_secret".to_string();
         let service = UserService {
-            user_repo,
-            team_repo,
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![user.clone()]),
+            },
+            team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service.get_user_by_id(&user_id).await;
@@ -418,12 +403,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_user_by_id_not_found() {
-        let secret = "test_secret".to_string();
         let service = UserService {
             user_repo: MockUserRepo::default(),
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
-            secret,
+            secret: "test_secret".to_string(),
         };
 
         let result = service.get_user_by_id(&ObjectId::new()).await;
