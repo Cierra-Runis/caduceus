@@ -26,5 +26,7 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
         notFound();
       }
     }
+    // TODO: handle error
+    throw error;
   }
 }
