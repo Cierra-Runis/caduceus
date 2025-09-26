@@ -1,6 +1,6 @@
 import ky, { HTTPError } from 'ky';
 import { cookies } from 'next/headers';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { ProjectPayload } from '@/lib/api/project';
 import { ApiResponse } from '@/lib/response';
@@ -27,7 +27,6 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
         notFound();
       }
     }
-    // TODO: handle error
-    throw error;
+    return redirect('/');
   }
 }
