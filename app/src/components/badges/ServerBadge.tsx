@@ -17,6 +17,7 @@ export function ServerBadge({ children = '', ...props }: ServerBadgeProps) {
       content=''
       placement='bottom-right'
       shape='circle'
+      size='sm'
       {...props}
     >
       {children}
