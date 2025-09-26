@@ -23,6 +23,8 @@ derive_more = "2.0.1"
 futures-util = "0.3"
 time = { version = "0.3.43", features = ["serde"] }
 semver = { version = "1.0.27", features = ["serde"] }
+actix-ws = "0.3.0"
+actix = "0.13.5"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

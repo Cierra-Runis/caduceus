@@ -1,22 +1,23 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use actix_web::{web, App, HttpServer};
-use std::env;
-use tracing_subscriber::fmt;
-
 use server::{
     config::Config,
     database::Database,
-    handler,
+    handler::{self, ws::ProjectServer},
     middleware::jwt::JwtMiddleware,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
     AppState,
 };
+use std::{env, io};
+use tokio::spawn;
+use tokio::try_join;
+use tracing_subscriber::fmt;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> io::Result<()> {
     fmt::init();
 
     let env = env::var("APP_ENV").unwrap_or("dev".to_string());
@@ -56,9 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     });
 
-    HttpServer::new(move || {
+    let (project_server, server_tx) = ProjectServer::new();
+    let project_server = spawn(project_server.run());
+
+    let http_server = HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
+            .app_data(web::Data::new(server_tx.clone()))
             .route("/api/health", web::get().to(handler::health::health))
             .route("/api/register", web::post().to(handler::user::register))
             .route("/api/login", web::post().to(handler::user::login))
@@ -77,12 +82,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .route("/projects", web::get().to(handler::user::projects)),
                     ),
             )
+            .route("ws", web::get().to(handler::ws::ws))
             .wrap(actix_web::middleware::Logger::default())
     })
     .bind(("127.0.0.1", 8080))?
     .bind(("[::1]", 8080))?
-    .run()
-    .await?;
+    .run();
+
+    try_join!(http_server, async move { project_server.await.unwrap() })?;
 
     Ok(())
 }
