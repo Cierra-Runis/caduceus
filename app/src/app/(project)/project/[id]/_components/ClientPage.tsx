@@ -16,19 +16,12 @@ import {
 import CodeMirror from '@uiw/react-codemirror';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useState } from 'react';
-import useSWR from 'swr';
 
 import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { ProjectPayload } from '@/lib/api/project';
-import { api } from '@/lib/request';
-import { ErrorResponse } from '@/lib/response';
 
-export function ClientPage({ projectId }: { projectId: string }) {
-  const { data, error } = useSWR<ProjectPayload, ErrorResponse, string>(
-    `/api/project/${projectId}`,
-    (key) => api.get(key).json(),
-  );
+export function ClientPage({ project }: { project: ProjectPayload }) {
   const [value, setValue] = useState("console.log('hello world!');");
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -40,11 +33,10 @@ export function ClientPage({ projectId }: { projectId: string }) {
     setValue(val);
   }, []);
 
-  if (!mounted) return <Spinner className='h-full' />;
-  if (error)
+  if (!mounted)
     return (
       <div className='flex h-screen items-center justify-center'>
-        <p>{error.message}</p>
+        <Spinner />
       </div>
     );
 
@@ -112,7 +104,9 @@ export function ClientPage({ projectId }: { projectId: string }) {
           classNames={{ wrapper: 'pl-0 pr-1.5' }}
           maxWidth='full'
         >
-          <NavbarContent justify='center'>Project: {data?.name}</NavbarContent>
+          <NavbarContent justify='center'>
+            Project: {project.name}
+          </NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />
           </NavbarContent>
