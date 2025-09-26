@@ -1,8 +1,9 @@
+import ky, { HTTPError } from 'ky';
 import { cookies } from 'next/headers';
+import { notFound } from 'next/navigation';
 
 import { ProjectPayload } from '@/lib/api/project';
-import ky, { HTTPError } from 'ky';
-import { notFound } from 'next/navigation';
+
 import { ClientPage } from './_components/ClientPage';
 
 export default async function Page(props: PageProps<'/project/[id]'>) {
