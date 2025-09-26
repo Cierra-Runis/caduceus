@@ -50,10 +50,21 @@ pub struct ProjectPayload {
     pub owner_id: String,
     pub owner_type: OwnerType,
     pub creator_id: String,
+    pub files: Vec<ProjectFilePayload>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
+    pub preview: Option<String>,
+    pub pinned_version: Option<Version>,
+}
+
+#[derive(Serialize)]
+pub struct ProjectFilePayload {
+    pub id: String,
+    pub name: String,
+    pub size: i64,
+    pub version: i32,
 }
 
 impl From<Project> for ProjectPayload {
@@ -63,9 +74,27 @@ impl From<Project> for ProjectPayload {
             name: project.name,
             owner_id: project.owner_id.to_hex(),
             owner_type: project.owner_type,
+            files: project
+                .files
+                .into_iter()
+                .map(ProjectFilePayload::from)
+                .collect(),
             creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
+            preview: project.preview.map(|id| id.to_hex()),
+            pinned_version: project.pinned_version,
+        }
+    }
+}
+
+impl From<ProjectFile> for ProjectFilePayload {
+    fn from(file: ProjectFile) -> Self {
+        ProjectFilePayload {
+            id: file.id.to_hex(),
+            name: file.name,
+            size: file.size,
+            version: file.version,
         }
     }
 }
