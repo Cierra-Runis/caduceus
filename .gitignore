@@ -2,6 +2,9 @@
 .env*
 !.env.example
 
+# executable files
+*.exe
+
 # Windows thumbnail cache files
 Thumbs.db
 Thumbs.db:encryptable
