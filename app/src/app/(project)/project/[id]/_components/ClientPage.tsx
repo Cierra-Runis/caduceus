@@ -1,103 +1,30 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Divider } from '@heroui/divider';
 import { Navbar, NavbarContent } from '@heroui/navbar';
-import { ScrollShadow } from '@heroui/scroll-shadow';
-import { Spinner } from '@heroui/spinner';
+import { IconGripVertical } from '@tabler/icons-react';
+import { useRef } from 'react';
 import {
-  IconArchive,
-  IconLogout,
-  IconMap,
-  IconPencil,
-  IconSearch,
-  IconSettings,
-} from '@tabler/icons-react';
-import CodeMirror from '@uiw/react-codemirror';
-import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useState } from 'react';
+  ImperativePanelHandle,
+  PanelGroup,
+  PanelResizeHandle,
+} from 'react-resizable-panels';
 
-import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { ProjectPayload } from '@/lib/api/project';
 
+import { EditorPanel } from './EditorPanel';
+import { PreviewPanel } from './PreviewPanel';
+import { Sidebar } from './Sidebar';
+import { SidebarPanel } from './SidebarPanel';
+
 export function ClientPage({ project }: { project: ProjectPayload }) {
-  const [value, setValue] = useState("console.log('hello world!');");
-  const [mounted, setMounted] = useState(false);
-  const { resolvedTheme } = useTheme();
-
-  useEffect(() => setMounted(true), []);
-
-  const onChange = useCallback((val: string) => {
-    console.log('val:', val);
-    setValue(val);
-  }, []);
-
-  if (!mounted)
-    return (
-      <div className='flex h-screen items-center justify-center'>
-        <Spinner />
-      </div>
-    );
+  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+  const editorPanelRef = useRef<ImperativePanelHandle>(null);
+  const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
   return (
     <div className='flex h-screen'>
-      <ScrollShadow
-        className='bg-default-50 relative flex h-full min-w-18 flex-col items-center overflow-auto pt-11 transition-all'
-        hideScrollBar
-      >
-        <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
-          <Button
-            className='aspect-square h-auto w-full flex-shrink-0'
-            isIconOnly
-            radius='none'
-            variant='light'
-          >
-            <IconArchive />
-          </Button>
-          <Button
-            className='aspect-square h-auto w-full flex-shrink-0'
-            isIconOnly
-            radius='none'
-            variant='light'
-          >
-            <IconSearch />
-          </Button>
-          <Button
-            className='aspect-square h-auto w-full flex-shrink-0'
-            isIconOnly
-            radius='none'
-            variant='light'
-          >
-            <IconMap />
-          </Button>
-          <Button
-            className='aspect-square h-auto w-full flex-shrink-0'
-            isIconOnly
-            radius='none'
-            variant='light'
-          >
-            <IconPencil />
-          </Button>
-        </ScrollShadow>
-        <div className='flex w-full flex-shrink-0 flex-col items-center'>
-          <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
-            <Button
-              isIconOnly
-              startContent={<IconSettings />}
-              variant='light'
-            />
-          </div>
-          <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
-            <Button
-              isIconOnly
-              onPress={logout}
-              startContent={<IconLogout />}
-              variant='light'
-            />
-          </div>
-        </div>
-      </ScrollShadow>
+      <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <section className='flex h-full flex-1 flex-col'>
         <Navbar
           className='bg-default-50 h-11'
@@ -111,18 +38,17 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
             <ThemeButtons />
           </NavbarContent>
         </Navbar>
-        <div className='flex h-full overflow-auto'>
-          <div className='flex-1 overflow-auto scroll-auto'>
-            <CodeMirror
-              onChange={onChange}
-              placeholder='Please enter some code...'
-              theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-              value={value}
-            />
-          </div>
-          <Divider orientation='vertical' />
-          <div className='flex-1 overflow-auto scroll-auto'></div>
-        </div>
+        <PanelGroup direction='horizontal'>
+          <SidebarPanel sidebarPanelRef={sidebarPanelRef} />
+          <PanelResizeHandle className='flex w-4 items-center justify-center'>
+            <IconGripVertical className='w-4' />
+          </PanelResizeHandle>
+          <EditorPanel editorPanelRef={editorPanelRef} />
+          <PanelResizeHandle className='flex w-4 items-center justify-center'>
+            <IconGripVertical className='w-4' />
+          </PanelResizeHandle>
+          <PreviewPanel previewPanelRef={previewPanelRef} />
+        </PanelGroup>
       </section>
     </div>
   );
