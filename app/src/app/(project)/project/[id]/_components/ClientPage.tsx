@@ -1,6 +1,8 @@
 'use client';
 
+import { Button } from '@heroui/button';
 import { Navbar, NavbarContent } from '@heroui/navbar';
+import { addToast } from '@heroui/toast';
 import { IconGripVertical } from '@tabler/icons-react';
 import { useRef } from 'react';
 import {
@@ -8,6 +10,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from 'react-resizable-panels';
+import useWebSocket from 'react-use-websocket';
 
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { ProjectPayload } from '@/lib/api/project';
@@ -21,6 +24,44 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const editorPanelRef = useRef<ImperativePanelHandle>(null);
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
+
+  const { sendMessage } = useWebSocket('ws://localhost:8080/ws', {
+    heartbeat: {
+      interval: 1000,
+      message: 'ping',
+      returnMessage: 'pong',
+    },
+    onClose: (e) =>
+      addToast({
+        color: 'warning',
+        description: `${e.code}: ${e.reason}`,
+        title: 'WebSocket connection closed',
+      }),
+    onError: (event) =>
+      addToast({
+        color: 'danger',
+        description: `${event}`,
+        title: `WebSocket error`,
+      }),
+    onMessage: (message) =>
+      addToast({
+        color: 'primary',
+        description: `${message.data}`,
+        title: `WebSocket ${message.type} event`,
+      }),
+    onOpen: () =>
+      addToast({
+        color: 'success',
+
+        title: 'WebSocket connection established',
+      }),
+    onReconnectStop: () =>
+      addToast({
+        color: 'danger',
+        title: 'WebSocket reconnection stopped',
+      }),
+    shouldReconnect: () => true,
+  });
 
   return (
     <div className='flex h-screen'>
@@ -36,6 +77,7 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           </NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />
+            <Button onPress={() => sendMessage('🦶')} size='sm' />
           </NavbarContent>
         </Navbar>
         <PanelGroup direction='horizontal'>
