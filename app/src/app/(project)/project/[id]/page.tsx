@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 
 import { ProjectPayload } from '@/lib/api/project';
+import { ApiResponse } from '@/lib/response';
 
 import { ClientPage } from './_components/ClientPage';
 
@@ -17,9 +18,9 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
           cookie: cookieStore.toString(),
         },
       })
-      .json<ProjectPayload>();
+      .json<ApiResponse<ProjectPayload>>();
 
-    return <ClientPage project={res} />;
+    return <ClientPage project={res.payload} />;
   } catch (error) {
     if (error instanceof HTTPError) {
       if (error.response.status === 404) {
