@@ -111,8 +111,11 @@ pub mod tests {
             owner_id: ObjectId::new(),
             owner_type: OwnerType::User,
             creator_id: ObjectId::new(),
+            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
         };
 
         // Test create

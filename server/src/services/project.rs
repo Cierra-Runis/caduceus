@@ -81,8 +81,11 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 owner_id,
                 owner_type,
                 creator_id: creator.id,
+                files: vec![],
                 created_at: OffsetDateTime::now_utc(),
                 updated_at: OffsetDateTime::now_utc(),
+                preview: None,
+                pinned_version: None,
             })
             .await
             .map_err(ProjectServiceError::Database)?;

@@ -1,6 +1,7 @@
 use bson::oid::ObjectId;
 use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use derive_more::Display;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -22,10 +23,24 @@ pub struct Project {
     pub owner_id: ObjectId,
     pub owner_type: OwnerType,
     pub creator_id: ObjectId,
+    pub files: Vec<ProjectFile>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub updated_at: OffsetDateTime,
+    pub preview: Option<ObjectId>, // ID of the previewing File
+    pub pinned_version: Option<Version>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectFile {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    pub name: String,
+    // Last Change, CURD
+    // pub last_change: Struct,
+    pub size: i64,
+    pub version: i32,
 }
 
 #[derive(Serialize)]
