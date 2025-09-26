@@ -16,7 +16,7 @@ export async function decrypt(
     });
     return payload;
   } catch (error) {
-    console.error('Failed to verify session:', error);
+    console.error('[JWTPayload decrypt] Failed to verify session:', error);
   }
 }
 
