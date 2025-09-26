@@ -3,7 +3,7 @@
 import { Spinner } from '@heroui/spinner';
 import CodeMirror from '@uiw/react-codemirror';
 import { useTheme } from 'next-themes';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export function Editor() {
   const [value, setValue] = useState("console.log('hello world!');");
@@ -11,11 +11,6 @@ export function Editor() {
   const { resolvedTheme } = useTheme();
 
   useEffect(() => setMounted(true), []);
-
-  const onChange = useCallback((val: string) => {
-    console.log('val:', val);
-    setValue(val);
-  }, []);
 
   if (!mounted)
     return (
@@ -26,7 +21,7 @@ export function Editor() {
 
   return (
     <CodeMirror
-      onChange={onChange}
+      onChange={setValue}
       placeholder='Please enter some code...'
       theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
       value={value}
