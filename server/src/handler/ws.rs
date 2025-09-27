@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use actix::{prelude::*, Addr};
-use actix_web::rt as actix_rt;
+use actix_web::rt;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::AggregatedMessage;
 use bson::oid::ObjectId;
@@ -29,7 +29,7 @@ pub async fn ws(
     // spawn websocket handler (and don't await it) so that the response is returned immediately
     // the handler will register with the ProjectServer actor and forward messages
     // spawn the websocket handler on the actix runtime
-    actix_rt::spawn(handle_ws((**project_server).clone(), session, msg_stream));
+    rt::spawn(handle_ws((**project_server).clone(), session, msg_stream));
 
     Ok(res)
 }
@@ -70,35 +70,38 @@ async fn handle_ws(
                     AggregatedMessage::Ping(bytes) => {
                         last_heartbeat = Instant::now();
                         if let Err(e) = session.pong(&bytes).await {
-                            debug!("WS {}: failed to send Pong: {:#?}", conn_id, e);
+                            debug!("AggregatedMessage::Ping {}: failed to send Pong: {:#?}", conn_id, e);
                             break None;
                         }
-                        debug!("WS {}: received Ping, sent Pong", conn_id);
+                        debug!("AggregatedMessage::Ping {}: received Ping, sent Pong", conn_id);
                     }
                     AggregatedMessage::Pong(_) => {
                         last_heartbeat = Instant::now();
-                        debug!("WS {}: received Pong", conn_id);
+                        debug!("AggregatedMessage::Pong {}: received Pong", conn_id);
                     }
                     AggregatedMessage::Text(text) => {
                         // Convert possibly borrowed bytes to owned String for logging/broadcast
                         let txt = text.to_string();
-                        debug!("WS {}: received Text message: {}", conn_id, txt);
+                        debug!("AggregatedMessage::Text {}: received Text message: {}", conn_id, txt);
                         // Echo back to sender
                         if let Err(e) = session.text(txt.clone()).await {
-                            debug!("WS {}: failed to send Text echo: {:#?}", conn_id, e);
+                            debug!("AggregatedMessage::Text {}: failed to send Text echo: {:#?}", conn_id, e);
                             break None;
                         }
                         // Broadcast to other sessions via ProjectServer actor
                         chat_server.addr.do_send(BroadcastText(txt));
                     }
                     AggregatedMessage::Binary(bin) => {
-                        debug!("WS {}: received Binary message ({} bytes)", conn_id, bin.len());
+                        debug!("AggregatedMessage::Binary {}: received Binary message ({} bytes)", conn_id, bin.len());
                         if let Err(e) = session.binary(bin).await {
-                            debug!("WS {}: failed to send Binary echo: {:#?}", conn_id, e);
+                            debug!("AggregatedMessage::Binary {}: failed to send Binary echo: {:#?}", conn_id, e);
                             break None;
                         }
                     }
-                    AggregatedMessage::Close(reason) => break reason,
+                    AggregatedMessage::Close(reason) => {
+                        debug!("AggregatedMessage::Close {}: received Close message: {:?}", conn_id, reason);
+                        break reason;
+                    },
                 }
             }
 
@@ -108,15 +111,15 @@ async fn handle_ws(
             chat_msg = conn_rx.recv() => {
                 match chat_msg {
                     Some(chat_msg) => {
-                        debug!("WS {}: sending message from ProjectServer: {}", conn_id, chat_msg);
+                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id, chat_msg);
                         if let Err(e) = session.text(chat_msg).await {
-                            debug!("WS {}: failed to send server-pushed text: {:#?}", conn_id, e);
+                            debug!("WS conn_rx.recv {}: failed to send server-pushed text: {:#?}", conn_id, e);
                             break None;
                         }
                     }
                     None => {
                         // The sender side (`conn_tx`) was dropped; no more server messages.
-                        debug!("WS {}: conn_rx closed (conn_tx dropped).", conn_id);
+                        debug!("WS conn_rx.recv {}: conn_rx closed (conn_tx dropped).", conn_id);
                         break None;
                     }
                 }
