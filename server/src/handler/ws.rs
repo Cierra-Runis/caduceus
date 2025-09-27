@@ -1,14 +1,16 @@
-use std::{collections::HashMap, io, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
+use actix::{prelude::*, Addr};
+use actix_web::rt as actix_rt;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_ws::AggregatedMessage;
 use bson::oid::ObjectId;
 use futures_util::StreamExt as _;
 use tokio::{
-    sync::{mpsc, oneshot},
-    task::spawn_local,
+    sync::mpsc,
     time::{interval, Instant},
 };
+use tracing::{debug, info};
 
 /// How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -25,7 +27,9 @@ pub async fn ws(
     let (res, session, msg_stream) = actix_ws::handle(&req, stream)?;
 
     // spawn websocket handler (and don't await it) so that the response is returned immediately
-    spawn_local(handle_ws((**project_server).clone(), session, msg_stream));
+    // the handler will register with the ProjectServer actor and forward messages
+    // spawn the websocket handler on the actix runtime
+    actix_rt::spawn(handle_ws((**project_server).clone(), session, msg_stream));
 
     Ok(res)
 }
@@ -42,37 +46,80 @@ async fn handle_ws(
 
     let (conn_tx, mut conn_rx) = mpsc::unbounded_channel();
 
-    // unwrap: chat server is not dropped before the HTTP server
+    // Register this connection with the ProjectServer actor. The actor will
+    // keep the mpsc sender and can use it to push messages to this WebSocket.
+    // We store the returned string id to allow later disconnect.
     let conn_id = chat_server.connect(conn_tx).await;
+    info!("WS handler: registered connection {}", conn_id);
 
     let mut msg_stream = msg_stream
         .max_frame_size(128 * 1024)
         .aggregate_continuations()
         .max_continuation_size(2 * 1024 * 1024);
 
+    // The main loop for this WebSocket session.
+    // We listen to two independent message sources in parallel using `tokio::select!`:
+    // 1) `msg_stream.next()` - messages coming from the WebSocket client (incoming frames)
+    // 2) `conn_rx.recv()`   - messages pushed from the `ProjectServer` actor (server -> this client)
+    // The loop exits when a Close frame is received, when heartbeats time out, or when both
+    // streams are closed.
     let close_reason = loop {
         tokio::select! {
             Some(Ok(msg)) = msg_stream.next() => {
                 match msg {
                     AggregatedMessage::Ping(bytes) => {
                         last_heartbeat = Instant::now();
-                        session.pong(&bytes).await.unwrap();
+                        if let Err(e) = session.pong(&bytes).await {
+                            debug!("WS {}: failed to send Pong: {:#?}", conn_id, e);
+                            break None;
+                        }
+                        debug!("WS {}: received Ping, sent Pong", conn_id);
                     }
                     AggregatedMessage::Pong(_) => {
                         last_heartbeat = Instant::now();
+                        debug!("WS {}: received Pong", conn_id);
                     }
                     AggregatedMessage::Text(text) => {
-                        session.text(text).await.unwrap();
+                        // Convert possibly borrowed bytes to owned String for logging/broadcast
+                        let txt = text.to_string();
+                        debug!("WS {}: received Text message: {}", conn_id, txt);
+                        // Echo back to sender
+                        if let Err(e) = session.text(txt.clone()).await {
+                            debug!("WS {}: failed to send Text echo: {:#?}", conn_id, e);
+                            break None;
+                        }
+                        // Broadcast to other sessions via ProjectServer actor
+                        chat_server.addr.do_send(BroadcastText(txt));
                     }
                     AggregatedMessage::Binary(bin) => {
-                        session.binary(bin).await.unwrap();
+                        debug!("WS {}: received Binary message ({} bytes)", conn_id, bin.len());
+                        if let Err(e) = session.binary(bin).await {
+                            debug!("WS {}: failed to send Binary echo: {:#?}", conn_id, e);
+                            break None;
+                        }
                     }
                     AggregatedMessage::Close(reason) => break reason,
                 }
             }
 
-            Some(chat_msg) = conn_rx.recv() => {
-                session.text(chat_msg).await.unwrap();
+            // Message pushed from ProjectServer (server -> this connection)
+            // We only call `conn_rx.recv()` once here and handle both Some/None inside to
+            // avoid multiple mutable borrows of `conn_rx` in the same `select!`.
+            chat_msg = conn_rx.recv() => {
+                match chat_msg {
+                    Some(chat_msg) => {
+                        debug!("WS {}: sending message from ProjectServer: {}", conn_id, chat_msg);
+                        if let Err(e) = session.text(chat_msg).await {
+                            debug!("WS {}: failed to send server-pushed text: {:#?}", conn_id, e);
+                            break None;
+                        }
+                    }
+                    None => {
+                        // The sender side (`conn_tx`) was dropped; no more server messages.
+                        debug!("WS {}: conn_rx closed (conn_tx dropped).", conn_id);
+                        break None;
+                    }
+                }
             }
 
             _ = interval.tick() => {
@@ -83,116 +130,125 @@ async fn handle_ws(
             }
 
             else => {
+                // This branch triggers when all selected futures are completed / cancelled.
+                debug!("WS {}: select! else branch triggered (stream ended).", conn_id);
                 break None;
             }
         }
     };
 
-    chat_server.disconnect(conn_id);
+    // Unregister from ProjectServer actor
+    chat_server.disconnect(conn_id.clone());
+    info!("WS handler: disconnected {}", conn_id);
 
     // attempt to close connection gracefully
     let _ = session.close(close_reason).await;
 }
 
-/// Handle and command sender for chat server.
+/// ProjectServer is implemented as an Actix actor.
 ///
-/// Reduces boilerplate of setting up response channels in WebSocket handlers.
-#[derive(Debug, Clone)]
-pub struct ProjectServerHandle {
-    cmd_tx: mpsc::UnboundedSender<Command>,
-}
-
-/// A command received by the [`ChatServer`].
-#[derive(Debug)]
-enum Command {
-    Connect {
-        conn_tx: mpsc::UnboundedSender<String>,
-        res_tx: oneshot::Sender<ObjectId>,
-    },
-
-    Disconnect {
-        conn: ObjectId,
-    },
-}
-
-impl ProjectServerHandle {
-    /// Register client message sender and obtain connection ID.
-    pub async fn connect(&self, conn_tx: mpsc::UnboundedSender<String>) -> ObjectId {
-        let (res_tx, res_rx) = oneshot::channel();
-
-        // unwrap: chat server should not have been dropped
-        self.cmd_tx
-            .send(Command::Connect { conn_tx, res_tx })
-            .unwrap();
-
-        // unwrap: chat server does not drop out response channel
-        res_rx.await.unwrap()
-    }
-
-    /// Unregister message sender and broadcast disconnection message to current room.
-    pub fn disconnect(&self, conn: ObjectId) {
-        // unwrap: chat server should not have been dropped
-        self.cmd_tx.send(Command::Disconnect { conn }).unwrap();
-    }
-}
-
-/// A multi-room chat server.
-///
-/// Contains the logic of how connections chat with each other plus room management.
-///
-/// Call and spawn [`run`](Self::run) to start processing commands.
+/// Responsibilities:
+/// - Maintain mapping of connection id -> session recipient
+/// - Handle Connect / Disconnect messages from WebSocket session actors
+/// - Broadcast messages between sessions if needed (extension point)
 #[derive(Debug)]
 pub struct ProjectServer {
-    /// Map of connection IDs to their message receivers.
-    sessions: HashMap<ObjectId, mpsc::UnboundedSender<String>>,
-
-    /// Command receiver.
-    cmd_rx: mpsc::UnboundedReceiver<Command>,
+    sessions: HashMap<String, mpsc::UnboundedSender<String>>,
 }
 
 impl ProjectServer {
-    pub fn new() -> (Self, ProjectServerHandle) {
-        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-
-        (
-            Self {
-                sessions: HashMap::new(),
-                cmd_rx,
-            },
-            ProjectServerHandle { cmd_tx },
-        )
+    pub fn new() -> Self {
+        ProjectServer {
+            sessions: HashMap::new(),
+        }
     }
+}
 
-    /// Register new session and assign unique ID to this session
-    async fn connect(&mut self, tx: mpsc::UnboundedSender<String>) -> ObjectId {
-        // register session with random connection ID
-        let id = ObjectId::new();
-        self.sessions.insert(id, tx);
+impl Default for ProjectServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-        // send id back
+/// Message sent from session actor to ProjectServer to register itself.
+#[derive(Message)]
+#[rtype(result = "String")]
+pub struct Connect {
+    pub conn_tx: mpsc::UnboundedSender<String>,
+}
+
+/// Message sent to unregister a session.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct Disconnect {
+    pub id: String,
+}
+
+impl Actor for ProjectServer {
+    type Context = Context<Self>;
+}
+
+impl Handler<Connect> for ProjectServer {
+    type Result = String;
+
+    fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
+        let id = ObjectId::new().to_string();
+        info!("ProjectServer: registering session {}", id);
+        self.sessions.insert(id.clone(), msg.conn_tx);
         id
     }
+}
 
-    /// Unregister connection from room map and broadcast disconnection message.
-    async fn disconnect(&mut self, conn_id: ObjectId) {
-        // remove sender
-        if self.sessions.remove(&conn_id).is_some() {}
+impl Handler<Disconnect> for ProjectServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
+        info!("ProjectServer: disconnecting session {}", msg.id);
+        self.sessions.remove(&msg.id);
+    }
+}
+
+impl ProjectServer {
+    /// Broadcast a textual message to all connected sessions (simple implementation)
+    pub fn broadcast(&self, text: &str) {
+        for (id, tx) in &self.sessions {
+            let _ = tx.send(text.to_string());
+            debug!("Broadcast: queued to {}", id);
+        }
+    }
+}
+
+/// Message to ask ProjectServer to broadcast a text message to all sessions.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct BroadcastText(pub String);
+
+impl Handler<BroadcastText> for ProjectServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: BroadcastText, _ctx: &mut Self::Context) -> Self::Result {
+        self.broadcast(&msg.0);
+    }
+}
+
+/// Handle wrapper exposed to actix-web for storing Addr<ProjectServer> in app data.
+#[derive(Clone)]
+pub struct ProjectServerHandle {
+    pub addr: Addr<ProjectServer>,
+}
+
+impl ProjectServerHandle {
+    pub fn new(addr: Addr<ProjectServer>) -> Self {
+        Self { addr }
     }
 
-    pub async fn run(mut self) -> io::Result<()> {
-        while let Some(cmd) = self.cmd_rx.recv().await {
-            match cmd {
-                Command::Connect { conn_tx, res_tx } => {
-                    let conn_id = self.connect(conn_tx).await;
-                    let _ = res_tx.send(conn_id);
-                }
+    /// Connect helper that asks the actor to register and returns the assigned string id.
+    pub async fn connect(&self, conn_tx: mpsc::UnboundedSender<String>) -> String {
+        self.addr.send(Connect { conn_tx }).await.unwrap()
+    }
 
-                Command::Disconnect { conn } => {
-                    self.disconnect(conn).await;
-                }
-            }
-        }
-
-        Ok(())
+    /// Disconnect helper
+    pub fn disconnect(&self, id: String) {
+        self.addr.do_send(Disconnect { id });
     }
 }

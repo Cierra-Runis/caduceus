@@ -1,5 +1,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
+use actix::prelude::*;
 use actix_web::{web, App, HttpServer};
 use server::{
     config::Config,
@@ -11,12 +12,10 @@ use server::{
     AppState,
 };
 use std::{env, io};
-use tokio::spawn;
-use tokio::try_join;
 use tracing_subscriber::fmt;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> io::Result<()> {
     fmt::init();
 
@@ -57,10 +56,11 @@ async fn main() -> io::Result<()> {
         },
     });
 
-    let (project_server, server_tx) = ProjectServer::new();
-    let project_server = spawn(project_server.run());
+    // start ProjectServer actor and obtain its Addr to be stored in app data
+    let project_server_addr = ProjectServer::new().start();
+    let server_tx = handler::ws::ProjectServerHandle::new(project_server_addr.clone());
 
-    let http_server = HttpServer::new(move || {
+    HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
             .app_data(web::Data::new(server_tx.clone()))
@@ -87,9 +87,8 @@ async fn main() -> io::Result<()> {
     })
     .bind(("127.0.0.1", 8080))?
     .bind(("[::1]", 8080))?
-    .run();
-
-    try_join!(http_server, async move { project_server.await.unwrap() })?;
+    .run()
+    .await?;
 
     Ok(())
 }
