@@ -26,40 +26,47 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
   const { sendMessage } = useWebSocket('ws://localhost:8080/ws', {
-    heartbeat: {
-      interval: 1000,
-      message: 'ping',
-      returnMessage: 'pong',
-    },
     onClose: (e) =>
       addToast({
         color: 'warning',
         description: `${e.code}: ${e.reason}`,
+        shouldShowTimeoutProgress: true,
+        timeout: 2000,
         title: 'WebSocket connection closed',
       }),
     onError: (event) =>
       addToast({
         color: 'danger',
         description: `${event}`,
+        shouldShowTimeoutProgress: true,
+        timeout: 2000,
         title: `WebSocket error`,
       }),
     onMessage: (message) =>
       addToast({
         color: 'primary',
         description: `${message.data}`,
+        shouldShowTimeoutProgress: true,
+        timeout: 2000,
         title: `WebSocket ${message.type} event`,
       }),
     onOpen: () =>
       addToast({
         color: 'success',
-
+        shouldShowTimeoutProgress: true,
+        timeout: 2000,
         title: 'WebSocket connection established',
       }),
     onReconnectStop: () =>
       addToast({
         color: 'danger',
+        shouldShowTimeoutProgress: true,
+        timeout: 2000,
         title: 'WebSocket reconnection stopped',
       }),
+    reconnectAttempts: 10,
+    reconnectInterval: 3000,
+    retryOnError: true,
     shouldReconnect: () => true,
   });
 
