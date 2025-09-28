@@ -25,48 +25,51 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const editorPanelRef = useRef<ImperativePanelHandle>(null);
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
-  const { sendMessage } = useWebSocket('ws://localhost:8080/ws', {
-    onClose: () =>
-      addToast({
-        color: 'warning',
-        shouldShowTimeoutProgress: true,
-        timeout: 2000,
-        title: 'WebSocket connection closed',
-      }),
-    onError: () =>
-      addToast({
-        color: 'danger',
-        shouldShowTimeoutProgress: true,
-        timeout: 2000,
-        title: `WebSocket error`,
-      }),
-    onMessage: (message) =>
-      addToast({
-        color: 'primary',
-        description: `${message.data}`,
-        shouldShowTimeoutProgress: true,
-        timeout: 2000,
-        title: `WebSocket ${message.type} event`,
-      }),
-    onOpen: () =>
-      addToast({
-        color: 'success',
-        shouldShowTimeoutProgress: true,
-        timeout: 2000,
-        title: 'WebSocket connection established',
-      }),
-    onReconnectStop: () =>
-      addToast({
-        color: 'danger',
-        shouldShowTimeoutProgress: true,
-        timeout: 2000,
-        title: 'WebSocket reconnection stopped',
-      }),
-    reconnectAttempts: 10,
-    reconnectInterval: 3000,
-    retryOnError: true,
-    shouldReconnect: () => true,
-  });
+  const { sendMessage } = useWebSocket(
+    `ws://localhost:8080/ws/project/${project.id}`,
+    {
+      onClose: () =>
+        addToast({
+          color: 'warning',
+          shouldShowTimeoutProgress: true,
+          timeout: 2000,
+          title: 'WebSocket connection closed',
+        }),
+      onError: () =>
+        addToast({
+          color: 'danger',
+          shouldShowTimeoutProgress: true,
+          timeout: 2000,
+          title: `WebSocket error`,
+        }),
+      onMessage: (message) =>
+        addToast({
+          color: 'primary',
+          description: `${message.data}`,
+          shouldShowTimeoutProgress: true,
+          timeout: 2000,
+          title: `WebSocket ${message.type} event`,
+        }),
+      onOpen: () =>
+        addToast({
+          color: 'success',
+          shouldShowTimeoutProgress: true,
+          timeout: 2000,
+          title: 'WebSocket connection established',
+        }),
+      onReconnectStop: () =>
+        addToast({
+          color: 'danger',
+          shouldShowTimeoutProgress: true,
+          timeout: 2000,
+          title: 'WebSocket reconnection stopped',
+        }),
+      reconnectAttempts: 10,
+      reconnectInterval: 3000,
+      retryOnError: true,
+      shouldReconnect: () => true,
+    },
+  );
 
   return (
     <div className='flex h-screen'>
