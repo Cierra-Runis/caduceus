@@ -28,7 +28,7 @@ pub struct Project {
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub updated_at: OffsetDateTime,
-    pub preview: Option<ObjectId>, // ID of the previewing File
+    pub preview: Option<ObjectId>, // ID of the previewing `ProjectFile`
     pub pinned_version: Option<Version>,
 }
 
