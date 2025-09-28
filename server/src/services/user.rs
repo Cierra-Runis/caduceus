@@ -128,11 +128,8 @@ impl<R: UserRepo, T: TeamRepo, P: ProjectRepo> UserService<R, T, P> {
         Ok(payloads)
     }
 
-    pub async fn get_user_by_id(
-        &self,
-        user_id: &ObjectId,
-    ) -> Result<UserPayload, UserServiceError> {
-        match self.user_repo.find_by_id(*user_id).await {
+    pub async fn get_user_by_id(&self, user_id: ObjectId) -> Result<UserPayload, UserServiceError> {
+        match self.user_repo.find_by_id(user_id).await {
             Ok(Some(user)) => Ok(user.into()),
             Ok(None) => Err(UserServiceError::UserNotFound),
             Err(e) => Err(UserServiceError::Database(e)),
@@ -394,7 +391,7 @@ mod tests {
             secret: "test_secret".to_string(),
         };
 
-        let result = service.get_user_by_id(&user_id).await;
+        let result = service.get_user_by_id(user_id).await;
 
         assert!(result.is_ok());
         let payload = result.unwrap();
@@ -410,7 +407,7 @@ mod tests {
             secret: "test_secret".to_string(),
         };
 
-        let result = service.get_user_by_id(&ObjectId::new()).await;
+        let result = service.get_user_by_id(ObjectId::new()).await;
 
         assert!(matches!(result, Err(UserServiceError::UserNotFound)));
     }

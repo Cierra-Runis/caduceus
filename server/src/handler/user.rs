@@ -134,7 +134,7 @@ pub async fn me(
     data: web::Data<crate::AppState>,
     user: UserClaims,
 ) -> Result<HttpResponse, UserServiceError> {
-    match data.user_service.get_user_by_id(&user.sub).await {
+    match data.user_service.get_user_by_id(user.sub).await {
         Ok(user) => {
             let response = ApiResponse::success("User retrieved successfully", user);
             Ok(HttpResponse::Ok().json(response))
