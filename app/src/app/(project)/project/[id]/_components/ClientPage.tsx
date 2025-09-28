@@ -26,18 +26,16 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
   const { sendMessage } = useWebSocket('ws://localhost:8080/ws', {
-    onClose: (e) =>
+    onClose: () =>
       addToast({
         color: 'warning',
-        description: `${e.code}: ${e.reason}`,
         shouldShowTimeoutProgress: true,
         timeout: 2000,
         title: 'WebSocket connection closed',
       }),
-    onError: (event) =>
+    onError: () =>
       addToast({
         color: 'danger',
-        description: `${event}`,
         shouldShowTimeoutProgress: true,
         timeout: 2000,
         title: `WebSocket error`,
