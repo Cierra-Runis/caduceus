@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 
 import '@/styles/globals.css';
 import { NextIntlClientProvider, useLocale } from 'next-intl';
-import { Saira } from 'next/font/google';
+import { Cascadia_Code, Saira } from 'next/font/google';
 import Script from 'next/script';
 
 import { Providers } from '@/components/roots/Providers';
@@ -10,6 +10,11 @@ import { Providers } from '@/components/roots/Providers';
 const sans = Saira({
   subsets: ['latin'],
   variable: '--font-sans',
+});
+
+const mono = Cascadia_Code({
+  subsets: ['latin'],
+  variable: '--font-mono',
 });
 
 export const metadata: Metadata = {
@@ -24,7 +29,11 @@ export default function RootLayout({
 }>) {
   const locale = useLocale();
   return (
-    <html className={sans.variable} lang={locale} suppressHydrationWarning>
+    <html
+      className={`${sans.variable} ${mono.variable}`}
+      lang={locale}
+      suppressHydrationWarning
+    >
       <head>
         <Script
           async
