@@ -1,7 +1,6 @@
 'use client';
 
 import { Spinner } from '@heroui/spinner';
-import CodeMirror from '@uiw/react-codemirror';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
@@ -19,12 +18,5 @@ export function Editor() {
       </div>
     );
 
-  return (
-    <CodeMirror
-      onChange={setValue}
-      placeholder='Please enter some code...'
-      theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-      value={value}
-    />
-  );
+  return <></>;
 }
