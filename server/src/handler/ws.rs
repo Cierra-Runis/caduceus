@@ -19,6 +19,7 @@ use tokio::{
 use tracing::{debug, info};
 
 use crate::models::response::ApiResponse;
+use crate::models::ws::Message;
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -129,11 +130,27 @@ async fn handle_ws(
                         debug!("AggregatedMessage::Pong {}: received Pong", conn_id);
                     }
                     AggregatedMessage::Text(text) => {
-                        // Convert possibly borrowed bytes to owned String for logging/broadcast
-                        let txt = text.to_string();
-                        debug!("AggregatedMessage::Text {}: received Text message: {}", conn_id, txt);
-                        // Broadcast to other sessions via ProjectServer actor (scoped to project)
-                        chat_server.addr.do_send(BroadcastText { project_id: project_id.clone(), text: txt });
+                        let message: Result<Message, serde_json::Error> = serde_json::from_str(text.to_string().as_str());
+
+                        match message {
+                            Ok(message) => {
+                                debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id, message);
+                                // Broadcast the message to all sessions in the same project
+                                chat_server.addr.do_send(BroadcastText {
+                                    project_id: project_id.clone(),
+                                    text: message,
+                                });
+                            }
+                            Err(e) => {
+                                debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id, e);
+                                // Optionally, you could choose to close the connection here
+                                // break Some(actix_ws::CloseReason {
+                                //     code: actix_ws::CloseCode::Invalid,
+                                //     description: Some("Invalid JSON".to_string()),
+                                // });
+                            }
+
+                      }
                     }
                     AggregatedMessage::Binary(bin) => {
                         debug!("AggregatedMessage::Binary {}: received Binary message ({} bytes)", conn_id, bin.len());
@@ -269,10 +286,10 @@ impl Handler<Disconnect> for ProjectServer {
 
 impl ProjectServer {
     /// Broadcast a textual message to all connected sessions (simple implementation)
-    pub fn broadcast(&self, project_id: &ProjectId, text: &str) {
+    pub fn broadcast(&self, project_id: &ProjectId, text: &Message) {
         if let Some(sessions) = self.sessions.get(project_id) {
             for (id, tx) in sessions {
-                let _ = tx.send(text.to_string());
+                let _ = tx.send(serde_json::to_string(text).unwrap());
                 debug!("Broadcast to project {}: queued to {}", project_id, id);
             }
         } else {
@@ -286,7 +303,7 @@ impl ProjectServer {
 #[rtype(result = "()")]
 pub struct BroadcastText {
     pub project_id: ProjectId,
-    pub text: String,
+    pub text: Message,
 }
 
 impl Handler<BroadcastText> for ProjectServer {

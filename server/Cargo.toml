@@ -26,6 +26,7 @@ semver = { version = "1.0.27", features = ["serde"] }
 actix-ws = "0.3.0"
 actix = "0.13.5"
 log = "0.4.28"
+serde_repr = "0.1.20"
 
 [dev-dependencies]
 tokio-test = "0.4.4"
