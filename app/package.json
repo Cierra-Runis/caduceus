@@ -50,6 +50,7 @@
     "@heroui/tooltip": "^2.2.23",
     "@heroui/user": "^2.2.21",
     "@hookform/resolvers": "^5.2.2",
+    "@monaco-editor/react": "^4.7.0",
     "@open-rpc/client-js": "^1.8.1",
     "@tabler/icons-react": "^3.35.0",
     "framer-motion": "12.23.12",
