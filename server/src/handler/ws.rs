@@ -83,11 +83,6 @@ async fn handle_ws(
                         // Convert possibly borrowed bytes to owned String for logging/broadcast
                         let txt = text.to_string();
                         debug!("AggregatedMessage::Text {}: received Text message: {}", conn_id, txt);
-                        // Echo back to sender
-                        if let Err(e) = session.text(txt.clone()).await {
-                            debug!("AggregatedMessage::Text {}: failed to send Text echo: {:#?}", conn_id, e);
-                            break None;
-                        }
                         // Broadcast to other sessions via ProjectServer actor
                         chat_server.addr.do_send(BroadcastText(txt));
                     }
