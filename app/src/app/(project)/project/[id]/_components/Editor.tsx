@@ -1,11 +1,11 @@
 'use client';
 
 import { Spinner } from '@heroui/spinner';
+import MonacoEditor from '@monaco-editor/react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
 export function Editor() {
-  const [value, setValue] = useState("console.log('hello world!');");
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme } = useTheme();
 
@@ -18,5 +18,10 @@ export function Editor() {
       </div>
     );
 
-  return <></>;
+  return (
+    <MonacoEditor
+      loading={<Spinner />}
+      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+    />
+  );
 }
