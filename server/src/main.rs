@@ -82,7 +82,7 @@ async fn main() -> io::Result<()> {
                             .route("/projects", web::get().to(handler::user::projects)),
                     ),
             )
-            .route("ws", web::get().to(handler::ws::ws))
+            .route("/ws/project/{id}", web::get().to(handler::ws::ws))
             .wrap(actix_web::middleware::Logger::default())
     })
     .bind(("127.0.0.1", 8080))?
