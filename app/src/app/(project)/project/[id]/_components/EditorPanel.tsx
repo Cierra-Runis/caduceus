@@ -2,14 +2,16 @@
 
 import { RefObject } from 'react';
 import { ImperativePanelHandle, Panel } from 'react-resizable-panels';
+import { SendJsonMessage } from 'react-use-websocket/dist/lib/types';
 
 import { Editor } from './Editor';
 
 export interface EditorPanelProps {
   editorPanelRef: RefObject<ImperativePanelHandle | null>;
+  sendMessage: SendJsonMessage;
 }
 
-export function EditorPanel({ editorPanelRef }: EditorPanelProps) {
+export function EditorPanel({ editorPanelRef, sendMessage }: EditorPanelProps) {
   return (
     <Panel
       collapsible
@@ -20,7 +22,7 @@ export function EditorPanel({ editorPanelRef }: EditorPanelProps) {
       ref={editorPanelRef}
       style={{ overflow: 'auto' }}
     >
-      <Editor />
+      <Editor sendMessage={sendMessage} />
     </Panel>
   );
 }

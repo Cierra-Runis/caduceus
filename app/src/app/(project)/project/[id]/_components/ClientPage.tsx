@@ -1,6 +1,5 @@
 'use client';
 
-import { Button } from '@heroui/button';
 import { Navbar, NavbarContent } from '@heroui/navbar';
 import { addToast } from '@heroui/toast';
 import { IconGripVertical } from '@tabler/icons-react';
@@ -25,7 +24,7 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const editorPanelRef = useRef<ImperativePanelHandle>(null);
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
-  const { sendMessage } = useWebSocket(
+  const { sendJsonMessage } = useWebSocket(
     `ws://localhost:8080/ws/project/${project.id}`,
     {
       onClose: () =>
@@ -85,7 +84,6 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           </NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />
-            <Button onPress={() => sendMessage('🦶')} size='sm' />
           </NavbarContent>
         </Navbar>
         <PanelGroup direction='horizontal'>
@@ -93,7 +91,10 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           <PanelResizeHandle className='flex w-4 items-center justify-center'>
             <IconGripVertical className='w-4' />
           </PanelResizeHandle>
-          <EditorPanel editorPanelRef={editorPanelRef} />
+          <EditorPanel
+            editorPanelRef={editorPanelRef}
+            sendMessage={sendJsonMessage}
+          />
           <PanelResizeHandle className='flex w-4 items-center justify-center'>
             <IconGripVertical className='w-4' />
           </PanelResizeHandle>
