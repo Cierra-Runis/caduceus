@@ -4,15 +4,14 @@ import { Button } from '@heroui/button';
 import { ScrollShadow } from '@heroui/scroll-shadow';
 import {
   IconArchive,
-  IconLogout,
+  IconHome,
   IconMap,
   IconPencil,
   IconSearch,
   IconSettings,
 } from '@tabler/icons-react';
+import NextLink from 'next/link';
 import { useCallback } from 'react';
-
-import { logout } from '@/actions/auth';
 
 import { SidebarPanelProps } from './SidebarPanel';
 
@@ -25,7 +24,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
 
   return (
     <ScrollShadow
-      className='bg-default-50 relative flex h-full min-w-18 flex-col items-center overflow-auto pt-11 transition-all'
+      className='bg-content1 relative flex h-full min-w-18 flex-col items-center overflow-auto pt-11 transition-all'
       hideScrollBar
     >
       <ScrollShadow className='flex w-full flex-1 flex-col' hideScrollBar>
@@ -77,9 +76,10 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
         </div>
         <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
           <Button
+            as={NextLink}
+            href='/'
             isIconOnly
-            onPress={logout}
-            startContent={<IconLogout />}
+            startContent={<IconHome />}
             variant='light'
           />
         </div>

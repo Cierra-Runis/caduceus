@@ -12,7 +12,7 @@ export default function Home() {
             Caduceus
           </div>
         </div>
-        <p className='text-default-500 text-center leading-7 font-normal'>
+        <p className='text-foreground-500 text-center leading-7'>
           {t.rich('description', {
             typstApp: (chunks) => (
               <NextLink href='https://typst.app'>{chunks}</NextLink>

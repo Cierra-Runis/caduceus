@@ -1,22 +1,11 @@
-'use client';
-
 import { Button } from '@heroui/button';
 import { Image } from '@heroui/image';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import NextLink from 'next/link';
-import { useState } from 'react';
 
 export const NavBar = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
   return (
-    <Navbar
-      isBordered
-      isMenuOpen={isMenuOpen}
-      maxWidth='xl'
-      onMenuOpenChange={setIsMenuOpen}
-      shouldHideOnScroll
-    >
+    <Navbar isBordered maxWidth='xl' shouldHideOnScroll>
       <NavbarBrand className='max-w-fit gap-3'>
         <NextLink className='flex items-center gap-2' href='/'>
           <Image
@@ -47,8 +36,10 @@ export const NavBar = () => {
           <Button
             as={NextLink}
             className='text-sm font-medium'
+            color='primary'
             href='/register'
-            variant='faded'
+            size='sm'
+            variant='shadow'
           >
             Register
           </Button>

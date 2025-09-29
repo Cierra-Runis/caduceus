@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <section className='flex flex-1 flex-col'>
         <Navbar
-          className='bg-default-50 h-11'
+          className='bg-content1 h-11'
           classNames={{ wrapper: 'pl-0 pr-1.5' }}
           maxWidth='full'
         >
