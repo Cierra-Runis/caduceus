@@ -30,7 +30,6 @@ serde_repr = "0.1.20"
 
 [dev-dependencies]
 tokio-test = "0.4.4"
-axum-test = "18.0.1"
 httpmock = "0.7.0"
 mockall = "0.13.1"
 serial_test = "3.2.0"
