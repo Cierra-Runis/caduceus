@@ -60,7 +60,9 @@ async fn main() -> io::Result<()> {
     let project_server_addr = ProjectServer::new().start();
     let server_tx = handler::ws::ProjectServerHandle::new(project_server_addr.clone());
 
-    HttpServer::new(move || {
+    let jwt_secret = config.jwt_secret.clone();
+
+    let factory = move || {
         App::new()
             .app_data(data.clone())
             .app_data(web::Data::new(server_tx.clone()))
@@ -70,7 +72,7 @@ async fn main() -> io::Result<()> {
             .route("/api/logout", web::post().to(handler::user::logout))
             .service(
                 web::scope("/api")
-                    .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
+                    .wrap(JwtMiddleware::new(jwt_secret.clone()))
                     .route("/team", web::post().to(handler::team::create))
                     .route("/team/projects", web::get().to(handler::team::projects))
                     .route("/project", web::post().to(handler::project::create))
@@ -84,15 +86,19 @@ async fn main() -> io::Result<()> {
             )
             .service(
                 web::scope("/ws")
-                    .wrap(JwtMiddleware::new(config.jwt_secret.clone()))
+                    .wrap(JwtMiddleware::new(jwt_secret.clone()))
                     .route("/project/{id}", web::get().to(handler::ws::ws)),
             )
             .wrap(actix_web::middleware::Logger::default())
-    })
-    .bind(("127.0.0.1", 8080))?
-    .bind(("[::1]", 8080))?
-    .run()
-    .await?;
+    };
+
+    let mut server = HttpServer::new(factory);
+
+    for addr in config.address {
+        server = server.bind(addr)?;
+    }
+
+    server.run().await?;
 
     Ok(())
 }
