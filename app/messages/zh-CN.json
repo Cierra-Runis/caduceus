@@ -75,7 +75,7 @@
       "password": "密码",
       "username": "用户名"
     },
-    "redirectingHome": "正在重定向到首页……",
+    "redirectingHome": "正在重定向到首页...",
     "title": "登录",
     "welcome": "你好呀，{username}！"
   },
@@ -111,7 +111,7 @@
       "password": "密码",
       "username": "用户名"
     },
-    "redirectingLogin": "正在重定向到登录页面……",
+    "redirectingLogin": "正在重定向到登录页面...",
     "register": "注册",
     "title": "注册",
     "welcome": "你好呀，{username}！"
