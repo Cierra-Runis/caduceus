@@ -5,10 +5,10 @@ import useSWR from 'swr';
 import { api } from '@/lib/request';
 import { ApiResponse, ErrorResponse } from '@/lib/response';
 
-export type ServerStatus = {
+export interface ServerStatus {
   status: 'healthy';
   timestamp: string;
-};
+}
 
 type HealthResponse = ApiResponse<ServerStatus>;
 

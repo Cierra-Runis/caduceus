@@ -14,7 +14,7 @@ export type CreateProjectRequest = {
 } & z.infer<typeof CreateProjectRequest>;
 export type CreateProjectResponse = ApiResponse<ProjectPayload>;
 
-export type ProjectPayload = {
+export interface ProjectPayload {
   created_at: Date;
   creator_id: string;
   id: string;
@@ -22,4 +22,4 @@ export type ProjectPayload = {
   owner_id: string;
   owner_type: 'team' | 'user';
   updated_at: Date;
-};
+}

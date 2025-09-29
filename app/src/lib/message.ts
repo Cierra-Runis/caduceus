@@ -15,7 +15,7 @@ export type EditorEditMessage = Message<
   editor.IModelContentChangedEvent
 >;
 
-type Message<T extends MessageType, D> = {
+interface Message<T extends MessageType, D> {
   data: D;
   type: T;
-};
+}
