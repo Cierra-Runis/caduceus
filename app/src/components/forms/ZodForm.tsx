@@ -2,6 +2,7 @@
 
 import { Form, FormProps } from '@heroui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useCallback } from 'react';
 import {
   Control,
   SubmitErrorHandler,
@@ -28,11 +29,14 @@ export function ZodForm<T extends z.ZodObject>({
   const { control, handleSubmit } = useForm({
     resolver: zodResolver(schema),
   });
-  const log: SubmitErrorHandler<z.input<T>> = (e) =>
-    console.error(
-      'Form submission failed. Please check the form for errors.',
-      format(e),
-    );
+  const log: SubmitErrorHandler<z.input<T>> = useCallback(
+    (errors) =>
+      console.error(
+        'Form submission failed. Please check the form for errors.',
+        format(errors),
+      ),
+    [],
+  );
 
   return (
     <Form
