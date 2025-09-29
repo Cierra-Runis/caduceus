@@ -20,7 +20,7 @@ export const NavBar = () => {
           </span>
         </NextLink>
       </NavbarBrand>
-      <NavbarContent className='basis-full gap-1' justify='end'>
+      <NavbarContent className='basis-full gap-4' justify='end'>
         <NavbarItem>
           <Button
             as={NextLink}
