@@ -53,7 +53,8 @@ pub async fn register(
             let cookie = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)
-                .same_site(SameSite::Lax)
+                .same_site(SameSite::None)
+                .secure(true)
                 .http_only(true)
                 .finish();
             let response = ApiResponse::success("User registered successfully", auth);
@@ -83,7 +84,8 @@ pub async fn login(
             let cookie = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)
-                .same_site(SameSite::Lax)
+                .same_site(SameSite::None)
+                .secure(true)
                 .http_only(true)
                 .finish();
             let response = ApiResponse::success("User logged in successfully", auth);

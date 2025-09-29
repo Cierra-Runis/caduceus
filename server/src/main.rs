@@ -61,9 +61,13 @@ async fn main() -> io::Result<()> {
     let server_tx = handler::ws::ProjectServerHandle::new(project_server_addr.clone());
 
     let jwt_secret = config.jwt_secret.clone();
+    let address = config.address.clone();
 
     let factory = move || {
+        let cors = config.cors();
+
         App::new()
+            .wrap(cors)
             .app_data(data.clone())
             .app_data(web::Data::new(server_tx.clone()))
             .route("/api/health", web::get().to(handler::health::health))
@@ -94,7 +98,7 @@ async fn main() -> io::Result<()> {
 
     let mut server = HttpServer::new(factory);
 
-    for addr in config.address {
+    for addr in address {
         server = server.bind(addr)?;
     }
 

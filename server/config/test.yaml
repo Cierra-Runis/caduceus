@@ -1,5 +1,6 @@
-allow_origins:
-  - http://localhost:3000
+cors:
+  allow_origins:
+    - http://localhost:3000
 mongo_uri: mongodb://localhost:27017
 db_name: caduceus_test
 address:

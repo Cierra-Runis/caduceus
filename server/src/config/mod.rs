@@ -1,4 +1,7 @@
+use actix_cors::Cors;
 use serde::Deserialize;
+mod cors;
+use cors::CorsConfig;
 
 #[derive(Debug)]
 pub enum Error {
@@ -10,7 +13,7 @@ pub enum Error {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub allow_origins: Vec<String>,
+    cors: Option<CorsConfig>,
     pub mongo_uri: String,
     pub db_name: String,
     pub address: Vec<String>,
@@ -18,6 +21,13 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn cors(&self) -> Cors {
+        match &self.cors {
+            Some(cfg) => cfg.clone().into(),
+            None => Cors::permissive(),
+        }
+    }
+
     pub fn load(file: &str) -> Result<Self, Error> {
         let settings = config::Config::builder()
             .add_source(config::File::with_name(file))
