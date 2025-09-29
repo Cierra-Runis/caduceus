@@ -1,6 +1,6 @@
 {
   "404": {
-    "description": "お探しのページは存在しません。",
+    "description": "お探しのページは存在しません",
     "title": "ページが見つかりません"
   },
   "CreateProject": {
@@ -31,12 +31,12 @@
   },
   "Dashboard": {
     "createProject": "プロジェクトを作成",
-    "failedToLoad": "プロジェクトの読み込みに失敗しました。",
+    "failedToLoad": "プロジェクトの読み込みに失敗しました",
     "yourProjects": "あなたのプロジェクト"
   },
   "Home": {
     "caduceus": "Caduceus",
-    "description": "オープンソースの <typstApp>Typst App</typstApp> の代替です。",
+    "description": "オープンソースの <typstApp>Typst App</typstApp> の代替です",
     "registerNow": "今すぐ登録",
     "viewOnGitHub": "GitHub で表示"
   },
@@ -90,14 +90,14 @@
     }
   },
   "Register": {
-    "agree": "サインアップすることで、当社の <privacy>プライバシーポリシー</privacy> を読み、同意したことを確認します。",
+    "agree": "サインアップすることで、当社の <privacy>プライバシーポリシー</privacy> を読み、同意したことを確認します",
     "alreadyHave": "既にアカウントをお持ちですか？",
     "backToHome": "ホームページに戻る",
     "creationFailed": "登録に失敗しました",
     "descriptions": {
-      "nickname": "ニックネームは任意の文字を使用できます。識別には使用されません。",
-      "password": "パスワードは 15 文字以上、または数字と小文字を含む 8 文字以上である必要があります。",
-      "username": "ユーザー名は英数字または単一のハイフンのみ使用でき、ハイフンで開始または終了することはできません。"
+      "nickname": "ニックネームは任意の文字を使用できます識別には使用されません",
+      "password": "パスワードは 15 文字以上、または数字と小文字を含む 8 文字以上である必要があります",
+      "username": "ユーザー名は英数字または単一のハイフンのみ使用でき、ハイフンで開始または終了することはできません"
     },
     "labels": {
       "confirmPassword": "パスワード確認",

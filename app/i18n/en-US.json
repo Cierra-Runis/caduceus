@@ -1,6 +1,6 @@
 {
   "404": {
-    "description": "The page you are looking for does not exist.",
+    "description": "The page you are looking for does not exist",
     "title": "Page Not Found"
   },
   "CreateProject": {
@@ -31,12 +31,12 @@
   },
   "Dashboard": {
     "createProject": "Create Project",
-    "failedToLoad": "Failed to load projects.",
+    "failedToLoad": "Failed to load projects",
     "yourProjects": "Your Projects"
   },
   "Home": {
     "caduceus": "Caduceus",
-    "description": "An open-source alternative to <typstApp>Typst App</typstApp>.",
+    "description": "An open-source alternative to <typstApp>Typst App</typstApp>",
     "registerNow": "Register Now",
     "viewOnGitHub": "View on GitHub"
   },
@@ -75,7 +75,7 @@
       "password": "Password",
       "username": "Username"
     },
-    "redirectingHome": "Redirecting to HomePage...",
+    "redirectingHome": "Redirecting to HomePage..",
     "title": "Login",
     "welcome": "Welcome, {username}"
   },
@@ -90,14 +90,14 @@
     }
   },
   "Register": {
-    "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>.",
+    "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>",
     "alreadyHave": "Already have an account?",
     "backToHome": "Back to HomePage",
     "creationFailed": "Register Failed",
     "descriptions": {
-      "nickname": "Nickname can contain any characters you want and it will not used for identification.",
-      "password": "Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.",
-      "username": "Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen."
+      "nickname": "Nickname can contain any characters you want and it will not used for identification",
+      "password": "Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter",
+      "username": "Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen"
     },
     "labels": {
       "confirmPassword": "Confirm Password",
