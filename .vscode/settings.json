@@ -1,24 +1,17 @@
 {
-  "cSpell.words": [
-    "actix",
-    "bson",
-    "chrono",
-    "gofiber",
-    "jsonwebtoken",
-    "prefork"
-  ],
-  "go.lintTool": "golangci-lint",
-  "go.lintFlags": ["--path-mode=abs", "--fast-only"],
-  "go.formatTool": "custom",
-  "go.alternateTools": {
-    "customFormatter": "golangci-lint"
-  },
-  "go.formatFlags": ["fmt", "--stdin"],
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+  "cSpell.words": [
+    "actix",
+    "bson",
+    "typst",
+    "chrono",
+    "heroui",
+    "jsonwebtoken"
+  ],
   "eslint.workingDirectories": ["./app"]
 }
