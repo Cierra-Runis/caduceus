@@ -6,7 +6,7 @@ import { cookies, headers } from 'next/headers';
 
 import message from '../../messages/en-US.json';
 
-const AVAILABLE_LANGUAGES = ['en-US', 'jp-JP', 'zh-CN'];
+const AVAILABLE_LANGUAGES = ['en-US', 'ja-JP', 'zh-CN'];
 const DEFAULT_LOCALE = 'en-US' as const;
 
 declare module 'next-intl' {
