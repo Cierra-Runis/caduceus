@@ -1,0 +1,128 @@
+{
+  "404": {
+    "description": "お探しのページは存在しません。",
+    "title": "ページが見つかりません"
+  },
+  "CreateProject": {
+    "create": "作成",
+    "created": "プロジェクトが作成されました！",
+    "creationFailed": "作成に失敗しました",
+    "creationSucceeded": "作成が完了しました",
+    "labels": {
+      "name": "プロジェクト名"
+    },
+    "placeholders": {
+      "name": "プロジェクト名を入力してください"
+    },
+    "title": "プロジェクトを作成"
+  },
+  "CreateTeam": {
+    "create": "作成",
+    "created": "チームが作成されました！",
+    "creationFailed": "作成に失敗しました",
+    "creationSucceeded": "作成が完了しました",
+    "labels": {
+      "name": "チーム名"
+    },
+    "placeholders": {
+      "name": "チーム名を入力してください"
+    },
+    "title": "チームを作成"
+  },
+  "Dashboard": {
+    "createProject": "プロジェクトを作成",
+    "failedToLoad": "プロジェクトの読み込みに失敗しました。",
+    "yourProjects": "あなたのプロジェクト"
+  },
+  "Home": {
+    "caduceus": "Caduceus",
+    "description": "オープンソースの <typstApp>Typst App</typstApp> の代替です。",
+    "registerNow": "今すぐ登録",
+    "viewOnGitHub": "GitHub で表示"
+  },
+  "Layout": {
+    "about": "Caduceus について",
+    "accountSettings": "アカウント設定",
+    "backendStatus": "バックエンドのステータス",
+    "caduceus": "Caduceus",
+    "contact": "お問い合わせ",
+    "feedback": "フィードバック",
+    "goToLanding": "ランディングページへ移動",
+    "help": "ヘルプ",
+    "incomingInvites": "招待状",
+    "licenseText": "MIT ライセンス | © 2025 Cierra Runis",
+    "logout": "ログアウト",
+    "manageTeams": "チームを管理",
+    "newProject": "新しいプロジェクト",
+    "newTeam": "新しいチーム",
+    "project": "プロジェクト",
+    "reference": "リファレンス",
+    "team": "チーム",
+    "tutorial": "チュートリアル",
+    "wiki": "WIKI"
+  },
+  "Login": {
+    "backToHome": "ホームページに戻る",
+    "forgetPassword": "パスワードをお忘れですか？",
+    "labels": {
+      "password": "パスワード",
+      "username": "ユーザー名"
+    },
+    "login": "ログイン",
+    "loginFailed": "ログインに失敗しました",
+    "newTo": "Caduceus を初めてですか？",
+    "placeholders": {
+      "password": "パスワード",
+      "username": "ユーザー名"
+    },
+    "redirectingHome": "ホームページにリダイレクトしています...",
+    "title": "ログイン",
+    "welcome": "ようこそ、{username}"
+  },
+  "Project": {
+    "title": "プロジェクト: {name}",
+    "ws": {
+      "closed": "WebSocket 接続が閉じられました",
+      "error": "WebSocket エラー",
+      "event": "WebSocket {type} イベント",
+      "open": "WebSocket 接続が確立されました",
+      "reconnectStopped": "WebSocket の再接続が停止しました"
+    }
+  },
+  "Register": {
+    "agree": "サインアップすることで、当社の <privacy>プライバシーポリシー</privacy> を読み、同意したことを確認します。",
+    "alreadyHave": "既にアカウントをお持ちですか？",
+    "backToHome": "ホームページに戻る",
+    "creationFailed": "登録に失敗しました",
+    "descriptions": {
+      "nickname": "ニックネームは任意の文字を使用できます。識別には使用されません。",
+      "password": "パスワードは 15 文字以上、または数字と小文字を含む 8 文字以上である必要があります。",
+      "username": "ユーザー名は英数字または単一のハイフンのみ使用でき、ハイフンで開始または終了することはできません。"
+    },
+    "labels": {
+      "confirmPassword": "パスワード確認",
+      "nickname": "ニックネーム",
+      "password": "パスワード",
+      "username": "ユーザー名"
+    },
+    "placeholders": {
+      "confirmPassword": "パスワード確認",
+      "nickname": "ニックネーム",
+      "password": "パスワード",
+      "username": "ユーザー名"
+    },
+    "redirectingLogin": "ログインページにリダイレクトしています...",
+    "register": "登録",
+    "title": "登録",
+    "welcome": "ようこそ、{username}"
+  },
+  "Sidebar": {
+    "home": "ホーム",
+    "logout": "ログアウト",
+    "members": "メンバー",
+    "projects": "プロジェクト",
+    "settings": "設定",
+    "tasks": "タスク",
+    "teams": "チーム"
+  }
+}
