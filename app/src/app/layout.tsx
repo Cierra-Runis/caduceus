@@ -30,7 +30,10 @@ export default function RootLayout({
   const locale = useLocale();
   return (
     <html
-      className={`${sans.variable} ${mono.variable}`}
+      className={`
+        ${sans.variable}
+        ${mono.variable}
+      `}
       lang={locale}
       suppressHydrationWarning
     >
@@ -41,7 +44,11 @@ export default function RootLayout({
           src='//unpkg.com/react-scan/dist/auto.global.js'
         />
       </head>
-      <body className='bg-background text-foreground min-h-screen font-sans antialiased'>
+      <body
+        className={`
+          min-h-screen bg-background font-sans text-foreground antialiased
+        `}
+      >
         <NextIntlClientProvider>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>

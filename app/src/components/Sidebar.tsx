@@ -23,7 +23,10 @@ export function Sidebar() {
 
   return (
     <ScrollShadow
-      className='bg-content1 relative flex h-full min-w-18 flex-col items-center overflow-auto pt-11 transition-all'
+      className={`
+        relative flex h-full min-w-18 flex-col items-center overflow-auto
+        bg-content1 pt-11 transition-all
+      `}
       hideScrollBar
     >
       <Button
@@ -38,7 +41,12 @@ export function Sidebar() {
       </Button>
       <TeamList />
       <div className='flex w-full flex-shrink-0 flex-col items-center'>
-        <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
+        <div
+          className={`
+            flex aspect-square h-auto w-full flex-shrink-0 items-center
+            justify-center
+          `}
+        >
           <Button
             as={NextLink}
             href={
@@ -55,7 +63,12 @@ export function Sidebar() {
             variant={isInSettings ? 'solid' : 'light'}
           />
         </div>
-        <div className='flex aspect-square h-auto w-full flex-shrink-0 items-center justify-center'>
+        <div
+          className={`
+            flex aspect-square h-auto w-full flex-shrink-0 items-center
+            justify-center
+          `}
+        >
           <Button
             isIconOnly
             onPress={logout}

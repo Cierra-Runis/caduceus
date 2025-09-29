@@ -8,11 +8,17 @@ export default function Home() {
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
       <div className='z-20 flex flex-col items-center justify-center gap-[18px]'>
         <div className='text-center leading-[1.2] font-bold tracking-tighter'>
-          <div className='bg-linear-91 from-[hsl(var(--heroui-primary))] to-[hsl(var(--heroui-secondary))] bg-clip-text text-6xl text-transparent'>
+          <div
+            className={`
+              bg-linear-91 from-[hsl(var(--heroui-primary))]
+              to-[hsl(var(--heroui-secondary))] bg-clip-text text-6xl
+              text-transparent
+            `}
+          >
             {t('caduceus')}
           </div>
         </div>
-        <p className='text-foreground-500 text-center leading-7'>
+        <p className='text-center leading-7 text-foreground-500'>
           {t.rich('description', {
             typstApp: (chunks) => (
               <NextLink href='https://typst.app'>{chunks}</NextLink>

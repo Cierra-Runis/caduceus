@@ -12,7 +12,12 @@ export const NavBar = () => {
       <NavbarBrand className='max-w-fit gap-3'>
         <NextLink className='flex items-center gap-2' href='/'>
           <Icon className='w-12' />
-          <span className='hidden text-lg font-semibold sm:inline'>
+          <span
+            className={`
+              hidden text-lg font-semibold
+              sm:inline
+            `}
+          >
             {t('Layout.caduceus')}
           </span>
         </NextLink>

@@ -21,7 +21,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <section className='flex flex-1 flex-col'>
         <Navbar
-          className='bg-content1 h-11'
+          className='h-11 bg-content1'
           classNames={{ wrapper: 'pl-0 pr-1.5' }}
           maxWidth='full'
         >
