@@ -1,8 +1,9 @@
 import { Button } from '@heroui/button';
-import { Image } from '@heroui/image';
 import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from '@heroui/navbar';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
+
+import { Icon } from '@/components/Icon';
 
 export const NavBar = () => {
   const t = useTranslations();
@@ -10,11 +11,7 @@ export const NavBar = () => {
     <Navbar isBordered maxWidth='xl' shouldHideOnScroll>
       <NavbarBrand className='max-w-fit gap-3'>
         <NextLink className='flex items-center gap-2' href='/'>
-          <Image
-            alt={t('Layout.caduceus')}
-            className='w-12 dark:invert'
-            src='favicon.svg'
-          ></Image>
+          <Icon className='w-12' />
           <span className='hidden text-lg font-semibold sm:inline'>
             {t('Layout.caduceus')}
           </span>

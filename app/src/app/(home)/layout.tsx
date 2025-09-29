@@ -1,9 +1,9 @@
-import { Image } from '@heroui/image';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 
 import { ServerBadge } from '@/components/badges/ServerBadge';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
+import { Icon } from '@/components/Icon';
 import { NavBar } from '@/components/roots/NavBar';
 import '@/styles/globals.css';
 
@@ -24,11 +24,7 @@ export default function Layout({
         <div className='flex flex-col'>
           <div className='flex items-center justify-center gap-4 md:justify-start'>
             <div className='flex items-center gap-1'>
-              <Image
-                alt={t('Layout.caduceus')}
-                className='w-8 dark:invert'
-                src='favicon.svg'
-              />
+              <Icon className='w-8' />
               <span className='text-small font-medium'>
                 {t('Layout.caduceus')}
               </span>
