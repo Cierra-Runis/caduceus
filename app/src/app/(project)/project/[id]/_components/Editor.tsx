@@ -14,8 +14,6 @@ import {
 } from '@/lib/message';
 
 export function Editor({ sendMessage }: { sendMessage: SendJsonMessage }) {
-  console.log('Editor rendered');
-
   const editorRef = useRef<editor.IStandaloneCodeEditor>(null);
   const disposableRef = useRef<IDisposable>(null);
   const { resolvedTheme } = useTheme();
