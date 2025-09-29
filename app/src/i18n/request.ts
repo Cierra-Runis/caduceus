@@ -1,19 +1,29 @@
 import { match } from '@formatjs/intl-localematcher';
 import Negotiator from 'negotiator';
+import { Locale } from 'next-intl';
 import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 
-export default getRequestConfig(async () => {
-  const locales = ['en-US', 'zh-CN'];
-  const defaultLocale = 'en-US';
+import message from '../../messages/en-US.json';
 
+const AVAILABLE_LANGUAGES = ['en-US', 'zh-CN'];
+const DEFAULT_LOCALE = 'en-US' as const;
+
+declare module 'next-intl' {
+  interface AppConfig {
+    Locale: 'en-US' | 'zh-CN';
+    Messages: typeof message;
+  }
+}
+
+export default getRequestConfig(async () => {
   // Check the language settings in the cookie first
   const cookieStore = await cookies();
   const localeCookie = cookieStore.get('locale')?.value;
 
-  if (localeCookie && locales.includes(localeCookie)) {
+  if (localeCookie && AVAILABLE_LANGUAGES.includes(localeCookie)) {
     return {
-      locale: localeCookie,
+      locale: localeCookie as Locale,
       messages: (await import(`../../messages/${localeCookie}.json`)).default,
     };
   }
@@ -22,21 +32,24 @@ export default getRequestConfig(async () => {
   const header = await headers();
   const acceptLanguage = header.get('accept-language');
 
-  if (acceptLanguage) {
-    const accept = new Negotiator({
-      headers: { 'accept-language': acceptLanguage },
-    });
-    const matchedLocale = match(accept.languages(), locales, defaultLocale);
-
+  if (!acceptLanguage) {
     return {
-      locale: matchedLocale,
-      messages: (await import(`../../messages/${matchedLocale}.json`)).default,
+      locale: DEFAULT_LOCALE,
+      messages: (await import(`../../messages/${DEFAULT_LOCALE}.json`)).default,
     };
   }
 
-  // If no locale is found, use the default locale
+  const accept = new Negotiator({
+    headers: { 'accept-language': acceptLanguage },
+  });
+  const matchedLocale = match(
+    accept.languages(),
+    AVAILABLE_LANGUAGES,
+    DEFAULT_LOCALE,
+  );
+
   return {
-    locale: defaultLocale,
-    messages: (await import(`../../messages/${defaultLocale}.json`)).default,
+    locale: matchedLocale as Locale,
+    messages: (await import(`../../messages/${matchedLocale}.json`)).default,
   };
 });
