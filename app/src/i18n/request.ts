@@ -4,7 +4,7 @@ import { Locale } from 'next-intl';
 import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 
-import message from '../../messages/en-US.json';
+import message from '../../i18n/en-US.json';
 
 const AVAILABLE_LANGUAGES = ['en-US', 'ja-JP', 'zh-CN'];
 const DEFAULT_LOCALE = 'en-US' as const;
@@ -24,7 +24,7 @@ export default getRequestConfig(async () => {
   if (localeCookie && AVAILABLE_LANGUAGES.includes(localeCookie)) {
     return {
       locale: localeCookie as Locale,
-      messages: (await import(`../../messages/${localeCookie}.json`)).default,
+      messages: (await import(`../../i18n/${localeCookie}.json`)).default,
     };
   }
 
@@ -35,7 +35,7 @@ export default getRequestConfig(async () => {
   if (!acceptLanguage) {
     return {
       locale: DEFAULT_LOCALE,
-      messages: (await import(`../../messages/${DEFAULT_LOCALE}.json`)).default,
+      messages: (await import(`../../i18n/${DEFAULT_LOCALE}.json`)).default,
     };
   }
 
@@ -50,6 +50,6 @@ export default getRequestConfig(async () => {
 
   return {
     locale: matchedLocale as Locale,
-    messages: (await import(`../../messages/${matchedLocale}.json`)).default,
+    messages: (await import(`../../i18n/${matchedLocale}.json`)).default,
   };
 });
