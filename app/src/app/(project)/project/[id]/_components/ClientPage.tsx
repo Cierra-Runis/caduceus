@@ -82,7 +82,7 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           maxWidth='full'
         >
           <NavbarContent justify='center'>
-            {t.rich('title', { name: () => project.name })}
+            {t.rich('title', { name: project.name })}
           </NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />
