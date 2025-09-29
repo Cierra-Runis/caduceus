@@ -4,6 +4,7 @@ import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { Link } from '@heroui/link';
 import { addToast } from '@heroui/toast';
+import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -15,6 +16,7 @@ import { RegisterRequest } from '@/lib/api/register';
 export default function RegisterPage() {
   const router = useRouter();
   const { isMutating, trigger } = useRegister();
+  const t = useTranslations('Register');
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
@@ -26,7 +28,7 @@ export default function RegisterPage() {
                 addToast({
                   color: 'danger',
                   description: error.message,
-                  title: 'Register Failed',
+                  title: t('creationFailed'),
                 });
               },
               onSuccess: ({
@@ -36,11 +38,11 @@ export default function RegisterPage() {
               }) => {
                 addToast({
                   color: 'success',
-                  description: `Redirecting to login page...`,
+                  description: t('redirectingLogin'),
                   onClose: () => router.push('/login'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
                   shouldShowTimeoutProgress: true,
                   timeout: 3000,
-                  title: `Welcome, ${username}`,
+                  title: t('welcome', { username }),
                 });
               },
             })
@@ -50,65 +52,67 @@ export default function RegisterPage() {
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>
-                <h1 className='text-2xl font-bold'>Register</h1>
+                <h1 className='text-2xl font-bold'>{t('title')}</h1>
                 <Button as={NextLink} href='/' size='sm' variant='light'>
-                  Back to homepage
+                  {t('backToHome')}
                 </Button>
               </CardHeader>
               <CardBody>
                 <div className='flex flex-col gap-4'>
                   <Input
                     control={control}
-                    description='Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen.'
+                    description={t('descriptions.username')}
                     isRequired
-                    label='Username'
+                    label={t('labels.username')}
                     labelPlacement='outside'
                     name='username'
-                    placeholder='Username'
+                    placeholder={t('placeholders.username')}
                     variant='bordered'
                   />
                   <Input
                     control={control}
-                    description='Nickname can contain any characters you want and it will not used for identification.'
-                    label='Nickname'
+                    description={t('descriptions.nickname')}
+                    label={t('labels.nickname')}
                     labelPlacement='outside'
                     name='nickname'
-                    placeholder='Nickname'
+                    placeholder={t('placeholders.nickname')}
                     variant='bordered'
                   />
                   <Input
                     control={control}
-                    description='Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.'
+                    description={t('descriptions.password')}
                     isRequired
-                    label='Password'
+                    label={t('labels.password')}
                     labelPlacement='outside'
                     name='password'
-                    placeholder='Password'
+                    placeholder={t('placeholders.password')}
                     type='password'
                     variant='bordered'
                   />
                   <Input
                     control={control}
                     isRequired
-                    label='Confirm Password'
+                    label={t('labels.confirmPassword')}
                     labelPlacement='outside'
                     name='confirmPassword'
-                    placeholder='Confirm Password'
+                    placeholder={t('placeholders.confirmPassword')}
                     type='password'
                     variant='bordered'
                   />
                 </div>
                 <p className='mt-4 text-sm'>
-                  By signing up, you confirm that you have read and accepted our{' '}
-                  <Link className='text-sm' href='/privacy'>
-                    Privacy Policy
-                  </Link>
-                  .
+                  {t.rich('agree', {
+                    privacy: (chunks) => (
+                      <Link className='text-sm' href='/privacy'>
+                        {chunks}
+                      </Link>
+                    ),
+                  })}
                 </p>
               </CardBody>
               <CardFooter className='flex justify-end gap-4'>
                 <Button as={NextLink} href='/login' variant='light'>
-                  Already have an account?
+                  {t('alreadyHave')}
                 </Button>
                 <Button
                   color='primary'
@@ -116,7 +120,7 @@ export default function RegisterPage() {
                   isLoading={isMutating}
                   type='submit'
                 >
-                  Register
+                  {t('register')}
                 </Button>
               </CardFooter>
             </>

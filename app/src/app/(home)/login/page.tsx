@@ -3,6 +3,7 @@
 import { Button } from '@heroui/button';
 import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
 import { addToast } from '@heroui/toast';
+import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -14,6 +15,7 @@ import { LoginSchema } from '@/lib/api/login';
 export default function LoginPage() {
   const router = useRouter();
   const { isMutating, trigger } = useLogin();
+  const t = useTranslations('Login');
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
@@ -25,7 +27,7 @@ export default function LoginPage() {
                 addToast({
                   color: 'danger',
                   description: error.message,
-                  title: 'Login Failed',
+                  title: t('loginFailed'),
                 });
               },
               onSuccess: ({
@@ -35,11 +37,11 @@ export default function LoginPage() {
               }) => {
                 addToast({
                   color: 'success',
-                  description: 'Redirecting to homepage...',
+                  description: t('redirectingHome'),
                   onClose: () => router.push('/'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
                   shouldShowTimeoutProgress: true,
                   timeout: 3000,
-                  title: `Welcome, ${username}`,
+                  title: t('welcome', { username }),
                 });
               },
             })
@@ -49,9 +51,9 @@ export default function LoginPage() {
           {(control) => (
             <>
               <CardHeader className='flex items-center justify-between'>
-                <h1 className='text-2xl font-bold'>Login</h1>
+                <h1 className='text-2xl font-bold'>{t('title')}</h1>
                 <Button as={NextLink} href='/' size='sm' variant='light'>
-                  Back to homepage
+                  {t('backToHome')}
                 </Button>
               </CardHeader>
               <CardBody>
@@ -59,24 +61,24 @@ export default function LoginPage() {
                   <Input
                     control={control}
                     isRequired
-                    label='Username'
+                    label={t('labels.username')}
                     labelPlacement='outside'
                     name='username'
-                    placeholder='Username'
+                    placeholder={t('placeholders.username')}
                     variant='bordered'
                   />
                   <Input
                     control={control}
                     description={
                       <NextLink className='text-primary' href='/'>
-                        Forget Password?
+                        {t('forgetPassword')}
                       </NextLink>
                     }
                     isRequired
-                    label='Password'
+                    label={t('labels.password')}
                     labelPlacement='outside'
                     name='password'
-                    placeholder='Password'
+                    placeholder={t('placeholders.password')}
                     type='password'
                     variant='bordered'
                   />
@@ -84,7 +86,7 @@ export default function LoginPage() {
               </CardBody>
               <CardFooter className='flex justify-end gap-4'>
                 <Button as={NextLink} href='/register' variant='light'>
-                  New to Caduceus?
+                  {t('newTo')}
                 </Button>
                 <Button
                   color='primary'
@@ -92,7 +94,7 @@ export default function LoginPage() {
                   isLoading={isMutating}
                   type='submit'
                 >
-                  Login
+                  {t('login')}
                 </Button>
               </CardFooter>
             </>

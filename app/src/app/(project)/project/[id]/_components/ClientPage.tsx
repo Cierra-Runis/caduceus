@@ -3,6 +3,7 @@
 import { Navbar, NavbarContent } from '@heroui/navbar';
 import { addToast } from '@heroui/toast';
 import { IconGripVertical } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 import { useRef } from 'react';
 import {
   ImperativePanelHandle,
@@ -20,6 +21,7 @@ import { Sidebar } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
 
 export function ClientPage({ project }: { project: ProjectPayload }) {
+  const t = useTranslations('Project');
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const editorPanelRef = useRef<ImperativePanelHandle>(null);
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
@@ -32,14 +34,14 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           color: 'warning',
           shouldShowTimeoutProgress: true,
           timeout: 2000,
-          title: 'WebSocket connection closed',
+          title: t('ws.closed'),
         }),
       onError: () =>
         addToast({
           color: 'danger',
           shouldShowTimeoutProgress: true,
           timeout: 2000,
-          title: `WebSocket error`,
+          title: t('ws.error'),
         }),
       onMessage: (message) =>
         addToast({
@@ -47,21 +49,21 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           description: `${message.data}`,
           shouldShowTimeoutProgress: true,
           timeout: 2000,
-          title: `WebSocket ${message.type} event`,
+          title: t('ws.event', { type: message.type }),
         }),
       onOpen: () =>
         addToast({
           color: 'success',
           shouldShowTimeoutProgress: true,
           timeout: 2000,
-          title: 'WebSocket connection established',
+          title: t('ws.open'),
         }),
       onReconnectStop: () =>
         addToast({
           color: 'danger',
           shouldShowTimeoutProgress: true,
           timeout: 2000,
-          title: 'WebSocket reconnection stopped',
+          title: t('ws.reconnectStopped'),
         }),
       reconnectAttempts: 10,
       reconnectInterval: 3000,
@@ -80,7 +82,7 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
           maxWidth='full'
         >
           <NavbarContent justify='center'>
-            Project: {project.name}
+            {t.rich('title', { name: () => project.name })}
           </NavbarContent>
           <NavbarContent className='gap-1' justify='end'>
             <ThemeButtons />

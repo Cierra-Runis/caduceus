@@ -3,10 +3,115 @@
     "description": "The page you are looking for does not exist.",
     "title": "Page Not Found"
   },
+  "CreateProject": {
+    "create": "Create",
+    "created": "Project created successfully!",
+    "creationFailed": "Creation Failed",
+    "creationSucceeded": "Creation Successful",
+    "labels": {
+      "name": "Project Name"
+    },
+    "placeholders": {
+      "name": "Enter your project name"
+    },
+    "title": "Create Project"
+  },
+  "CreateTeam": {
+    "create": "Create",
+    "created": "Team created successfully!",
+    "creationFailed": "Creation Failed",
+    "creationSucceeded": "Creation Successful",
+    "labels": {
+      "name": "Team Name"
+    },
+    "placeholders": {
+      "name": "Enter your team name"
+    },
+    "title": "Create Team"
+  },
+  "Dashboard": {
+    "createProject": "Create Project",
+    "failedToLoad": "Failed to load projects.",
+    "yourProjects": "Your Projects"
+  },
   "Home": {
+    "caduceus": "Caduceus",
     "description": "An open-source alternative to <typstApp>Typst App</typstApp>.",
     "registerNow": "Register Now",
     "viewOnGitHub": "View on GitHub"
+  },
+  "Layout": {
+    "about": "About Caduceus",
+    "accountSettings": "Account Settings",
+    "backendStatus": "Backend Status",
+    "caduceus": "Caduceus",
+    "contact": "Contact",
+    "feedback": "Feedback",
+    "goToLanding": "Go to landing page",
+    "help": "Help",
+    "incomingInvites": "Incoming Invites",
+    "licenseText": "MIT Licensed | © 2025 Cierra Runis",
+    "logout": "Logout",
+    "manageTeams": "Manage Teams",
+    "newProject": "New Project",
+    "newTeam": "New Team",
+    "project": "Project",
+    "reference": "Reference",
+    "team": "Team",
+    "tutorial": "Tutorial",
+    "wiki": "WIKI"
+  },
+  "Login": {
+    "backToHome": "Back to homepage",
+    "forgetPassword": "Forget Password?",
+    "labels": {
+      "password": "Password",
+      "username": "Username"
+    },
+    "login": "Login",
+    "newTo": "New to Caduceus?",
+    "placeholders": {
+      "password": "Password",
+      "username": "Username"
+    },
+    "title": "Login"
+  },
+  "Project": {
+    "title": "Project: {name}",
+    "ws": {
+      "closed": "WebSocket connection closed",
+      "error": "WebSocket error",
+      "event": "WebSocket {type} event",
+      "open": "WebSocket connection established",
+      "reconnectStopped": "WebSocket reconnection stopped"
+    }
+  },
+  "Register": {
+    "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>.",
+    "alreadyHave": "Already have an account?",
+    "backToHome": "Back to homepage",
+    "creationFailed": "Register Failed",
+    "descriptions": {
+      "nickname": "Nickname can contain any characters you want and it will not used for identification.",
+      "password": "Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter.",
+      "username": "Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen."
+    },
+    "labels": {
+      "confirmPassword": "Confirm Password",
+      "nickname": "Nickname",
+      "password": "Password",
+      "username": "Username"
+    },
+    "placeholders": {
+      "confirmPassword": "Confirm Password",
+      "nickname": "Nickname",
+      "password": "Password",
+      "username": "Username"
+    },
+    "redirectingLogin": "Redirecting to login page...",
+    "register": "Register",
+    "title": "Register",
+    "welcome": "Welcome, {username}"
   },
   "Sidebar": {
     "home": "Home",

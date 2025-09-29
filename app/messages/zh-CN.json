@@ -3,10 +3,115 @@
     "description": "您正在寻找的页面不存在",
     "title": "页面未找到"
   },
+  "CreateProject": {
+    "create": "创建",
+    "created": "项目创建成功！",
+    "creationFailed": "创建失败",
+    "creationSucceeded": "创建成功",
+    "labels": {
+      "name": "项目名称"
+    },
+    "placeholders": {
+      "name": "输入你的项目名称"
+    },
+    "title": "新建项目"
+  },
+  "CreateTeam": {
+    "create": "创建",
+    "created": "团队创建成功！",
+    "creationFailed": "创建失败",
+    "creationSucceeded": "创建成功",
+    "labels": {
+      "name": "团队名称"
+    },
+    "placeholders": {
+      "name": "输入你的团队名称"
+    },
+    "title": "新建团队"
+  },
+  "Dashboard": {
+    "createProject": "新建项目",
+    "failedToLoad": "加载项目失败。",
+    "yourProjects": "你的项目"
+  },
   "Home": {
+    "caduceus": "Caduceus",
     "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品。",
     "registerNow": "立即注册",
     "viewOnGitHub": "查看 GitHub 仓库"
+  },
+  "Layout": {
+    "about": "关于 Caduceus",
+    "accountSettings": "账户设置",
+    "backendStatus": "服务器状态",
+    "caduceus": "Caduceus",
+    "contact": "联系",
+    "feedback": "反馈",
+    "goToLanding": "前往首页",
+    "help": "帮助",
+    "incomingInvites": "收到的邀请",
+    "licenseText": "MIT 许可证 | © 2025 Cierra Runis",
+    "logout": "退出登录",
+    "manageTeams": "管理团队",
+    "newProject": "新建项目",
+    "newTeam": "新建团队",
+    "project": "项目",
+    "reference": "参考",
+    "team": "团队",
+    "tutorial": "教程",
+    "wiki": "WIKI"
+  },
+  "Login": {
+    "backToHome": "返回首页",
+    "forgetPassword": "忘记密码？",
+    "labels": {
+      "password": "密码",
+      "username": "用户名"
+    },
+    "login": "登录",
+    "newTo": "还没有 Caduceus 帐号？",
+    "placeholders": {
+      "password": "密码",
+      "username": "用户名"
+    },
+    "title": "登录"
+  },
+  "Project": {
+    "title": "项目：{name}",
+    "ws": {
+      "closed": "WebSocket 连接已关闭",
+      "error": "WebSocket 错误",
+      "event": "WebSocket {type} 事件",
+      "open": "WebSocket 连接已建立",
+      "reconnectStopped": "WebSocket 重连已停止"
+    }
+  },
+  "Register": {
+    "agree": "注册即表示你已阅读并同意我们的 <privacy>隐私政策</privacy>。",
+    "alreadyHave": "已有账户？",
+    "backToHome": "返回首页",
+    "creationFailed": "注册失败",
+    "descriptions": {
+      "nickname": "昵称可以包含任意字符，不用于身份识别。",
+      "password": "密码至少应为 15 个字符，或至少 8 个字符并包含数字和小写字母。",
+      "username": "用户名只能包含字母数字或单个连字符，且不能以连字符开头或结尾。"
+    },
+    "labels": {
+      "confirmPassword": "确认密码",
+      "nickname": "昵称",
+      "password": "密码",
+      "username": "用户名"
+    },
+    "placeholders": {
+      "confirmPassword": "确认密码",
+      "nickname": "昵称",
+      "password": "密码",
+      "username": "用户名"
+    },
+    "redirectingLogin": "正在重定向到登录页面...",
+    "register": "注册",
+    "title": "注册",
+    "welcome": "欢迎, {username}"
   },
   "Sidebar": {
     "home": "首页",

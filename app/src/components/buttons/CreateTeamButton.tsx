@@ -11,6 +11,7 @@ import {
 } from '@heroui/modal';
 import { addToast } from '@heroui/toast';
 import { IconPlus } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
 import { useCreateTeam } from '@/hooks/useCreateTeam';
@@ -20,6 +21,7 @@ import { Input } from '../forms/Input';
 import { ZodForm } from '../forms/ZodForm';
 
 export function CreateTeamButton({ ...props }: ButtonProps) {
+  const t = useTranslations('CreateTeam');
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const { isMutating, trigger } = useCreateTeam();
@@ -34,7 +36,7 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
           {(onClose) => (
             <>
               <ModalHeader className='flex flex-col gap-1'>
-                Create Team
+                {t('title')}
               </ModalHeader>
               <ZodForm
                 className='contents' // Prevent extra div breaking Modal layout
@@ -44,15 +46,15 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
                       addToast({
                         color: 'danger',
                         description: error.message,
-                        title: 'Creation Failed',
+                        title: t('creationFailed'),
                       });
                     },
                     onSuccess: () => {
                       addToast({
                         color: 'success',
-                        description: 'Team created successfully!',
+                        description: t('created'),
                         timeout: 3000,
-                        title: 'Creation Successful',
+                        title: t('creationSucceeded'),
                       });
                       onClose();
                       mutate('/api/user/teams');
@@ -66,9 +68,9 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
                     <ModalBody>
                       <Input
                         control={control}
-                        label='Team Name'
+                        label={t('labels.name')}
                         name='name'
-                        placeholder='Enter your team name'
+                        placeholder={t('placeholders.name')}
                         variant='bordered'
                       />
                     </ModalBody>
@@ -79,7 +81,7 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
                         isLoading={isMutating}
                         type='submit'
                       >
-                        Create
+                        {t('create')}
                       </Button>
                     </ModalFooter>
                   </>

@@ -6,6 +6,7 @@ import { Listbox, ListboxItem } from '@heroui/listbox';
 import { Navbar, NavbarBrand, NavbarContent } from '@heroui/navbar';
 import { Tooltip } from '@heroui/tooltip';
 import { IconCloud } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 
 import { logout } from '@/actions/auth';
@@ -47,27 +48,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 }
 
 function CaduceusButton() {
+  const t = useTranslations('Layout');
   return (
     <Tooltip
       content={
         <Listbox>
           <ListboxItem as={NextLink} href='/about' key='about'>
-            About Caduceus
+            {t('about')}
           </ListboxItem>
           <ListboxItem as={NextLink} href='/dashboard/settings' key='settings'>
-            Account Settings
+            {t('accountSettings')}
           </ListboxItem>
           <ListboxItem key='logout' onPress={logout}>
-            Logout
+            {t('logout')}
           </ListboxItem>
           <ListboxItem as={NextLink} href='/home' key='home'>
-            Go to landing page
+            {t('goToLanding')}
           </ListboxItem>
         </Listbox>
       }
       placement='bottom-start'
     >
-      <Button className='font-bold'>Caduceus</Button>
+      <Button className='font-bold'>{t('caduceus')}</Button>
     </Tooltip>
   );
 }
@@ -75,14 +77,16 @@ function CaduceusButton() {
 // TODO: Dynamic header info
 function Header() {
   const { data } = useUserMe();
+  const t = useTranslations('Layout');
   return (
     <Chip startContent={<IconCloud className='w-[1.25em]' />} variant='light'>
-      {data?.payload?.username ?? 'Caduceus'}
+      {data?.payload?.username ?? t('caduceus')}
     </Chip>
   );
 }
 
 function HelpButton() {
+  const t = useTranslations('Layout');
   return (
     <Tooltip
       content={
@@ -92,57 +96,63 @@ function HelpButton() {
             href='https://typst.app/docs/tutorial'
             key='tutorial'
           >
-            Tutorial
+            {t('tutorial')}
           </ListboxItem>
           <ListboxItem
             as={NextLink}
             href='https://typst.app/docs/reference/'
             key='reference'
           >
-            Reference
+            {t('reference')}
           </ListboxItem>
-          <ListboxItem key='feedback'>Feedback</ListboxItem>
+          <ListboxItem key='feedback'>{t('feedback')}</ListboxItem>
           <ListboxItem as={NextLink} href='/contact' key='contact'>
-            Contact
+            {t('contact')}
           </ListboxItem>
         </Listbox>
       }
       placement='bottom-start'
     >
-      <Button>Help</Button>
+      <Button>{t('help')}</Button>
     </Tooltip>
   );
 }
 
 function ProjectButton() {
+  const t = useTranslations('Layout');
   return (
     <Tooltip
       content={
         <Listbox>
-          <ListboxItem key='new-project'>New Project</ListboxItem>
-          <ListboxItem key='incoming-invites'>Incoming Invites</ListboxItem>
+          <ListboxItem key='new-project'>{t('newProject')}</ListboxItem>
+          <ListboxItem key='incoming-invites'>
+            {t('incomingInvites')}
+          </ListboxItem>
         </Listbox>
       }
       placement='bottom-start'
     >
-      <Button>Project</Button>
+      <Button>{t('project')}</Button>
     </Tooltip>
   );
 }
 
 function TeamButton() {
+  const t = useTranslations('Layout');
   return (
     <Tooltip
       content={
         <Listbox>
-          <ListboxItem key='new-team'>New Team</ListboxItem>
-          <ListboxItem key='manage-teams'>Manage Teams</ListboxItem>
-          <ListboxItem key='incoming-invites'>Incoming Invites</ListboxItem>
+          <ListboxItem key='new-team'>{t('newTeam')}</ListboxItem>
+          <ListboxItem key='manage-teams'>{t('manageTeams')}</ListboxItem>
+          <ListboxItem key='incoming-invites'>
+            {t('incomingInvites')}
+          </ListboxItem>
         </Listbox>
       }
       placement='bottom-start'
     >
-      <Button>Team</Button>
+      <Button>{t('team')}</Button>
     </Tooltip>
   );
 }

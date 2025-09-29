@@ -10,6 +10,7 @@ import {
   useDisclosure,
 } from '@heroui/modal';
 import { addToast } from '@heroui/toast';
+import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
 import { useCreateProject } from '@/hooks/useCreateProject';
@@ -25,6 +26,7 @@ export function CreateProjectButton({
 }: {
   ownerType: 'team' | 'user';
 } & ButtonProps) {
+  const t = useTranslations('CreateProject');
   const { data: user } = useUserMe();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
@@ -38,7 +40,7 @@ export function CreateProjectButton({
           {(onClose) => (
             <>
               <ModalHeader className='flex flex-col gap-1'>
-                Create Project
+                {t('title')}
               </ModalHeader>
               <ZodForm
                 className='contents' // Prevent extra div breaking Modal layout
@@ -56,15 +58,15 @@ export function CreateProjectButton({
                         addToast({
                           color: 'danger',
                           description: error.message,
-                          title: 'Creation Failed',
+                          title: t('creationFailed'),
                         });
                       },
                       onSuccess: () => {
                         addToast({
                           color: 'success',
-                          description: 'Project created successfully!',
+                          description: t('created'),
                           timeout: 3000,
-                          title: 'Creation Successful',
+                          title: t('creationSucceeded'),
                         });
                         onClose();
                         mutate('/api/user/projects');
@@ -79,9 +81,9 @@ export function CreateProjectButton({
                     <ModalBody>
                       <Input
                         control={control}
-                        label='Project Name'
+                        label={t('labels.name')}
                         name='name'
-                        placeholder='Enter your team name'
+                        placeholder={t('placeholders.name')}
                         variant='bordered'
                       />
                     </ModalBody>
@@ -92,7 +94,7 @@ export function CreateProjectButton({
                         isLoading={isMutating}
                         type='submit'
                       >
-                        Create
+                        {t('create')}
                       </Button>
                     </ModalFooter>
                   </>
