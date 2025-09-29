@@ -31,12 +31,12 @@
   },
   "Dashboard": {
     "createProject": "新建项目",
-    "failedToLoad": "加载项目失败。",
+    "failedToLoad": "加载项目失败",
     "yourProjects": "你的项目"
   },
   "Home": {
     "caduceus": "Caduceus",
-    "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品。",
+    "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品",
     "registerNow": "立即注册",
     "viewOnGitHub": "查看 GitHub 仓库"
   },
@@ -74,7 +74,9 @@
       "password": "密码",
       "username": "用户名"
     },
-    "title": "登录"
+    "redirectingHome": "正在重定向到首页……",
+    "title": "登录",
+    "welcome": "你好呀，{username}！"
   },
   "Project": {
     "title": "项目：{name}",
@@ -87,14 +89,14 @@
     }
   },
   "Register": {
-    "agree": "注册即表示你已阅读并同意我们的 <privacy>隐私政策</privacy>。",
+    "agree": "注册即表示你已阅读并同意我们的 <privacy>隐私政策</privacy>",
     "alreadyHave": "已有账户？",
     "backToHome": "返回首页",
     "creationFailed": "注册失败",
     "descriptions": {
-      "nickname": "昵称可以包含任意字符，不用于身份识别。",
-      "password": "密码至少应为 15 个字符，或至少 8 个字符并包含数字和小写字母。",
-      "username": "用户名只能包含字母数字或单个连字符，且不能以连字符开头或结尾。"
+      "nickname": "昵称可以包含任意字符，不用于身份识别",
+      "password": "密码至少应为 15 个字符，或至少 8 个字符并包含数字和小写字母",
+      "username": "用户名只能包含字母数字或单个连字符，且不能以连字符开头或结尾"
     },
     "labels": {
       "confirmPassword": "确认密码",
@@ -108,10 +110,10 @@
       "password": "密码",
       "username": "用户名"
     },
-    "redirectingLogin": "正在重定向到登录页面...",
+    "redirectingLogin": "正在重定向到登录页面……",
     "register": "注册",
     "title": "注册",
-    "welcome": "欢迎, {username}"
+    "welcome": "你好呀，{username}！"
   },
   "Sidebar": {
     "home": "首页",

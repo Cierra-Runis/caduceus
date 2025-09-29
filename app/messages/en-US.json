@@ -62,7 +62,7 @@
     "wiki": "WIKI"
   },
   "Login": {
-    "backToHome": "Back to homepage",
+    "backToHome": "Back to HomePage",
     "forgetPassword": "Forget Password?",
     "labels": {
       "password": "Password",
@@ -74,7 +74,9 @@
       "password": "Password",
       "username": "Username"
     },
-    "title": "Login"
+    "redirectingHome": "Redirecting to HomePage...",
+    "title": "Login",
+    "welcome": "Welcome, {username}"
   },
   "Project": {
     "title": "Project: {name}",
@@ -89,7 +91,7 @@
   "Register": {
     "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>.",
     "alreadyHave": "Already have an account?",
-    "backToHome": "Back to homepage",
+    "backToHome": "Back to HomePage",
     "creationFailed": "Register Failed",
     "descriptions": {
       "nickname": "Nickname can contain any characters you want and it will not used for identification.",
