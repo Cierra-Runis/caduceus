@@ -4,83 +4,76 @@ export default heroui({
   themes: {
     dark: {
       colors: {
-        /// https://uicolors.app/create
-        /// Use #282C34 as seed, then generate these colors
-        /// Since #282C34 be set to 950, the background color
-        /// Then 50-900 will be the foreground colors
-        /// Use the same order as the light mode
-        /// Reverse the order of the colors for dark mode
-        background: '#282C34',
-        /// Content colors use 50-300 from default (as same as foreground)
-        content1: '#353b45',
-        content2: '#3c4450',
-        content3: '#454f5f',
-        content4: '#546175',
+        /// https://catppuccin.com/palette#flavor-mocha
+        background: '#1e1e2e', /// Base
+        content1: '#181825', /// Mantle
+        content2: '#1e1e2e', /// Base
+        content3: '#313244', /// Surface 0
+        content4: '#45475a', /// Surface 1
         /// Default colors as same as foreground
         default: {
-          100: '#3c4450',
-          200: '#454f5f',
-          300: '#546175',
-          400: '#6a798d',
-          50: '#353b45',
-          500: '#8895a8',
-          600: '#b2bac7',
-          700: '#d6dae1',
-          800: '#edeef1',
-          900: '#f6f7f9',
-          DEFAULT: '#454f5f', /// But DEFAULT is the same as 200
-          foreground: '#8895a8',
+          100: '#181825', /// Mantle
+          200: '#1e1e2e', /// Base
+          300: '#313244', /// Surface 0
+          400: '#45475a', /// Surface 1
+          50: '#11111b', /// Crust
+          500: '#585b70', /// Surface 2
+          600: '#6c7086', /// Overlay 0
+          700: '#7f849c', /// Overlay 1
+          800: '#9399b2', /// Overlay 2
+          900: '#a6adc8', /// Subtext 0
+          DEFAULT: '#313244', /// Surface 0
+          foreground: '#cdd6f4', /// Text
         },
         foreground: {
-          100: '#3c4450',
-          200: '#454f5f',
-          300: '#546175',
-          400: '#6a798d',
-          50: '#353b45',
-          500: '#8895a8',
-          600: '#b2bac7',
-          700: '#d6dae1',
-          800: '#edeef1',
-          900: '#f6f7f9',
-          DEFAULT: '#8895a8', /// DEFAULT is the same as 500
+          100: '#181825', /// Mantle
+          200: '#1e1e2e', /// Base
+          300: '#313244', /// Surface 0
+          400: '#45475a', /// Surface 1
+          50: '#11111b', /// Crust
+          500: '#585b70', /// Surface 2
+          600: '#6c7086', /// Overlay 0
+          700: '#7f849c', /// Overlay 1
+          800: '#9399b2', /// Overlay 2
+          900: '#a6adc8', /// Subtext 0
+          DEFAULT: '#cdd6f4', /// Text
         },
       },
     },
     light: {
       colors: {
-        background: '#FFFFFF', /// Generator doesn't generate this one, so use white
-        /// Content colors use 50-300 from default (as same as foreground)
-        content1: '#f6f7f9',
-        content2: '#edeef1',
-        content3: '#d6dae1',
-        content4: '#b2bac7',
-        /// Default colors as same as foreground
+        /// https://catppuccin.com/palette#flavor-latte
+        background: '#eff1f5', /// Base
+        content1: '#e6e9ef', /// Mantle
+        content2: '#eff1f5', /// Base
+        content3: '#ccd0da', /// Surface 0
+        content4: '#bcc0cc', /// Surface 1
         default: {
-          100: '#edeef1',
-          200: '#d6dae1',
-          300: '#b2bac7',
-          400: '#8895a8',
-          50: '#f6f7f9',
-          500: '#6a798d',
-          600: '#546175',
-          700: '#454f5f',
-          800: '#3c4450',
-          900: '#353b45',
-          DEFAULT: '#6a798d', /// But DEFAULT is the same as 500
-          foreground: '#454f5f',
+          100: '#e6e9ef', /// Mantle
+          200: '#eff1f5', /// Base
+          300: '#ccd0da', /// Surface 0
+          400: '#bcc0cc', /// Surface 1
+          50: '#dce0e8', /// Crust
+          500: '#acb0be', /// Surface 2
+          600: '#9ca0b0', /// Overlay 0
+          700: '#8c8fa1', /// Overlay 1
+          800: '#7c7f93', /// Overlay 2
+          900: '#6c6f85', /// Subtext 0
+          DEFAULT: '#ccd0da', /// Surface 0
+          foreground: '#4c4f69', /// Text
         },
         foreground: {
-          100: '#edeef1',
-          200: '#d6dae1',
-          300: '#b2bac7',
-          400: '#8895a8',
-          50: '#f6f7f9',
-          500: '#6a798d',
-          600: '#546175',
-          700: '#454f5f',
-          800: '#3c4450',
-          900: '#353b45',
-          DEFAULT: '#454f5f', /// DEFAULT is the same as 700
+          100: '#e6e9ef', /// Mantle
+          200: '#eff1f5', /// Base
+          300: '#ccd0da', /// Surface 0
+          400: '#bcc0cc', /// Surface 1
+          50: '#dce0e8', /// Crust
+          500: '#acb0be', /// Surface 2
+          600: '#9ca0b0', /// Overlay 0
+          700: '#8c8fa1', /// Overlay 1
+          800: '#7c7f93', /// Overlay 2
+          900: '#6c6f85', /// Subtext 0
+          DEFAULT: '#4c4f69', /// Text
         },
       },
     },
