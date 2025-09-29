@@ -6,7 +6,7 @@ import { ErrorResponse } from '@/lib/response';
 
 export const useLogin = () => {
   return useSWRMutation<LoginResponse, ErrorResponse, string, LoginRequest>(
-    '/api/login',
+    'login',
     (key, { arg }) => api.post(key, { json: arg }).json(),
   );
 };

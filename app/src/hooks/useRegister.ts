@@ -10,5 +10,5 @@ export const useRegister = () => {
     ErrorResponse,
     string,
     RegisterRequest
-  >('/api/register', (key, { arg }) => api.post(key, { json: arg }).json());
+  >('register', (key, { arg }) => api.post(key, { json: arg }).json());
 };

@@ -57,7 +57,7 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
                         title: t('creationSucceeded'),
                       });
                       onClose();
-                      mutate('/api/user/teams');
+                      mutate('user/teams');
                     },
                   })
                 }

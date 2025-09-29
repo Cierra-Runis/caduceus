@@ -3,6 +3,7 @@ import ky from 'ky';
 import { ErrorResponse } from './response';
 
 export const api = ky.extend({
+  credentials: 'include',
   hooks: {
     beforeError: [
       async (error) => {
@@ -16,4 +17,5 @@ export const api = ky.extend({
       },
     ],
   },
+  prefixUrl: process.env.NEXT_PUBLIC_API_URL,
 });

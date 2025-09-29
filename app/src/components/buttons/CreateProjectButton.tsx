@@ -69,7 +69,7 @@ export function CreateProjectButton({
                           title: t('creationSucceeded'),
                         });
                         onClose();
-                        mutate('/api/user/projects');
+                        mutate('user/projects');
                       },
                     },
                   );

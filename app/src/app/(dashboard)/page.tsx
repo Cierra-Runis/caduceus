@@ -19,7 +19,7 @@ export default function Dashboard() {
     UserProjectResponse,
     ErrorResponse,
     string
-  >('/api/user/projects', (key) => api.get(key).json());
+  >('user/projects', (key) => api.get(key).json());
 
   if (isLoading)
     return (

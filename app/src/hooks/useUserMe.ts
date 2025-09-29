@@ -7,7 +7,7 @@ import { ApiResponse, ErrorResponse } from '@/lib/response';
 type UserMeResponse = ApiResponse<UserPayload>;
 
 export function useUserMe() {
-  return useSWR<UserMeResponse, ErrorResponse, string>('/api/user/me', (key) =>
+  return useSWR<UserMeResponse, ErrorResponse, string>('user/me', (key) =>
     api.get(key).json(),
   );
 }

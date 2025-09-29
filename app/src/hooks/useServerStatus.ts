@@ -17,7 +17,7 @@ export function useServerStatus() {
     HealthResponse,
     ErrorResponse,
     string
-  >('/api/health', (key) => api.get(key).json());
+  >('health', (key) => api.get(key).json());
 
   const color = useMemo<BadgeProps['color']>(() => {
     if (isLoading) return 'default';

@@ -13,7 +13,7 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
 
   try {
     const res = await ky
-      .get(`http://localhost:8080/api/project/${id}`, {
+      .get(`project/${id}`, {
         headers: {
           cookie: cookieStore.toString(),
         },
@@ -27,6 +27,7 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
         notFound();
       }
     }
+    console.error(error);
     return redirect('/');
   }
 }

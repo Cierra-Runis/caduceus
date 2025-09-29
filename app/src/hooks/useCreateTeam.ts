@@ -10,5 +10,5 @@ export const useCreateTeam = () => {
     ErrorResponse,
     string,
     CreateTeamRequest
-  >('/api/team', (key, { arg }) => api.post(key, { json: arg }).json());
+  >('team', (key, { arg }) => api.post(key, { json: arg }).json());
 };

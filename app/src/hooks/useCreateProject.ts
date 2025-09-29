@@ -10,5 +10,5 @@ export const useCreateProject = () => {
     ErrorResponse,
     string,
     CreateProjectRequest
-  >('/api/project', (key, { arg }) => api.post(key, { json: arg }).json());
+  >('project', (key, { arg }) => api.post(key, { json: arg }).json());
 };

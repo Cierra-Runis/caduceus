@@ -7,8 +7,7 @@ import { ApiResponse, ErrorResponse } from '@/lib/response';
 type UserTeamsResponse = ApiResponse<TeamPayload[]>;
 
 export function useUserTeams() {
-  return useSWR<UserTeamsResponse, ErrorResponse, string>(
-    '/api/user/teams',
-    (key) => api.get(key).json(),
+  return useSWR<UserTeamsResponse, ErrorResponse, string>('user/teams', (key) =>
+    api.get(key).json(),
   );
 }
