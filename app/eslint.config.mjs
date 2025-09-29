@@ -19,7 +19,6 @@ import eslintPluginTypeScript from 'typescript-eslint';
 const { flatConfig: eslintPluginNextFlatConfig } = eslintPluginNext;
 
 const eslintPluginBetterTailwindCssConfig = {
-  name: 'better-tailwindcss/',
   files: ['**/*.{jsx,tsx}'],
   languageOptions: {
     parserOptions: {
@@ -28,6 +27,7 @@ const eslintPluginBetterTailwindCssConfig = {
       },
     },
   },
+  name: 'better-tailwindcss/',
   plugins: {
     'better-tailwindcss': eslintPluginBetterTailwindCss,
   },
@@ -44,7 +44,6 @@ const eslintPluginBetterTailwindCssConfig = {
 
 export default defineConfig([
   {
-    name: 'base/',
     ignores: [
       'node_modules/**',
       '.next/**',
@@ -52,6 +51,7 @@ export default defineConfig([
       'build/**',
       'next-env.d.ts',
     ],
+    name: 'base/',
   },
   eslintPluginJavaScript.configs.recommended,
   eslintPluginTypeScript.configs.strict,
