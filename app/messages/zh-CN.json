@@ -69,6 +69,7 @@
       "username": "用户名"
     },
     "login": "登录",
+    "loginFailed": "登录失败",
     "newTo": "还没有 Caduceus 帐号？",
     "placeholders": {
       "password": "密码",

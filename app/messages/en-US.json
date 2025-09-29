@@ -69,6 +69,7 @@
       "username": "Username"
     },
     "login": "Login",
+    "loginFailed": "Login Failed",
     "newTo": "New to Caduceus?",
     "placeholders": {
       "password": "Password",
