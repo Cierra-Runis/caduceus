@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 
 import '@/styles/globals.css';
 import { NextIntlClientProvider, useLocale } from 'next-intl';
-import { Cascadia_Code, Saira } from 'next/font/google';
+import { Kode_Mono, Saira } from 'next/font/google';
 import Script from 'next/script';
 
 import { Providers } from '@/components/roots/Providers';
@@ -12,7 +12,7 @@ const sans = Saira({
   variable: '--font-sans',
 });
 
-const mono = Cascadia_Code({
+const mono = Kode_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
 });
