@@ -1,5 +1,7 @@
 <div align="center">
-  <img src="./.github/icon.svg" alt="Caduceus Logo" width="120" height="120"/>
+  <a href="https://www.figma.com/design/yEGn8iDfFz0KXkcpyiGbDE/Caduceus" target="_blank" alt="Figma Design Link">
+    <img src="./.github/icon.svg" alt="Caduceus Logo" width="120" height="120"/>
+  </a>
 
 # Caduceus
 
