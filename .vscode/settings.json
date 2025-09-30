@@ -8,10 +8,11 @@
   "cSpell.words": [
     "actix",
     "bson",
-    "typst",
     "chrono",
     "heroui",
-    "jsonwebtoken"
+    "jsonwebtoken",
+    "serde",
+    "typst"
   ],
   "eslint.workingDirectories": ["./app"]
 }
