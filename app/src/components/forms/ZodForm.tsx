@@ -10,7 +10,7 @@ import {
   useForm,
 } from 'react-hook-form';
 import { format } from 'util';
-import z from 'zod';
+import * as z from 'zod';
 
 export function ZodForm<T extends z.ZodObject>({
   children,
