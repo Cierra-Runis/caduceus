@@ -4,39 +4,40 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+actix = "0.13.5"
+actix-ws = "0.3.0"
 actix-web = "4"
-tokio = { version = "1.47.1", features = ["full"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
+actix-cors = "0.7.1"
+async-trait = "0.1.89"
 bson = { version = "2.15.0", features = ["chrono-0_4", "time-0_3"] }
-mongodb = "3.2.5"
-jsonwebtoken = "9.3.1"
 bcrypt = "0.17.1"
 config = "0.15.15"
-thiserror = "2.0.16"
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-validator = { version = "0.20.0", features = ["derive"] }
-regex = "1.11.2"
-async-trait = "0.1.89"
 derive_more = "2.0.1"
 futures-util = "0.3"
-time = { version = "0.3.43", features = ["serde"] }
-semver = { version = "1.0.27", features = ["serde"] }
-actix-ws = "0.3.0"
-actix = "0.13.5"
+jsonwebtoken = "9.3.1"
 log = "0.4.28"
+mongodb = "3.2.5"
+regex = "1.11.2"
+serde = { version = "1.0.219", features = ["derive"] }
+semver = { version = "1.0.27", features = ["serde"] }
+serde_json = "1.0.143"
 serde_repr = "0.1.20"
-actix-cors = "0.7.1"
+time = { version = "0.3.43", features = ["serde"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tracing = "0.1.41"
+thiserror = "2.0.16"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+validator = { version = "0.20.0", features = ["derive"] }
 
 [dev-dependencies]
-tokio-test = "0.4.4"
+actix-rt = "2.10.1"
 httpmock = "0.7.0"
 mockall = "0.13.1"
-serial_test = "3.2.0"
-actix-rt = "2.10.1"
 reqwest = { version = "0.12.15", features = ["json", "cookies"] }
+serial_test = "3.2.0"
+tokio-test = "0.4.4"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
-
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(coverage,coverage_nightly)',
+] }
