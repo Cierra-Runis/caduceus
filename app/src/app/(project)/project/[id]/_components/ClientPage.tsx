@@ -27,7 +27,7 @@ export function ClientPage({ project }: { project: ProjectPayload }) {
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
   const { sendJsonMessage } = useWebSocket(
-    `ws://localhost:3000/ws/project/${project.id}`,
+    `${process.env.NEXT_PUBLIC_WS_URL}/project/${project.id}`,
     {
       onClose: () =>
         addToast({
