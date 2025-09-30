@@ -50,13 +50,18 @@ pub async fn register(
     {
         Ok(auth) => {
             let expires = OffsetDateTime::now_utc().checked_add(Duration::hours(24));
-            let cookie = Cookie::build("token", auth.token.clone())
+
+            let builder = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)
                 .same_site(SameSite::None)
-                .secure(true)
-                .http_only(true)
-                .finish();
+                .http_only(true);
+
+            #[cfg(debug_assertions)]
+            let cookie = builder.finish();
+            #[cfg(not(debug_assertions))]
+            let cookie = builder.secure(true).finish();
+
             let response = ApiResponse::success("User registered successfully", auth);
             Ok(HttpResponse::Ok().cookie(cookie).json(response))
         }
@@ -81,13 +86,18 @@ pub async fn login(
     {
         Ok(auth) => {
             let expires = OffsetDateTime::now_utc().checked_add(Duration::hours(24));
-            let cookie = Cookie::build("token", auth.token.clone())
+
+            let builder = Cookie::build("token", auth.token.clone())
                 .path("/")
                 .expires(expires)
                 .same_site(SameSite::None)
-                .secure(true)
-                .http_only(true)
-                .finish();
+                .http_only(true);
+
+            #[cfg(debug_assertions)]
+            let cookie = builder.finish();
+            #[cfg(not(debug_assertions))]
+            let cookie = builder.secure(true).finish();
+
             let response = ApiResponse::success("User logged in successfully", auth);
             Ok(HttpResponse::Ok().cookie(cookie).json(response))
         }
@@ -96,12 +106,12 @@ pub async fn login(
 }
 
 pub async fn logout() -> HttpResponse {
-    let mut cookie = Cookie::build("token", "")
+    let cookie = Cookie::build("token", "")
         .path("/")
-        .same_site(SameSite::Lax)
-        .http_only(true)
+        .expires(OffsetDateTime::now_utc() - Duration::days(365))
+        .max_age(Duration::seconds(0))
         .finish();
-    cookie.make_removal();
+
     let response = ApiResponse::success_no_payload("Logged out successfully");
     HttpResponse::Ok().cookie(cookie).json(response)
 }
