@@ -31,6 +31,7 @@
   },
   "Dashboard": {
     "createProject": "Create Project",
+    "noProjects": "You have no projects. Create one to get started!",
     "failedToLoad": "Failed to load projects",
     "yourProjects": "Your Projects"
   },
@@ -88,6 +89,14 @@
       "open": "WebSocket connection established",
       "reconnectStopped": "WebSocket reconnection stopped"
     }
+  },
+  "ProjectPayload": {
+    "createdAt": "Created At",
+    "id": "ID",
+    "name": "Name",
+    "ownerId": "Owner ID",
+    "ownerType": "Owner Type",
+    "updatedAt": "Updated At"
   },
   "Register": {
     "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>",

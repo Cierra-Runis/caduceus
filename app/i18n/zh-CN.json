@@ -32,6 +32,7 @@
   "Dashboard": {
     "createProject": "新建项目",
     "failedToLoad": "加载项目失败",
+    "noProjects": "你还没有项目。创建一个来开始吧！",
     "yourProjects": "你的项目"
   },
   "Home": {
@@ -88,6 +89,14 @@
       "open": "WebSocket 连接已建立",
       "reconnectStopped": "WebSocket 重连已停止"
     }
+  },
+  "ProjectPayload": {
+    "createdAt": "创建时间",
+    "id": "ID",
+    "name": "名称",
+    "ownerId": "所有者 ID",
+    "ownerType": "所有者类型",
+    "updatedAt": "更新时间"
   },
   "Register": {
     "agree": "注册即表示你已阅读并同意我们的 <privacy>隐私政策</privacy>",

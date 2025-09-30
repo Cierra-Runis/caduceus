@@ -32,6 +32,7 @@
   "Dashboard": {
     "createProject": "プロジェクトを作成",
     "failedToLoad": "プロジェクトの読み込みに失敗しました",
+    "noProjects": "プロジェクトがありません。まずは作成してみましょう！",
     "yourProjects": "あなたのプロジェクト"
   },
   "Home": {
@@ -88,6 +89,14 @@
       "open": "WebSocket 接続が確立されました",
       "reconnectStopped": "WebSocket の再接続が停止しました"
     }
+  },
+  "ProjectPayload": {
+    "createdAt": "作成日",
+    "id": "ID",
+    "name": "名前",
+    "ownerId": "所有者 ID",
+    "ownerType": "所有者タイプ",
+    "updatedAt": "更新日"
   },
   "Register": {
     "agree": "サインアップすることで、当社の <privacy>プライバシーポリシー</privacy> を読み、同意したことを確認します",
