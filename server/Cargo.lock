@@ -3474,7 +3474,6 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serial_test",
- "thiserror 2.0.16",
  "time",
  "tokio",
  "tokio-test",
