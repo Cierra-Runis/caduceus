@@ -8,31 +8,31 @@ Caduceus server application is built with Rust. It leverages the [Actix-web](htt
 
 ### Running the Server
 
-1. First, copy the `./config/test.yaml` file to `./config/dev.yaml`:
+First, copy the `./config/test.yaml` file to `./config/dev.yaml`:
 
-   ```bash
-   cp ./config/test.yaml ./config/dev.yaml
-   ```
+```bash
+cp ./config/test.yaml ./config/dev.yaml
+```
 
-   Then, fill in the necessary configuration values in `./config/dev.yaml`.
+Then, fill in the necessary configuration values in `./config/dev.yaml`.
 
-2. To start the development server, run the following command:
+To start the development server, run the following command:
 
-   ```bash
-   cargo run
-   ```
+```bash
+cargo run
+```
 
-3. For hot-reloading during development, download and install `cargo-watch`:
+For hot-reloading during development, download and install `cargo-watch`:
 
-   ```bash
-   cargo install cargo-watch
-   ```
+```bash
+cargo install cargo-watch
+```
 
-   Then, start the server with hot-reloading enabled:
+Then, start the server with hot-reloading enabled:
 
-   ```bash
-   cargo watch -x 'run'
-   ```
+```bash
+cargo watch -x 'run'
+```
 
 ## Testing
 
@@ -44,28 +44,28 @@ cargo test
 
 ### Coverage Report
 
-1. First, install `cargo-llvm-cov` following the instructions at [cargo-llvm-cov GitHub repository](https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#from-source).
+First, install `cargo-llvm-cov` following the instructions at [cargo-llvm-cov GitHub repository](https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#from-source).
 
-2. Switch to the nightly Rust toolchain to exclude test code from the coverage report:
+Switch to the nightly Rust toolchain to exclude test code from the coverage report:
 
-   ```bash
-   rustup override set nightly
-   ```
+```bash
+rustup override set nightly
+```
 
-3. To generate a coverage report, use the following command:
+To generate a coverage report, use the following command:
 
-   ```bash
-   cargo llvm-cov --all-features --workspace --html
-   ```
+```bash
+cargo llvm-cov --all-features --workspace --html
+```
 
-4. After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
+After running the above command, open the generated `target/llvm-cov/html/index.html` file in your web browser to view the coverage report.
 
-5. You could install VSCode extension [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) to visualize the coverage report directly in your code editor.
+You could install VSCode extension [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) to visualize the coverage report directly in your code editor.
 
-   Then, run the following command to generate a coverage report in lcov format:
+Then, run the following command to generate a coverage report in lcov format:
 
-   ```bash
-   cargo llvm-cov --lcov --output-path ./target/lcov.info
-   ```
+```bash
+cargo llvm-cov --lcov --output-path ./target/lcov.info
+```
 
-   Finally, use the Coverage Gutters extension to display the coverage information in your source files.
+Finally, use the Coverage Gutters extension to display the coverage information in your source files.
