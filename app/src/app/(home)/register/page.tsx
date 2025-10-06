@@ -39,7 +39,7 @@ export default function RegisterPage() {
                 addToast({
                   color: 'success',
                   description: t('redirectingLogin'),
-                  onClose: () => router.push('/login'), // FIXME: https://github.com/heroui-inc/heroui/issues/5609
+                  onClose: () => router.push('/login'),
                   shouldShowTimeoutProgress: true,
                   timeout: 3000,
                   title: t('welcome', { username }),
