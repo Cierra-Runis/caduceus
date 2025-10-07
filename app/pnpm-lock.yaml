@@ -258,6 +258,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^5.2.0
         version: 5.2.0(eslint@9.37.0(jiti@2.6.1))
+      eslint-plugin-zod-x:
+        specifier: ^1.4.0
+        version: 1.4.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)(zod@4.1.11)
       monaco-editor:
         specifier: ^0.53.0
         version: 0.53.0
@@ -2729,6 +2732,13 @@ packages:
     engines: {node: '>=4'}
     peerDependencies:
       eslint: ^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7
+
+  eslint-plugin-zod-x@1.4.0:
+    resolution: {integrity: sha512-fHo5mfyxVFeZhqrBE86iruQnmXYBT3EER6QzlpZevUi3j7LaCoa2c3rOEfT9Ij7ClueARxxhNyNCZHCxtk7qvg==}
+    engines: {node: ^20 || ^22 || ^24}
+    peerDependencies:
+      eslint: ^9
+      zod: ^4
 
   eslint-scope@8.4.0:
     resolution: {integrity: sha512-sNXOfKCn74rt8RICKMvJS7XKV/Xk9kA7DyJr8mJik3S7Cwgy3qlkkmyS2uQB3jiJg6VNdZd/pDBJu0nvG2NlTg==}
@@ -7544,6 +7554,15 @@ snapshots:
       semver: 6.3.1
       string.prototype.matchall: 4.0.12
       string.prototype.repeat: 1.0.0
+
+  eslint-plugin-zod-x@1.4.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)(zod@4.1.11):
+    dependencies:
+      '@typescript-eslint/utils': 8.45.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)
+      eslint: 9.37.0(jiti@2.6.1)
+      zod: 4.1.11
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
 
   eslint-scope@8.4.0:
     dependencies:

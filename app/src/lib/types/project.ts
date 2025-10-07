@@ -1,7 +1,7 @@
-import z from 'zod';
+import * as z from 'zod';
 
-export type Project = z.infer<typeof Project>;
-export const Project = z.object({
+export type Project = z.infer<typeof ProjectSchema>;
+export const ProjectSchema = z.object({
   created_at: z.string().transform((str) => new Date(str)),
   creator_id: z.string(),
   id: z.string(),

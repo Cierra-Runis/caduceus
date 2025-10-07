@@ -1,24 +1,24 @@
 import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
-import { Project } from '@/lib/types/project';
+import { ProjectSchema } from '@/lib/types/project';
 
 import { api } from '../request';
 
 export type CreateProjectRequest = {
   owner_id: string;
   owner_type: 'team' | 'user';
-} & z.infer<typeof CreateProjectRequest>;
-export const CreateProjectRequest = z.object({
+} & z.infer<typeof CreateProjectRequestSchema>;
+export const CreateProjectRequestSchema = z.object({
   name: z
     .string('Project name is required')
     .nonempty('Project name is required'),
 });
 
-export type CreateProjectResponse = z.infer<typeof CreateProjectResponse>;
-export const CreateProjectResponse = z.object({
+export type CreateProjectResponse = z.infer<typeof CreateProjectResponseSchema>;
+export const CreateProjectResponseSchema = z.object({
   message: z.string(),
-  payload: Project,
+  payload: ProjectSchema,
 });
 
 export const useCreateProject = () => {

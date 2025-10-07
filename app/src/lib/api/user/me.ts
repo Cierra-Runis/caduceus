@@ -1,16 +1,16 @@
 import useSWR from 'swr';
-import z from 'zod';
+import * as z from 'zod';
 
 import { api } from '@/lib/request';
-import { User } from '@/lib/types/user';
+import { UserSchema } from '@/lib/types/user';
 
-export type RouteUserMe = z.infer<typeof RouteUserMe>;
-export const RouteUserMe = z.object({
+export type RouteUserMe = z.infer<typeof RouteUserMeSchema>;
+export const RouteUserMeSchema = z.object({
   message: z.string(),
-  payload: User,
+  payload: UserSchema,
 });
 
 export const useUserMe = () =>
   useSWR('user/me', async () =>
-    RouteUserMe.parse(await api.get('user/me').json()),
+    RouteUserMeSchema.parse(await api.get('user/me').json()),
   );

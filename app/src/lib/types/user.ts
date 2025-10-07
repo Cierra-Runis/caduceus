@@ -1,7 +1,7 @@
-import z from 'zod';
+import * as z from 'zod';
 
-export type User = z.infer<typeof User>;
-export const User = z.object({
+export type User = z.infer<typeof UserSchema>;
+export const UserSchema = z.object({
   avatar_uri: z.string().optional(),
   createAt: z.string().transform((str) => new Date(str)),
   id: z.string(),

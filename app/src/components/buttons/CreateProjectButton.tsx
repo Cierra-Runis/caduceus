@@ -13,7 +13,10 @@ import { addToast } from '@heroui/toast';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import { CreateProjectRequest, useCreateProject } from '@/lib/api/project';
+import {
+  CreateProjectRequestSchema,
+  useCreateProject,
+} from '@/lib/api/project';
 import { useUserMe } from '@/lib/api/user/me';
 
 import { Input } from '../forms/Input';
@@ -73,7 +76,7 @@ export function CreateProjectButton({
                     },
                   );
                 }}
-                schema={CreateProjectRequest}
+                schema={CreateProjectRequestSchema}
               >
                 {(control) => (
                   <>

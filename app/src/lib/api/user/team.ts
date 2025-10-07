@@ -1,16 +1,16 @@
 import useSWR from 'swr';
-import z from 'zod';
+import * as z from 'zod';
 
 import { api } from '@/lib/request';
-import { Team } from '@/lib/types/team';
+import { TeamSchema } from '@/lib/types/team';
 
-export type RouteUserTeams = z.infer<typeof RouteUserTeams>;
-export const RouteUserTeams = z.object({
+export type RouteUserTeams = z.infer<typeof RouteUserTeamsSchema>;
+export const RouteUserTeamsSchema = z.object({
   message: z.string(),
-  payload: z.array(Team),
+  payload: z.array(TeamSchema),
 });
 
 export const useUserTeams = () =>
   useSWR('user/teams', async () =>
-    RouteUserTeams.parse(await api.get('user/teams').json()),
+    RouteUserTeamsSchema.parse(await api.get('user/teams').json()),
   );

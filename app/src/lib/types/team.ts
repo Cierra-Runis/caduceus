@@ -1,6 +1,6 @@
-import z from 'zod';
+import * as z from 'zod';
 
-export const Team = z.object({
+export const TeamSchema = z.object({
   avatar_uri: z.string().optional(),
   id: z.string(),
   name: z.string(),

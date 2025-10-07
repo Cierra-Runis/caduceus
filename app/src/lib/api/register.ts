@@ -2,12 +2,11 @@ import { HTTPError } from 'ky';
 import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
-import { User } from '@/lib/types/user';
-
 import { api } from '../request';
+import { UserSchema } from '../types/user';
 
-export type RegisterRequest = z.infer<typeof RegisterRequest>;
-export const RegisterRequest = z
+export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
+export const RegisterRequestSchema = z
   .object({
     confirmPassword: z
       .string('Confirm Password is required')
@@ -31,12 +30,12 @@ export const RegisterRequest = z
     path: ['confirmPassword'],
   });
 
-export type RegisterResponse = z.infer<typeof RegisterResponse>;
-export const RegisterResponse = z.object({
+export type RegisterResponse = z.infer<typeof RegisterResponseSchema>;
+export const RegisterResponseSchema = z.object({
   message: z.string(),
   payload: z.object({
     token: z.string(),
-    user: User,
+    user: UserSchema,
   }),
 });
 

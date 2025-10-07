@@ -15,19 +15,19 @@ import { HTTPError } from 'ky';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import { match } from 'ts-pattern';
-import z from 'zod';
+import * as z from 'zod';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
 import { api } from '@/lib/request';
-import { Project } from '@/lib/types/project';
+import { Project, ProjectSchema } from '@/lib/types/project';
 
 type Column = {
   key: 'actions' | ({} & keyof Project);
 } & TableColumnProps<unknown>;
 
-type UserProjectResponse = z.infer<typeof UserProjectResponse>;
-const UserProjectResponse = z.object({
-  payload: z.array(Project),
+type UserProjectResponse = z.infer<typeof UserProjectResponseSchema>;
+const UserProjectResponseSchema = z.object({
+  payload: z.array(ProjectSchema),
 });
 
 export default function Dashboard() {
@@ -37,7 +37,7 @@ export default function Dashboard() {
     HTTPError,
     string
   >('user/projects', async (key) =>
-    UserProjectResponse.parse(await api.get(key).json()),
+    UserProjectResponseSchema.parse(await api.get(key).json()),
   );
 
   if (isLoading)

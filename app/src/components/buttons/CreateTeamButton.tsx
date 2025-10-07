@@ -14,7 +14,7 @@ import { IconPlus } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import { CreateTeamRequest, useCreateTeam } from '@/lib/api/team';
+import { CreateTeamRequestSchema, useCreateTeam } from '@/lib/api/team';
 
 import { Input } from '../forms/Input';
 import { ZodForm } from '../forms/ZodForm';
@@ -60,7 +60,7 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
                     },
                   })
                 }
-                schema={CreateTeamRequest}
+                schema={CreateTeamRequestSchema}
               >
                 {(control) => (
                   <>

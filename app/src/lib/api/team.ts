@@ -3,18 +3,18 @@ import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
 import { api } from '@/lib/request';
-import { Team } from '@/lib/types/team';
+import { TeamSchema } from '@/lib/types/team';
 
-export const CreateTeamRequest = z.object({
+export const CreateTeamRequestSchema = z.object({
   name: z.string('Team name is required').nonempty('Team name is required'),
 });
-export type CreateTeamRequest = z.infer<typeof CreateTeamRequest>;
+export type CreateTeamRequest = z.infer<typeof CreateTeamRequestSchema>;
 
-export const CreateTeamResponse = z.object({
+export const CreateTeamResponseSchema = z.object({
   message: z.string(),
-  payload: Team,
+  payload: TeamSchema,
 });
-export type CreateTeamResponse = z.infer<typeof CreateTeamResponse>;
+export type CreateTeamResponse = z.infer<typeof CreateTeamResponseSchema>;
 
 export const useCreateTeam = () => {
   return useSWRMutation<

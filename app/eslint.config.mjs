@@ -10,6 +10,9 @@ import eslintPluginBetterTailwindCss from 'eslint-plugin-better-tailwindcss';
 /// https://github.com/azat-io/eslint-plugin-perfectionist
 /// ESLint plugin for sorting various data such as objects, imports, types, enums, JSX props, etc.
 import eslintPluginPerfectionist from 'eslint-plugin-perfectionist';
+/// https://github.com/marcalexiei/eslint-plugin-zod-x
+/// ESLint plugin that adds custom linting rules to enforce best practices when using Zod.
+import eslintPluginZodX from 'eslint-plugin-zod-x';
 /// https://typescript-eslint.io/getting-started
 /// Powerful static analysis for JavaScript and TypeScript.
 import { defineConfig } from 'eslint/config';
@@ -59,4 +62,5 @@ export default defineConfig([
   eslintPluginBetterTailwindCssConfig,
   eslintPluginPerfectionist.configs['recommended-alphabetical'],
   eslintPluginNextFlatConfig.recommended,
+  eslintPluginZodX.configs.recommended,
 ]);
