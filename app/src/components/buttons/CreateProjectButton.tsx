@@ -13,9 +13,8 @@ import { addToast } from '@heroui/toast';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import { useCreateProject } from '@/hooks/useCreateProject';
-import { useUserMe } from '@/hooks/useUserMe';
-import { CreateProjectRequest } from '@/lib/api/project';
+import { CreateProjectRequest, useCreateProject } from '@/lib/api/project';
+import { useUserMe } from '@/lib/api/user/me';
 
 import { Input } from '../forms/Input';
 import { ZodForm } from '../forms/ZodForm';

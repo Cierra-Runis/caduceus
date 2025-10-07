@@ -1,7 +1,12 @@
+import { HTTPError } from 'ky';
+import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
-import { ApiResponse } from '../response';
+import { User } from '@/lib/types/user';
 
+import { api } from '../request';
+
+export type RegisterRequest = z.infer<typeof RegisterRequest>;
 export const RegisterRequest = z
   .object({
     confirmPassword: z
@@ -26,18 +31,17 @@ export const RegisterRequest = z
     path: ['confirmPassword'],
   });
 
-export interface AuthPayload {
-  token: string;
-  user: UserPayload;
-}
-export type RegisterRequest = z.infer<typeof RegisterRequest>;
+export type RegisterResponse = z.infer<typeof RegisterResponse>;
+export const RegisterResponse = z.object({
+  message: z.string(),
+  payload: z.object({
+    token: z.string(),
+    user: User,
+  }),
+});
 
-export type RegisterResponse = ApiResponse<AuthPayload>;
-export interface UserPayload {
-  avatar_uri?: string;
-  createAt: Date;
-  id: string;
-  nickname: string;
-  updateAt: Date;
-  username: string;
-}
+export const useRegister = () =>
+  useSWRMutation<RegisterResponse, HTTPError, string, RegisterRequest>(
+    'register',
+    (key, { arg }) => api.post(key, { json: arg }).json(),
+  );

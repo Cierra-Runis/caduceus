@@ -14,8 +14,7 @@ import { IconPlus } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import { useCreateTeam } from '@/hooks/useCreateTeam';
-import { CreateTeamRequest } from '@/lib/api/team';
+import { CreateTeamRequest, useCreateTeam } from '@/lib/api/team';
 
 import { Input } from '../forms/Input';
 import { ZodForm } from '../forms/ZodForm';

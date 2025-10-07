@@ -13,14 +13,14 @@ import {
 import useWebSocket from 'react-use-websocket';
 
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
-import { ProjectPayload } from '@/lib/api/project';
+import { Project } from '@/lib/types/project';
 
 import { EditorPanel } from './EditorPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { Sidebar } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
 
-export function ClientPage({ project }: { project: ProjectPayload }) {
+export function ClientPage({ project }: { project: Project }) {
   const t = useTranslations('Project');
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const editorPanelRef = useRef<ImperativePanelHandle>(null);

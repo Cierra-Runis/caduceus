@@ -10,8 +10,7 @@ import { useRouter } from 'next/navigation';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
-import { useRegister } from '@/hooks/useRegister';
-import { RegisterRequest } from '@/lib/api/register';
+import { RegisterRequest, useRegister } from '@/lib/api/register';
 
 export default function RegisterPage() {
   const router = useRouter();

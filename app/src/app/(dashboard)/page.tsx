@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@heroui/button';
 import { Spinner } from '@heroui/spinner';
 import {
   Table,
@@ -10,27 +11,34 @@ import {
   TableHeader,
   TableRow,
 } from '@heroui/table';
+import { HTTPError } from 'ky';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
+import { match } from 'ts-pattern';
+import z from 'zod';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
-import { ProjectPayload } from '@/lib/api/project';
 import { api } from '@/lib/request';
-import { ApiResponse, ErrorResponse } from '@/lib/response';
+import { Project } from '@/lib/types/project';
 
 type Column = {
-  key: keyof ProjectPayload;
+  key: 'actions' | ({} & keyof Project);
 } & TableColumnProps<unknown>;
 
-type UserProjectResponse = ApiResponse<ProjectPayload[]>;
+type UserProjectResponse = z.infer<typeof UserProjectResponse>;
+const UserProjectResponse = z.object({
+  payload: z.array(Project),
+});
 
 export default function Dashboard() {
   const t = useTranslations();
   const { data, error, isLoading } = useSWR<
     UserProjectResponse,
-    ErrorResponse,
+    HTTPError,
     string
-  >('user/projects', (key) => api.get(key).json());
+  >('user/projects', async (key) =>
+    UserProjectResponse.parse(await api.get(key).json()),
+  );
 
   if (isLoading)
     return (
@@ -62,6 +70,10 @@ export default function Dashboard() {
             { children: t('ProjectPayload.name'), key: 'name' },
             { children: t('ProjectPayload.createdAt'), key: 'created_at' },
             { children: t('ProjectPayload.updatedAt'), key: 'updated_at' },
+            { children: t('ProjectPayload.id'), key: 'id' },
+            { children: t('ProjectPayload.ownerId'), key: 'owner_id' },
+            { children: t('ProjectPayload.ownerType'), key: 'owner_type' },
+            { children: 'Actions', key: 'actions' },
           ]}
         >
           {({ children, key, ...props }) => (
@@ -77,8 +89,32 @@ export default function Dashboard() {
           {(item) => (
             <TableRow key={item.id}>
               {(columnKey) => {
-                const value = item[columnKey as keyof ProjectPayload];
-                return <TableCell>{value.toLocaleString()}</TableCell>;
+                return match(columnKey as Column['key'])
+                  .with('id', () => <TableCell>{item.id}</TableCell>)
+                  .with('owner_id', () => (
+                    <TableCell>{item.owner_id}</TableCell>
+                  ))
+                  .with('owner_type', () => (
+                    <TableCell>{item.owner_type}</TableCell>
+                  ))
+                  .with('creator_id', () => (
+                    <TableCell>{item.creator_id}</TableCell>
+                  ))
+                  .with('name', () => <TableCell>{item.name}</TableCell>)
+                  .with('created_at', () => (
+                    <TableCell>{item.created_at.toDateString()}</TableCell>
+                  ))
+                  .with('updated_at', () => (
+                    <TableCell>
+                      {new Date(item.updated_at).toLocaleDateString()}
+                    </TableCell>
+                  ))
+                  .with('actions', () => (
+                    <TableCell>
+                      <Button />
+                    </TableCell>
+                  ))
+                  .exhaustive();
               }}
             </TableRow>
           )}

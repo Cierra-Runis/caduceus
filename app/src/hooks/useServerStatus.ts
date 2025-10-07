@@ -1,23 +1,10 @@
 import { BadgeProps } from '@heroui/badge';
 import { useMemo } from 'react';
-import useSWR from 'swr';
 
-import { api } from '@/lib/request';
-import { ApiResponse, ErrorResponse } from '@/lib/response';
-
-export interface ServerStatus {
-  status: 'healthy';
-  timestamp: string;
-}
-
-type HealthResponse = ApiResponse<ServerStatus>;
+import { useRouteHealth } from '@/lib/api/health';
 
 export function useServerStatus() {
-  const { data, error, isLoading } = useSWR<
-    HealthResponse,
-    ErrorResponse,
-    string
-  >('health', (key) => api.get(key).json());
+  const { data, error, isLoading } = useRouteHealth();
 
   const color = useMemo<BadgeProps['color']>(() => {
     if (isLoading) return 'default';

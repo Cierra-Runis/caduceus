@@ -9,7 +9,7 @@ import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
 import { logout } from '@/actions/auth';
-import { useUserTeams } from '@/hooks/useUserTeams';
+import { useUserTeams } from '@/lib/api/user/team';
 
 import { CreateTeamButton } from './buttons/CreateTeamButton';
 import { UserMeTooltip } from './tooltips/UserMeTooltip';

@@ -2,9 +2,8 @@ import { HTTPError, Options } from 'ky';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import { ProjectPayload } from '@/lib/api/project';
+import { CreateProjectResponse } from '@/lib/api/project';
 import { api } from '@/lib/request';
-import { ApiResponse } from '@/lib/response';
 
 import { ClientPage } from './_components/ClientPage';
 
@@ -18,10 +17,9 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
   };
 
   try {
-    const res = await api
-      .get(`project/${id}`, options)
-      .json<ApiResponse<ProjectPayload>>();
-    return <ClientPage project={res.payload} />;
+    const res = await api.get(`project/${id}`, options).json();
+    const parsed = CreateProjectResponse.parse(res);
+    return <ClientPage project={parsed.payload} />;
   } catch (error) {
     if (error instanceof HTTPError) {
       if (error.response.status === 404) {

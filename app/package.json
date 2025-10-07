@@ -66,6 +66,7 @@
     "react-resizable-panels": "^3.0.6",
     "react-use-websocket": "^4.13.0",
     "swr": "^2.3.6",
+    "ts-pattern": "^5.8.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
