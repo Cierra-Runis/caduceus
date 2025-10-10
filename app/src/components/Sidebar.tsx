@@ -13,9 +13,10 @@ import { CreateTeamButton } from '@/components/buttons/CreateTeamButton';
 import { UserMeTooltip } from '@/components/tooltips/UserMeTooltip';
 import { useUserTeams } from '@/hooks/api/user/team';
 
+type Params = Awaited<PageProps<'/dashboard/team/[id]'>['params']>;
+
 export function Sidebar() {
-  const { id } = useParams();
-  console.log(id);
+  const { id } = useParams<Params>();
   const pathname = usePathname();
 
   const isInSettings = pathname.endsWith('/settings');
@@ -81,7 +82,7 @@ export function Sidebar() {
 }
 
 function TeamList() {
-  const { id } = useParams();
+  const { id } = useParams<Params>();
   const { data } = useUserTeams();
 
   return (
