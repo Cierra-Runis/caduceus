@@ -13,6 +13,7 @@ import {
 import useWebSocket from 'react-use-websocket';
 
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
+import { env } from '@/lib/env';
 import { Project } from '@/lib/types/project';
 
 import { EditorPanel } from './EditorPanel';
@@ -27,7 +28,7 @@ export function ClientPage({ project }: { project: Project }) {
   const previewPanelRef = useRef<ImperativePanelHandle>(null);
 
   const { sendJsonMessage } = useWebSocket(
-    `${process.env.NEXT_PUBLIC_WS_URL}/project/${project.id}`,
+    `${env.NEXT_PUBLIC_WS_URL}/project/${project.id}`,
     {
       onClose: () =>
         addToast({

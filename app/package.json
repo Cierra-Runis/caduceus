@@ -52,6 +52,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@monaco-editor/react": "^4.7.0",
     "@open-rpc/client-js": "^1.8.1",
+    "@t3-oss/env-nextjs": "^0.13.8",
     "@tabler/icons-react": "^3.35.0",
     "framer-motion": "12.23.12",
     "jose": "^6.1.0",

@@ -3,22 +3,24 @@ import type { NextConfig } from 'next';
 import createBundleAnalyzer from '@next/bundle-analyzer';
 import createNextIntlPlugin from 'next-intl/plugin';
 
+import { env } from '@/lib/env';
+
 const nextConfig: NextConfig = {
   compiler: {
     removeConsole:
-      process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
+      env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
   },
   reactStrictMode: true,
   typedRoutes: true,
 };
 
 const withBundleAnalyzer = createBundleAnalyzer({
-  enabled: process.env.ANALYZE === 'true',
+  enabled: env.ANALYZE,
 });
 
 const withNextIntl = createNextIntlPlugin();
 
 /// FIXME: https://github.com/vercel/next.js/issues/77482
-export default process.env.ANALYZE === 'true'
+export default env.ANALYZE
   ? withBundleAnalyzer(withNextIntl(nextConfig))
   : withNextIntl(nextConfig);

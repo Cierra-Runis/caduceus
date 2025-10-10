@@ -1,10 +1,11 @@
 import { JWTPayload, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+
+import { env } from '@/lib/env';
 import 'server-only';
 
-const secretKey = process.env.JWT_SECRET;
-const encodedKey = new TextEncoder().encode(secretKey);
+const encodedKey = new TextEncoder().encode(env.JWT_SECRET);
 
 export async function decrypt(
   token: string | undefined,

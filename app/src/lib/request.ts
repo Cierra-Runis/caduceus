@@ -1,5 +1,7 @@
 import ky from 'ky';
 
+import { env } from '@/lib/env';
+
 export const api = ky.extend({
   credentials: 'include',
   hooks: {
@@ -17,5 +19,5 @@ export const api = ky.extend({
       },
     ],
   },
-  prefixUrl: process.env.NEXT_PUBLIC_API_URL,
+  prefixUrl: env.NEXT_PUBLIC_API_URL,
 });
