@@ -9,10 +9,9 @@ import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
 import { logout } from '@/actions/auth';
-import { useUserTeams } from '@/lib/api/user/team';
-
-import { CreateTeamButton } from './buttons/CreateTeamButton';
-import { UserMeTooltip } from './tooltips/UserMeTooltip';
+import { CreateTeamButton } from '@/components/buttons/CreateTeamButton';
+import { UserMeTooltip } from '@/components/tooltips/UserMeTooltip';
+import { useUserTeams } from '@/hooks/api/user/team';
 
 export function Sidebar() {
   const { team } = useParams();

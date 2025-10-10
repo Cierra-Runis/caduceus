@@ -1,8 +1,5 @@
-import { HTTPError } from 'ky';
-import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
-import { api } from '../request';
 import { UserSchema } from '../types/user';
 
 export type LoginRequest = z.infer<typeof LoginSchema>;
@@ -19,10 +16,3 @@ export const LoginResponseSchema = z.object({
     user: UserSchema,
   }),
 });
-
-export const useLogin = () => {
-  return useSWRMutation<LoginResponse, HTTPError, string, LoginRequest>(
-    'login',
-    (key, { arg }) => api.post(key, { json: arg }).json(),
-  );
-};

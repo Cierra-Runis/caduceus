@@ -14,10 +14,10 @@ import { IconPlus } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import { CreateTeamRequestSchema, useCreateTeam } from '@/lib/api/team';
-
-import { Input } from '../forms/Input';
-import { ZodForm } from '../forms/ZodForm';
+import { Input } from '@/components/forms/Input';
+import { ZodForm } from '@/components/forms/ZodForm';
+import { useCreateTeam } from '@/hooks/api/team';
+import { CreateTeamRequestSchema } from '@/lib/api/team';
 
 export function CreateTeamButton({ ...props }: ButtonProps) {
   const t = useTranslations('CreateTeam');

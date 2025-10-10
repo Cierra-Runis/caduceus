@@ -1,7 +1,7 @@
 import { Avatar } from '@heroui/avatar';
 import { Tooltip } from '@heroui/tooltip';
 
-import { useUserMe } from '@/lib/api/user/me';
+import { useUserMe } from '@/hooks/api/user/me';
 
 export function UserMeTooltip() {
   const { data, isLoading } = useUserMe();

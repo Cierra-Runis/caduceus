@@ -1,8 +1,5 @@
-import { HTTPError } from 'ky';
-import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
-import { api } from '../request';
 import { UserSchema } from '../types/user';
 
 export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
@@ -38,9 +35,3 @@ export const RegisterResponseSchema = z.object({
     user: UserSchema,
   }),
 });
-
-export const useRegister = () =>
-  useSWRMutation<RegisterResponse, HTTPError, string, RegisterRequest>(
-    'register',
-    (key, { arg }) => api.post(key, { json: arg }).json(),
-  );

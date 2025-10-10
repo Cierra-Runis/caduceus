@@ -1,7 +1,7 @@
 import { BadgeProps } from '@heroui/badge';
 import { useMemo } from 'react';
 
-import { useRouteHealth } from '@/lib/api/health';
+import { useRouteHealth } from './api/health';
 
 export function useServerStatus() {
   const { data, error, isLoading } = useRouteHealth();

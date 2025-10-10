@@ -12,7 +12,7 @@ import NextLink from 'next/link';
 import { logout } from '@/actions/auth';
 import { ThemeButtons } from '@/components/buttons/ThemeButton';
 import { Sidebar } from '@/components/Sidebar';
-import { useUserMe } from '@/lib/api/user/me';
+import { useUserMe } from '@/hooks/api/user/me';
 import '@/styles/globals.css';
 
 export default function Layout({ children }: { children: React.ReactNode }) {

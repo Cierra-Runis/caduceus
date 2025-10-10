@@ -1,9 +1,6 @@
-import useSWRMutation from 'swr/mutation';
 import * as z from 'zod';
 
 import { ProjectSchema } from '@/lib/types/project';
-
-import { api } from '../request';
 
 export type CreateProjectRequest = {
   owner_id: string;
@@ -20,12 +17,3 @@ export const CreateProjectResponseSchema = z.object({
   message: z.string(),
   payload: ProjectSchema,
 });
-
-export const useCreateProject = () => {
-  return useSWRMutation<
-    CreateProjectResponse,
-    Error,
-    string,
-    CreateProjectRequest
-  >('project', (key, { arg }) => api.post(key, { json: arg }).json());
-};

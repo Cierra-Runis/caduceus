@@ -13,14 +13,11 @@ import { addToast } from '@heroui/toast';
 import { useTranslations } from 'next-intl';
 import { mutate } from 'swr';
 
-import {
-  CreateProjectRequestSchema,
-  useCreateProject,
-} from '@/lib/api/project';
-import { useUserMe } from '@/lib/api/user/me';
-
-import { Input } from '../forms/Input';
-import { ZodForm } from '../forms/ZodForm';
+import { Input } from '@/components/forms/Input';
+import { ZodForm } from '@/components/forms/ZodForm';
+import { useCreateProject } from '@/hooks/api/project';
+import { useUserMe } from '@/hooks/api/user/me';
+import { CreateProjectRequestSchema } from '@/lib/api/project';
 
 export function CreateProjectButton({
   ownerType: ownerType,

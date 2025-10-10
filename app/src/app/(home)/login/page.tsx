@@ -9,7 +9,8 @@ import { useRouter } from 'next/navigation';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
-import { LoginSchema, useLogin } from '@/lib/api/login';
+import { useLogin } from '@/hooks/api/login';
+import { LoginSchema } from '@/lib/api/login';
 
 export default function LoginPage() {
   const router = useRouter();
