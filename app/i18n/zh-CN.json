@@ -133,5 +133,12 @@
     "settings": "设置",
     "tasks": "任务",
     "teams": "团队"
+  },
+  "Table": {
+    "actions": "操作",
+    "download": "下载",
+    "duplicate": "复制",
+    "open": "打开",
+    "settings": "设置"
   }
 }

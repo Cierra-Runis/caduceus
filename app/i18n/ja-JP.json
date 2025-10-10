@@ -133,5 +133,12 @@
     "settings": "設定",
     "tasks": "タスク",
     "teams": "チーム"
+  },
+  "Table": {
+    "actions": "操作",
+    "download": "ダウンロード",
+    "duplicate": "複製",
+    "open": "開く",
+    "settings": "設定"
   }
 }

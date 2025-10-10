@@ -31,8 +31,8 @@
   },
   "Dashboard": {
     "createProject": "Create Project",
-    "noProjects": "You have no projects. Create one to get started!",
     "failedToLoad": "Failed to load projects",
+    "noProjects": "You have no projects. Create one to get started!",
     "yourProjects": "Your Projects"
   },
   "Home": {
@@ -133,5 +133,12 @@
     "settings": "Settings",
     "tasks": "Tasks",
     "teams": "Teams"
+  },
+  "Table": {
+    "actions": "Actions",
+    "download": "Download",
+    "duplicate": "Duplicate",
+    "open": "Open",
+    "settings": "Settings"
   }
 }

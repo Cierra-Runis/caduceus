@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@heroui/button';
+import { Button, ButtonGroup } from '@heroui/button';
 import { Spinner } from '@heroui/spinner';
 import {
   Table,
@@ -11,34 +11,27 @@ import {
   TableHeader,
   TableRow,
 } from '@heroui/table';
-import { HTTPError } from 'ky';
+import { Tooltip } from '@heroui/tooltip';
+import {
+  IconCopy,
+  IconDownload,
+  IconPlayerPlay,
+  IconSettings,
+} from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
-import useSWR from 'swr';
 import { match } from 'ts-pattern';
-import * as z from 'zod';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
-import { api } from '@/lib/request';
-import { Project, ProjectSchema } from '@/lib/types/project';
+import { useUserProject } from '@/hooks/api/user/project';
+import { Project } from '@/lib/types/project';
 
 type Column = {
   key: 'actions' | ({} & keyof Project);
 } & TableColumnProps<unknown>;
 
-type UserProjectResponse = z.infer<typeof UserProjectResponseSchema>;
-const UserProjectResponseSchema = z.object({
-  payload: z.array(ProjectSchema),
-});
-
 export default function Dashboard() {
   const t = useTranslations();
-  const { data, error, isLoading } = useSWR<
-    UserProjectResponse,
-    HTTPError,
-    string
-  >('user/projects', async (key) =>
-    UserProjectResponseSchema.parse(await api.get(key).json()),
-  );
+  const { data, error, isLoading } = useUserProject();
 
   if (isLoading)
     return (
@@ -70,10 +63,7 @@ export default function Dashboard() {
             { children: t('ProjectPayload.name'), key: 'name' },
             { children: t('ProjectPayload.createdAt'), key: 'created_at' },
             { children: t('ProjectPayload.updatedAt'), key: 'updated_at' },
-            { children: t('ProjectPayload.id'), key: 'id' },
-            { children: t('ProjectPayload.ownerId'), key: 'owner_id' },
-            { children: t('ProjectPayload.ownerType'), key: 'owner_type' },
-            { children: 'Actions', key: 'actions' },
+            { children: t('Table.actions'), key: 'actions' },
           ]}
         >
           {({ children, key, ...props }) => (
@@ -106,12 +96,37 @@ export default function Dashboard() {
                   ))
                   .with('updated_at', () => (
                     <TableCell>
-                      {new Date(item.updated_at).toLocaleDateString()}
+                      {item.updated_at.toLocaleDateString()}
                     </TableCell>
                   ))
                   .with('actions', () => (
                     <TableCell>
-                      <Button />
+                      <ButtonGroup size='sm' variant='bordered'>
+                        <Tooltip content={t('Table.open')}>
+                          <Button
+                            isIconOnly
+                            startContent={<IconPlayerPlay className='w-4' />}
+                          />
+                        </Tooltip>
+                        <Tooltip content={t('Table.download')}>
+                          <Button
+                            isIconOnly
+                            startContent={<IconDownload className='w-4' />}
+                          />
+                        </Tooltip>
+                        <Tooltip content={t('Table.duplicate')}>
+                          <Button
+                            isIconOnly
+                            startContent={<IconCopy className='w-4' />}
+                          />
+                        </Tooltip>
+                        <Tooltip content={t('Table.settings')}>
+                          <Button
+                            isIconOnly
+                            startContent={<IconSettings className='w-4' />}
+                          />
+                        </Tooltip>
+                      </ButtonGroup>
                     </TableCell>
                   ))
                   .exhaustive();
