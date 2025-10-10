@@ -16,17 +16,17 @@ import { mutate } from 'swr';
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
 import { useCreateProject } from '@/hooks/api/project';
-import { useUserMe } from '@/hooks/api/user/me';
 import { CreateProjectRequestSchema } from '@/lib/api/project';
 
 export function CreateProjectButton({
-  ownerType: ownerType,
+  ownerId,
+  ownerType,
   ...props
 }: {
+  ownerId: string;
   ownerType: 'team' | 'user';
 } & ButtonProps) {
   const t = useTranslations('CreateProject');
-  const { data: user, error } = useUserMe();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const { isMutating, trigger } = useCreateProject();
@@ -44,17 +44,10 @@ export function CreateProjectButton({
               <ZodForm
                 className='contents' // Prevent extra div breaking Modal layout
                 onValid={(data) => {
-                  if (!user?.payload.id)
-                    return addToast({
-                      color: 'danger',
-                      description: error?.message,
-                      title: t('creationFailed'),
-                    });
-
                   trigger(
                     {
                       ...data,
-                      owner_id: user.payload.id,
+                      owner_id: ownerId,
                       owner_type: ownerType,
                     },
                     {
@@ -73,7 +66,7 @@ export function CreateProjectButton({
                           title: t('creationSucceeded'),
                         });
                         onClose();
-                        mutate('user/projects');
+                        mutate(`${ownerType}/projects`);
                       },
                     },
                   );

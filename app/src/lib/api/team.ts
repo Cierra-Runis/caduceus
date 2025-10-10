@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+import { ProjectSchema } from '@/lib/types/project';
 import { TeamSchema } from '@/lib/types/team';
 
 export const CreateTeamRequestSchema = z.object({
@@ -12,3 +13,8 @@ export const CreateTeamResponseSchema = z.object({
   payload: TeamSchema,
 });
 export type CreateTeamResponse = z.infer<typeof CreateTeamResponseSchema>;
+
+export type TeamProjectResponse = z.infer<typeof TeamProjectResponseSchema>;
+export const TeamProjectResponseSchema = z.object({
+  payload: z.array(ProjectSchema),
+});

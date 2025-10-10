@@ -24,16 +24,16 @@ import { match } from 'ts-pattern';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
 import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
-import { useUserProject } from '@/hooks/api/user/project';
+import { useTeamProject } from '@/hooks/api/team';
 import { Project } from '@/lib/types/project';
 
 type Column = {
   key: 'actions' | ({} & keyof Project);
 } & TableColumnProps<unknown>;
 
-export default function Dashboard() {
+export function ClientPage({ id }: { id: string }) {
   const t = useTranslations();
-  const { data, error, isLoading } = useUserProject();
+  const { data, error, isLoading } = useTeamProject({ id });
 
   if (isLoading)
     return (
@@ -56,8 +56,8 @@ export default function Dashboard() {
           <div className='flex items-center justify-between'>
             <div>
               <CreateProjectButton
-                ownerId={data.payload[0]?.owner_id || ''} // FIXME: User ID should be fetched from auth context
-                ownerType='user'
+                ownerId={id}
+                ownerType='team'
                 variant='bordered'
               >
                 {t('Dashboard.createProject')}

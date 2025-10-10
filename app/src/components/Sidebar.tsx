@@ -14,7 +14,8 @@ import { UserMeTooltip } from '@/components/tooltips/UserMeTooltip';
 import { useUserTeams } from '@/hooks/api/user/team';
 
 export function Sidebar() {
-  const { team } = useParams();
+  const { id } = useParams();
+  console.log(id);
   const pathname = usePathname();
 
   const isInSettings =
@@ -34,7 +35,7 @@ export function Sidebar() {
         href='/'
         isIconOnly
         radius='none'
-        variant={!team ? 'solid' : 'light'}
+        variant={!id ? 'solid' : 'light'}
       >
         <UserMeTooltip />
       </Button>
@@ -50,11 +51,11 @@ export function Sidebar() {
             as={NextLink}
             href={
               isInSettings
-                ? team
-                  ? `/dashboard/team/${team}`
+                ? id
+                  ? `/dashboard/team/${id}`
                   : '/'
-                : team
-                  ? `/dashboard/team/${team}/manage`
+                : id
+                  ? `/dashboard/team/${id}/manage`
                   : '/dashboard/settings'
             }
             isIconOnly
@@ -81,7 +82,7 @@ export function Sidebar() {
 }
 
 function TeamList() {
-  const { team } = useParams();
+  const { id } = useParams();
   const { data } = useUserTeams();
 
   return (
@@ -94,7 +95,7 @@ function TeamList() {
           isIconOnly
           key={t.id}
           radius='none'
-          variant={team === t.id ? 'solid' : 'light'}
+          variant={id === t.id ? 'solid' : 'light'}
         >
           <Tooltip content={t.name} placement='right'>
             <Avatar radius='sm' src={t.avatar_uri ?? '/icon.svg'} />
