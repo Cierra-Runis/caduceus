@@ -26,7 +26,7 @@ export function CreateProjectButton({
   ownerType: 'team' | 'user';
 } & ButtonProps) {
   const t = useTranslations('CreateProject');
-  const { data: user } = useUserMe();
+  const { data: user, error } = useUserMe();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   const { isMutating, trigger } = useCreateProject();
@@ -44,7 +44,12 @@ export function CreateProjectButton({
               <ZodForm
                 className='contents' // Prevent extra div breaking Modal layout
                 onValid={(data) => {
-                  if (!user?.payload.id) return;
+                  if (!user?.payload.id)
+                    return addToast({
+                      color: 'danger',
+                      description: error?.message,
+                      title: t('creationFailed'),
+                    });
 
                   trigger(
                     {
