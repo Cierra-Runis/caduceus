@@ -18,8 +18,7 @@ export function Sidebar() {
   console.log(id);
   const pathname = usePathname();
 
-  const isInSettings =
-    pathname.endsWith('/settings') || pathname.endsWith('/manage');
+  const isInSettings = pathname.endsWith('/settings');
 
   return (
     <ScrollShadow
@@ -55,7 +54,7 @@ export function Sidebar() {
                   ? `/dashboard/team/${id}`
                   : '/'
                 : id
-                  ? `/dashboard/team/${id}/manage`
+                  ? `/dashboard/team/${id}/settings`
                   : '/dashboard/settings'
             }
             isIconOnly
