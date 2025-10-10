@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, ButtonGroup } from '@heroui/button';
+import { Button } from '@heroui/button';
 import { Spinner } from '@heroui/spinner';
 import {
   Table,
@@ -19,9 +19,11 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
+import NextLink from 'next/link';
 import { match } from 'ts-pattern';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
+import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
 import { useUserProject } from '@/hooks/api/user/project';
 import { Project } from '@/lib/types/project';
 
@@ -48,22 +50,30 @@ export default function Dashboard() {
 
   return (
     <main className='flex h-full items-center justify-center'>
-      <CreateProjectButton ownerType='user'>
-        {t('Dashboard.createProject')}
-      </CreateProjectButton>
       <Table
         aria-label={t('Dashboard.yourProjects')}
-        isStriped
-        selectionMode='multiple'
-        showDragButtons
-        showSelectionCheckboxes
+        topContent={
+          <div className='flex items-center justify-between'>
+            <div>
+              <CreateProjectButton ownerType='user' variant='bordered'>
+                {t('Dashboard.createProject')}
+              </CreateProjectButton>
+            </div>
+            <div>
+              <Button isIconOnly variant='ghost'>
+                <IconSettings className='w-4' />
+              </Button>
+            </div>
+          </div>
+        }
+        topContentPlacement='outside'
       >
         <TableHeader<Column>
           columns={[
             { children: t('ProjectPayload.name'), key: 'name' },
             { children: t('ProjectPayload.createdAt'), key: 'created_at' },
             { children: t('ProjectPayload.updatedAt'), key: 'updated_at' },
-            { children: t('Table.actions'), key: 'actions' },
+            { align: 'center', children: t('Table.actions'), key: 'actions' },
           ]}
         >
           {({ children, key, ...props }) => (
@@ -92,7 +102,9 @@ export default function Dashboard() {
                   ))
                   .with('name', () => <TableCell>{item.name}</TableCell>)
                   .with('created_at', () => (
-                    <TableCell>{item.created_at.toDateString()}</TableCell>
+                    <TableCell>
+                      {item.created_at.toLocaleDateString()}
+                    </TableCell>
                   ))
                   .with('updated_at', () => (
                     <TableCell>
@@ -100,33 +112,46 @@ export default function Dashboard() {
                     </TableCell>
                   ))
                   .with('actions', () => (
-                    <TableCell>
-                      <ButtonGroup size='sm' variant='bordered'>
-                        <Tooltip content={t('Table.open')}>
-                          <Button
-                            isIconOnly
-                            startContent={<IconPlayerPlay className='w-4' />}
-                          />
-                        </Tooltip>
-                        <Tooltip content={t('Table.download')}>
-                          <Button
-                            isIconOnly
-                            startContent={<IconDownload className='w-4' />}
-                          />
-                        </Tooltip>
-                        <Tooltip content={t('Table.duplicate')}>
-                          <Button
-                            isIconOnly
-                            startContent={<IconCopy className='w-4' />}
-                          />
-                        </Tooltip>
-                        <Tooltip content={t('Table.settings')}>
-                          <Button
-                            isIconOnly
-                            startContent={<IconSettings className='w-4' />}
-                          />
-                        </Tooltip>
-                      </ButtonGroup>
+                    <TableCell
+                      className={`flex items-center justify-center gap-1`}
+                    >
+                      <Tooltip content={t('Table.open')}>
+                        <Button
+                          as={NextLink}
+                          href={`/project/${item.id}`}
+                          isIconOnly
+                          size='sm'
+                          startContent={<IconPlayerPlay className='w-4' />}
+                          variant='bordered'
+                        />
+                      </Tooltip>
+                      <Tooltip content={t('Table.download')}>
+                        <Button
+                          isIconOnly
+                          size='sm'
+                          startContent={<IconDownload className='w-4' />}
+                          // TODO: Implement
+                          variant='bordered'
+                        />
+                      </Tooltip>
+                      <Tooltip content={t('Table.duplicate')}>
+                        <Button
+                          isIconOnly
+                          size='sm'
+                          startContent={<IconCopy className='w-4' />}
+                          // TODO: Implement
+                          variant='bordered'
+                        />
+                      </Tooltip>
+                      <Tooltip content={t('Table.settings')}>
+                        <UpdateProjectButton
+                          isIconOnly
+                          project={item}
+                          size='sm'
+                          startContent={<IconSettings className='w-4' />}
+                          variant='bordered'
+                        />
+                      </Tooltip>
                     </TableCell>
                   ))
                   .exhaustive();

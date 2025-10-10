@@ -12,10 +12,11 @@ export function Input<
   TFieldValues extends FieldValues,
   TName extends FieldPath<TFieldValues>,
   TTransformedValues,
->(
-  props: InputProps &
-    UseControllerProps<TFieldValues, TName, TTransformedValues>,
-) {
+>({
+  isDisabled,
+  isInvalid,
+  ...props
+}: InputProps & UseControllerProps<TFieldValues, TName, TTransformedValues>) {
   const {
     field: { disabled, name, onBlur, onChange, ref, value },
     fieldState: { error, invalid },
@@ -25,8 +26,8 @@ export function Input<
     <HeroUIInput
       {...props}
       errorMessage={error?.message}
-      isDisabled={disabled}
-      isInvalid={invalid}
+      isDisabled={disabled || isDisabled}
+      isInvalid={invalid || isInvalid}
       name={name}
       onBlur={onBlur}
       onChange={onChange}

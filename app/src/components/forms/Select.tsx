@@ -17,7 +17,10 @@ export function Select<
   children,
   items,
   ...props
-}: Pick<SelectProps<TItem>, 'children' | 'items'> &
+}: Pick<
+  SelectProps<TItem>,
+  'children' | 'defaultSelectedKeys' | 'items' | 'label'
+> &
   UseControllerProps<TFieldValues, TName, TTransformedValues>) {
   const {
     field: { disabled, name, onBlur, onChange, ref, value },

@@ -140,5 +140,18 @@
     "duplicate": "Duplicate",
     "open": "Open",
     "settings": "Settings"
+  },
+  "UpdateProject": {
+    "labels": {
+      "location": "Location",
+      "name": "Name"
+    },
+    "placeholders": {
+      "location": "Select location",
+      "name": "Enter your project name"
+    },
+    "save": "Save",
+    "delete": "Delete",
+    "title": "Update Project"
   }
 }

@@ -17,3 +17,10 @@ export const CreateProjectResponseSchema = z.object({
   message: z.string(),
   payload: ProjectSchema,
 });
+
+export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
+export const UpdateProjectRequestSchema = z.object({
+  name: z.string().nonempty('Project name is required'),
+  owner_id: z.string(),
+  owner_type: z.enum(['team', 'user']),
+});

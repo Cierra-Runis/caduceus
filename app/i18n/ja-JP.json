@@ -140,5 +140,18 @@
     "duplicate": "複製",
     "open": "開く",
     "settings": "設定"
+  },
+  "UpdateProject": {
+    "delete": "削除",
+    "labels": {
+      "location": "位置",
+      "name": "名前"
+    },
+    "placeholders": {
+      "location": "位置を選択してください",
+      "name": "名前を入力してください"
+    },
+    "save": "保存",
+    "title": "プロジェクトを更新"
   }
 }
