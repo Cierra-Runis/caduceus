@@ -24,6 +24,7 @@ import { match } from 'ts-pattern';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
 import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
+import { useUserMe } from '@/hooks/api/user/me';
 import { useUserProject } from '@/hooks/api/user/project';
 import { Project } from '@/lib/types/project';
 
@@ -34,6 +35,7 @@ type Column = {
 export default function Dashboard() {
   const t = useTranslations();
   const { data, error, isLoading } = useUserProject();
+  const { data: userData } = useUserMe();
 
   if (isLoading)
     return (
@@ -56,7 +58,7 @@ export default function Dashboard() {
           <div className='flex items-center justify-between'>
             <div>
               <CreateProjectButton
-                ownerId={data.payload[0]?.owner_id || ''} // FIXME: User ID should be fetched from auth context
+                ownerId={userData?.payload?.id || ''}
                 ownerType='user'
                 variant='bordered'
               >
