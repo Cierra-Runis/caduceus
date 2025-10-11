@@ -7,6 +7,7 @@ import useSWRMutation from 'swr/mutation';
 import {
   CreateTeamRequest,
   CreateTeamResponse,
+  CreateTeamResponseSchema,
   TeamProjectResponse,
   TeamProjectResponseSchema,
 } from '@/lib/api/team';
@@ -18,7 +19,9 @@ export const useCreateTeam = () => {
     HTTPError,
     string,
     CreateTeamRequest
-  >('team', (key, { arg }) => api.post(key, { json: arg }).json());
+  >('team', async (key, { arg }) =>
+    CreateTeamResponseSchema.parse(await api.post(key, { json: arg }).json()),
+  );
 };
 
 export const useTeamProject = ({ id }: { id: string }) =>

@@ -2,14 +2,18 @@
 
 import useSWRMutation from 'swr/mutation';
 
-import { CreateProjectRequest, CreateProjectResponse } from '@/lib/api/project';
+import {
+  CreateProjectRequest,
+  CreateProjectResponse,
+  CreateProjectResponseSchema,
+} from '@/lib/api/project';
 import { api } from '@/lib/request';
 
-export const useCreateProject = () => {
-  return useSWRMutation<
-    CreateProjectResponse,
-    Error,
-    string,
-    CreateProjectRequest
-  >('project', (key, { arg }) => api.post(key, { json: arg }).json());
-};
+export const useCreateProject = () =>
+  useSWRMutation<CreateProjectResponse, Error, string, CreateProjectRequest>(
+    'project',
+    async (key, { arg }) =>
+      CreateProjectResponseSchema.parse(
+        await api.post(key, { json: arg }).json(),
+      ),
+  );
