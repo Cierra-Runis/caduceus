@@ -15,6 +15,8 @@ pub enum ProjectServiceError {
     OwnerNotFound(OwnerType),
     #[display("Project not found")]
     ProjectNotFound,
+    #[display("Access denied: You do not have permission to access this project")]
+    AccessDenied,
     #[display("Creator does not match owner")]
     CreatorNotMatchOwner,
     #[display("Creator is not a member of the team")]
@@ -101,6 +103,41 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             Ok(Some(project)) => Ok(project.into()),
             Ok(None) => Err(ProjectServiceError::ProjectNotFound),
             Err(e) => Err(ProjectServiceError::Database(e)),
+        }
+    }
+}
+
+impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
+    pub async fn accessible(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+    ) -> Result<bool, ProjectServiceError> {
+        let project = match self.project_repo.find_by_id(project_id).await {
+            Ok(Some(project)) => project,
+            Ok(None) => return Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => return Err(ProjectServiceError::Database(e)),
+        };
+
+        // Check if user is the creator
+        if project.creator_id == user_id {
+            return Ok(true);
+        }
+
+        // Check based on owner type
+        match project.owner_type {
+            OwnerType::User => {
+                // If owner is a user, check if it's the same user
+                Ok(project.owner_id == user_id)
+            }
+            OwnerType::Team => {
+                // If owner is a team, check if user is a team member
+                match self.team_repo.find_by_id(project.owner_id).await {
+                    Ok(Some(team)) => Ok(team.member_ids.contains(&user_id)),
+                    Ok(None) => Err(ProjectServiceError::OwnerNotFound(OwnerType::Team)),
+                    Err(e) => Err(ProjectServiceError::Database(e)),
+                }
+            }
         }
     }
 }
@@ -284,5 +321,171 @@ mod tests {
             res,
             Err(ProjectServiceError::OwnerNotFound(OwnerType::Team))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_check_access_creator() {
+        let creator_id = ObjectId::new();
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id,
+            owner_type: OwnerType::User,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
+        };
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let has_access = service.accessible(project_id, creator_id).await.unwrap();
+        assert!(has_access);
+    }
+
+    #[tokio::test]
+    async fn test_check_access_user_owner() {
+        let creator_id = ObjectId::new();
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id,
+            owner_type: OwnerType::User,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
+        };
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let has_access = service.accessible(project_id, owner_id).await.unwrap();
+        assert!(has_access);
+    }
+
+    #[tokio::test]
+    async fn test_check_access_team_member() {
+        let creator_id = ObjectId::new();
+        let team_id = ObjectId::new();
+        let member_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id: team_id,
+            owner_type: OwnerType::Team,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
+        };
+
+        let team = dummy_team(team_id, vec![creator_id, member_id]);
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team]),
+            },
+        };
+
+        let has_access = service.accessible(project_id, member_id).await.unwrap();
+        assert!(has_access);
+    }
+
+    #[tokio::test]
+    async fn test_check_access_denied_not_member() {
+        let creator_id = ObjectId::new();
+        let team_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id: team_id,
+            owner_type: OwnerType::Team,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
+        };
+
+        let team = dummy_team(team_id, vec![creator_id]);
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team]),
+            },
+        };
+
+        let has_access = service.accessible(project_id, other_user_id).await.unwrap();
+        assert!(!has_access);
+    }
+
+    #[tokio::test]
+    async fn test_check_access_denied_different_user() {
+        let creator_id = ObjectId::new();
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id,
+            owner_type: OwnerType::User,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            preview: None,
+            pinned_version: None,
+        };
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let has_access = service.accessible(project_id, other_user_id).await.unwrap();
+        assert!(!has_access);
     }
 }

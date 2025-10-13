@@ -19,8 +19,9 @@ impl ResponseError for ProjectServiceError {
             ProjectServiceError::UserNotFound
             | ProjectServiceError::OwnerNotFound(_)
             | ProjectServiceError::ProjectNotFound => StatusCode::NOT_FOUND,
-            ProjectServiceError::CreatorNotMatchOwner => StatusCode::FORBIDDEN,
-            ProjectServiceError::CreatorNotMemberOfTeam => StatusCode::FORBIDDEN,
+            ProjectServiceError::AccessDenied
+            | ProjectServiceError::CreatorNotMatchOwner
+            | ProjectServiceError::CreatorNotMemberOfTeam => StatusCode::FORBIDDEN,
             ProjectServiceError::InvalidOwnerType => StatusCode::BAD_REQUEST,
             ProjectServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -61,9 +62,18 @@ pub async fn create(
 pub async fn find_by_id(
     id: actix_web::web::Path<String>,
     data: actix_web::web::Data<crate::AppState>,
+    user: UserClaims,
 ) -> Result<HttpResponse, ProjectServiceError> {
     let project_id =
         ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    // Check if user has access to this project
+    match data.project_service.accessible(project_id, user.sub).await {
+        Ok(true) => {}
+        Ok(false) => return Err(ProjectServiceError::AccessDenied),
+        Err(e) => return Err(e),
+    };
+
     match data.project_service.find_by_id(project_id).await {
         Ok(project) => {
             let response = ApiResponse::success("Project fetched successfully", project);
