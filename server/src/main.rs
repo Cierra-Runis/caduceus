@@ -1,6 +1,5 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-use actix::prelude::*;
 use actix_web::{web, App, HttpServer};
 use server::{
     config::Config,
@@ -56,9 +55,8 @@ async fn main() -> io::Result<()> {
         },
     });
 
-    // start ProjectServer actor and obtain its Addr to be stored in app data
-    let project_server_addr = ProjectServer::new().start();
-    let server_tx = handler::ws::ProjectServerHandle::new(project_server_addr.clone());
+    // Create ProjectServer instance (actor-less implementation)
+    let project_server = ProjectServer::default();
 
     let jwt_secret = config.jwt_secret.clone();
     let address = config.address.clone();
@@ -69,7 +67,7 @@ async fn main() -> io::Result<()> {
         App::new()
             .wrap(cors)
             .app_data(data.clone())
-            .app_data(web::Data::new(server_tx.clone()))
+            .app_data(web::Data::new(project_server.clone()))
             .route("/api/health", web::get().to(handler::health::health))
             .route("/api/register", web::post().to(handler::user::register))
             .route("/api/login", web::post().to(handler::user::login))

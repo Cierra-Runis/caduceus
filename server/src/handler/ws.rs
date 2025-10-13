@@ -1,6 +1,5 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use actix::{prelude::*, Addr};
 use actix_web::rt;
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_ws::AggregatedMessage;
@@ -8,12 +7,19 @@ use bson::oid::ObjectId;
 
 // Type alias for project id to allow easy switching later
 pub type ProjectId = String;
+
+// Type alias for connection sender to reduce type complexity
+type ConnectionSender = mpsc::UnboundedSender<String>;
+
+// Type alias for project sessions map
+type ProjectSessions = HashMap<String, ConnectionSender>;
+
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
 use derive_more::Display;
 use futures_util::StreamExt as _;
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, RwLock},
     time::{interval, Instant},
 };
 use tracing::{debug, info};
@@ -56,7 +62,7 @@ pub async fn ws(
     req: HttpRequest,
     stream: web::Payload,
     data: actix_web::web::Data<crate::AppState>,
-    project_server: web::Data<ProjectServerHandle>,
+    project_server: web::Data<ProjectServer>,
 ) -> Result<HttpResponse, WebSocketError> {
     let id = ObjectId::parse_str(id.into_inner()).map_err(|_| WebSocketError::ProjectNotFound)?;
 
@@ -71,10 +77,10 @@ pub async fn ws(
     };
 
     // spawn websocket handler (and don't await it) so that the response is returned immediately
-    // the handler will register with the ProjectServer actor and forward messages
+    // the handler will register with the ProjectServer and forward messages
     // spawn the websocket handler on the actix runtime
     rt::spawn(handle_ws(
-        (**project_server).clone(),
+        project_server.as_ref().clone(),
         project_id,
         session,
         stream,
@@ -86,7 +92,7 @@ pub async fn ws(
 /// Echo text & binary messages received from the client, respond to ping messages, and monitor
 /// connection health to detect network issues and free up resources.
 async fn handle_ws(
-    chat_server: ProjectServerHandle,
+    chat_server: ProjectServer,
     project_id: ProjectId,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
@@ -96,7 +102,7 @@ async fn handle_ws(
 
     let (conn_tx, mut conn_rx) = mpsc::unbounded_channel();
 
-    // Register this connection with the ProjectServer actor. The actor will
+    // Register this connection with the ProjectServer. The ProjectServer will
     // keep the mpsc sender and can use it to push messages to this WebSocket.
     // We store the returned string id to allow later disconnect.
     let conn_id = chat_server.connect(project_id.clone(), conn_tx).await;
@@ -110,7 +116,7 @@ async fn handle_ws(
     // The main loop for this WebSocket session.
     // We listen to two independent message sources in parallel using `tokio::select!`:
     // 1) `msg_stream.next()` - messages coming from the WebSocket client (incoming frames)
-    // 2) `conn_rx.recv()`   - messages pushed from the `ProjectServer` actor (server -> this client)
+    // 2) `conn_rx.recv()`   - messages pushed from the ProjectServer (server -> this client)
     // The loop exits when a Close frame is received, when heartbeats time out, or when both
     // streams are closed.
     let close_reason = loop {
@@ -136,10 +142,7 @@ async fn handle_ws(
                             Ok(message) => {
                                 debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id, message);
                                 // Broadcast the message to all sessions in the same project
-                                chat_server.addr.do_send(BroadcastText {
-                                    project_id: project_id.clone(),
-                                    text: message,
-                                });
+                                chat_server.broadcast(&project_id, &message).await;
                             }
                             Err(e) => {
                                 debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id, e);
@@ -201,147 +204,69 @@ async fn handle_ws(
         }
     };
 
-    // Unregister from ProjectServer actor
-    chat_server.disconnect(project_id.clone(), conn_id.clone());
+    // Unregister from ProjectServer
+    chat_server
+        .disconnect(project_id.clone(), conn_id.clone())
+        .await;
     info!("WS handler: disconnected {}", conn_id);
 
     // attempt to close connection gracefully
     let _ = session.close(close_reason).await;
 }
 
-/// ProjectServer is implemented as an Actix actor.
+/// ProjectServer manages WebSocket connections without using Actix actors.
 ///
 /// Responsibilities:
-/// - Maintain mapping of connection id -> session recipient
-/// - Handle Connect / Disconnect messages from WebSocket session actors
-/// - Broadcast messages between sessions if needed (extension point)
-#[derive(Debug)]
+/// - Maintain mapping of connection id -> session sender
+/// - Handle connection/disconnection registration
+/// - Broadcast messages between sessions in the same project
+#[derive(Debug, Clone, Default)]
 pub struct ProjectServer {
     // map project_id -> (map conn_id -> sender)
-    sessions: HashMap<ProjectId, HashMap<String, mpsc::UnboundedSender<String>>>,
+    sessions: Arc<RwLock<HashMap<ProjectId, ProjectSessions>>>,
 }
 
 impl ProjectServer {
-    pub fn new() -> Self {
-        ProjectServer {
-            sessions: HashMap::new(),
-        }
-    }
-}
-
-impl Default for ProjectServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Message sent from session actor to ProjectServer to register itself.
-#[derive(Message)]
-#[rtype(result = "String")]
-pub struct Connect {
-    pub project_id: ProjectId,
-    pub conn_tx: mpsc::UnboundedSender<String>,
-}
-
-/// Message sent to unregister a session.
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct Disconnect {
-    pub project_id: ProjectId,
-    pub id: String,
-}
-
-impl Actor for ProjectServer {
-    type Context = Context<Self>;
-}
-
-impl Handler<Connect> for ProjectServer {
-    type Result = String;
-
-    fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
+    /// Register a new connection and return its unique ID
+    pub async fn connect(&self, project_id: ProjectId, conn_tx: ConnectionSender) -> String {
         let id = ObjectId::new().to_string();
         info!("ProjectServer: registering session {}", id);
-        let project_sessions = self.sessions.entry(msg.project_id.clone()).or_default();
-        project_sessions.insert(id.clone(), msg.conn_tx);
+
+        let mut sessions = self.sessions.write().await;
+        let project_sessions = sessions.entry(project_id.clone()).or_default();
+        project_sessions.insert(id.clone(), conn_tx);
+
         id
     }
-}
 
-impl Handler<Disconnect> for ProjectServer {
-    type Result = ();
-
-    fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
+    /// Unregister a connection
+    pub async fn disconnect(&self, project_id: ProjectId, id: String) {
         info!(
             "ProjectServer: disconnecting session {} from project {}",
-            msg.id, msg.project_id
+            id, project_id
         );
-        if let Some(sessions) = self.sessions.get_mut(&msg.project_id) {
-            sessions.remove(&msg.id);
-            if sessions.is_empty() {
-                self.sessions.remove(&msg.project_id);
+
+        let mut sessions = self.sessions.write().await;
+        if let Some(project_sessions) = sessions.get_mut(&project_id) {
+            project_sessions.remove(&id);
+            if project_sessions.is_empty() {
+                sessions.remove(&project_id);
             }
         }
     }
-}
 
-impl ProjectServer {
-    /// Broadcast a textual message to all connected sessions (simple implementation)
-    pub fn broadcast(&self, project_id: &ProjectId, text: &Message) {
-        if let Some(sessions) = self.sessions.get(project_id) {
-            for (id, tx) in sessions {
-                let _ = tx.send(serde_json::to_string(text).unwrap());
+    /// Broadcast a textual message to all connected sessions in a project
+    pub async fn broadcast(&self, project_id: &ProjectId, text: &Message) {
+        let sessions = self.sessions.read().await;
+
+        if let Some(project_sessions) = sessions.get(project_id) {
+            let message_str = serde_json::to_string(text).unwrap();
+            for (id, tx) in project_sessions {
+                let _ = tx.send(message_str.clone());
                 debug!("Broadcast to project {}: queued to {}", project_id, id);
             }
         } else {
             debug!("Broadcast: no sessions for project {}", project_id);
         }
-    }
-}
-
-/// Message to ask ProjectServer to broadcast a text message to all sessions.
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct BroadcastText {
-    pub project_id: ProjectId,
-    pub text: Message,
-}
-
-impl Handler<BroadcastText> for ProjectServer {
-    type Result = ();
-
-    fn handle(&mut self, msg: BroadcastText, _ctx: &mut Self::Context) -> Self::Result {
-        self.broadcast(&msg.project_id, &msg.text);
-    }
-}
-
-/// Handle wrapper exposed to actix-web for storing Addr<ProjectServer> in app data.
-#[derive(Clone)]
-pub struct ProjectServerHandle {
-    pub addr: Addr<ProjectServer>,
-}
-
-impl ProjectServerHandle {
-    pub fn new(addr: Addr<ProjectServer>) -> Self {
-        Self { addr }
-    }
-
-    /// Connect helper that asks the actor to register with specific project_id and returns the assigned string id.
-    pub async fn connect(
-        &self,
-        project_id: ProjectId,
-        conn_tx: mpsc::UnboundedSender<String>,
-    ) -> String {
-        self.addr
-            .send(Connect {
-                project_id,
-                conn_tx,
-            })
-            .await
-            .unwrap()
-    }
-
-    /// Disconnect helper that includes project id
-    pub fn disconnect(&self, project_id: ProjectId, id: String) {
-        self.addr.do_send(Disconnect { project_id, id });
     }
 }
