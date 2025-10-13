@@ -1,6 +1,7 @@
 import { HTTPError, Options } from 'ky';
 import { cookies } from 'next/headers';
-import { notFound, redirect } from 'next/navigation';
+import { forbidden, notFound, redirect, unauthorized } from 'next/navigation';
+import { match } from 'ts-pattern';
 
 import { CreateProjectResponseSchema } from '@/lib/api/project';
 import { api } from '@/lib/request';
@@ -22,9 +23,10 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
     return <ClientPage project={parsed.payload} />;
   } catch (error) {
     if (error instanceof HTTPError) {
-      if (error.response.status === 404) {
-        notFound();
-      }
+      return match(error.response.status)
+        .with(401, () => unauthorized())
+        .with(403, () => forbidden())
+        .with(404, () => notFound());
     }
     console.error(error);
     return redirect('/');

@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     removeConsole:
       env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
   },
+  experimental: {
+    authInterrupts: true,
+  },
   reactStrictMode: true,
   typedRoutes: true,
 };
