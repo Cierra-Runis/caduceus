@@ -5,14 +5,18 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use actix_ws::AggregatedMessage;
 use bson::oid::ObjectId;
 
-// Type alias for project id to allow easy switching later
-pub type ProjectId = String;
-
 // Type alias for connection sender to reduce type complexity
 type ConnectionSender = mpsc::UnboundedSender<String>;
 
-// Type alias for project sessions map
-type ProjectSessions = HashMap<String, ConnectionSender>;
+// Session info containing user id and connection sender
+#[derive(Debug, Clone)]
+struct SessionInfo {
+    user_id: ObjectId,
+    sender: ConnectionSender,
+}
+
+// Type alias for project sessions map: conn_id -> SessionInfo
+type ProjectSessions = HashMap<ObjectId, SessionInfo>;
 
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
@@ -25,6 +29,7 @@ use tokio::{
 use tracing::{debug, info};
 
 use crate::models::response::ApiResponse;
+use crate::models::user::UserClaims;
 use crate::models::ws::Message;
 
 #[derive(Debug, Display)]
@@ -35,6 +40,10 @@ pub enum WebSocketError {
     ProjectNotFound,
     #[display("Handshake Failed: {_0}")]
     HandshakeFailed(actix_web::Error),
+    #[display("Unauthorized: {_0}")]
+    Unauthorized(String),
+    #[display("Forbidden: You don't have access to this project")]
+    Forbidden,
 }
 
 impl ResponseError for WebSocketError {
@@ -46,6 +55,8 @@ impl ResponseError for WebSocketError {
         match *self {
             WebSocketError::UserNotFound | WebSocketError::ProjectNotFound => StatusCode::NOT_FOUND,
             WebSocketError::HandshakeFailed(_) => StatusCode::BAD_REQUEST,
+            WebSocketError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            WebSocketError::Forbidden => StatusCode::FORBIDDEN,
         }
     }
 }
@@ -63,11 +74,15 @@ pub async fn ws(
     stream: web::Payload,
     data: actix_web::web::Data<crate::AppState>,
     project_server: web::Data<ProjectServer>,
+    user: UserClaims,
 ) -> Result<HttpResponse, WebSocketError> {
-    let id = ObjectId::parse_str(id.into_inner()).map_err(|_| WebSocketError::ProjectNotFound)?;
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| WebSocketError::ProjectNotFound)?;
 
-    let project_id = match data.project_service.find_by_id(id).await {
-        Ok(project) => project.id,
+    // Check if user has access to this project
+    match data.project_service.accessible(project_id, user.sub).await {
+        Ok(true) => {}
+        Ok(false) => return Err(WebSocketError::Forbidden),
         Err(_) => return Err(WebSocketError::ProjectNotFound),
     };
 
@@ -82,6 +97,7 @@ pub async fn ws(
     rt::spawn(handle_ws(
         project_server.as_ref().clone(),
         project_id,
+        user.sub,
         session,
         stream,
     ));
@@ -93,7 +109,8 @@ pub async fn ws(
 /// connection health to detect network issues and free up resources.
 async fn handle_ws(
     project_server: ProjectServer,
-    project_id: ProjectId,
+    project_id: ObjectId,
+    user_id: ObjectId,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
 ) {
@@ -104,9 +121,13 @@ async fn handle_ws(
 
     // Register this connection with the ProjectServer. The ProjectServer will
     // keep the mpsc sender and can use it to push messages to this WebSocket.
-    // We store the returned string id to allow later disconnect.
-    let conn_id = project_server.connect(project_id.clone(), conn_tx).await;
-    info!("WS handler: registered connection {}", conn_id);
+    // We store the returned ObjectId to allow later disconnect.
+    let conn_id = project_server.connect(project_id, user_id, conn_tx).await;
+    info!(
+        "WS handler: registered connection {} for user {}",
+        conn_id.to_hex(),
+        user_id.to_hex()
+    );
 
     let mut msg_stream = msg_stream
         .max_frame_size(128 * 1024)
@@ -126,26 +147,26 @@ async fn handle_ws(
                     AggregatedMessage::Ping(bytes) => {
                         last_heartbeat = Instant::now();
                         if let Err(e) = session.pong(&bytes).await {
-                            debug!("AggregatedMessage::Ping {}: failed to send Pong: {:#?}", conn_id, e);
+                            debug!("AggregatedMessage::Ping {}: failed to send Pong: {:#?}", conn_id.to_hex(), e);
                             break None;
                         }
-                        debug!("AggregatedMessage::Ping {}: received Ping, sent Pong", conn_id);
+                        debug!("AggregatedMessage::Ping {}: received Ping, sent Pong", conn_id.to_hex());
                     }
                     AggregatedMessage::Pong(_) => {
                         last_heartbeat = Instant::now();
-                        debug!("AggregatedMessage::Pong {}: received Pong", conn_id);
+                        debug!("AggregatedMessage::Pong {}: received Pong", conn_id.to_hex());
                     }
                     AggregatedMessage::Text(text) => {
                         let message: Result<Message, serde_json::Error> = serde_json::from_str(text.to_string().as_str());
 
                         match message {
                             Ok(message) => {
-                                debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id, message);
+                                debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id.to_hex(), message);
                                 // Broadcast the message to all sessions in the same project
-                                project_server.broadcast(&project_id, &message).await;
+                                project_server.broadcast(project_id, &message).await;
                             }
                             Err(e) => {
-                                debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id, e);
+                                debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id.to_hex(), e);
                                 // Optionally, you could choose to close the connection here
                                 // break Some(actix_ws::CloseReason {
                                 //     code: actix_ws::CloseCode::Invalid,
@@ -156,14 +177,14 @@ async fn handle_ws(
                       }
                     }
                     AggregatedMessage::Binary(bin) => {
-                        debug!("AggregatedMessage::Binary {}: received Binary message ({} bytes)", conn_id, bin.len());
+                        debug!("AggregatedMessage::Binary {}: received Binary message ({} bytes)", conn_id.to_hex(), bin.len());
                         if let Err(e) = session.binary(bin).await {
-                            debug!("AggregatedMessage::Binary {}: failed to send Binary echo: {:#?}", conn_id, e);
+                            debug!("AggregatedMessage::Binary {}: failed to send Binary echo: {:#?}", conn_id.to_hex(), e);
                             break None;
                         }
                     }
                     AggregatedMessage::Close(reason) => {
-                        debug!("AggregatedMessage::Close {}: received Close message: {:?}", conn_id, reason);
+                        debug!("AggregatedMessage::Close {}: received Close message: {:?}", conn_id.to_hex(), reason);
                         break reason;
                     },
                 }
@@ -175,15 +196,15 @@ async fn handle_ws(
             msg = conn_rx.recv() => {
                 match msg {
                     Some(msg) => {
-                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id, msg);
+                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id.to_hex(), msg);
                         if let Err(e) = session.text(msg).await {
-                            debug!("WS conn_rx.recv {}: failed to send server-pushed text: {:#?}", conn_id, e);
+                            debug!("WS conn_rx.recv {}: failed to send server-pushed text: {:#?}", conn_id.to_hex(), e);
                             break None;
                         }
                     }
                     None => {
                         // The sender side (`conn_tx`) was dropped; no more server messages.
-                        debug!("WS conn_rx.recv {}: conn_rx closed (conn_tx dropped).", conn_id);
+                        debug!("WS conn_rx.recv {}: conn_rx closed (conn_tx dropped).", conn_id.to_hex());
                         break None;
                     }
                 }
@@ -198,17 +219,15 @@ async fn handle_ws(
 
             else => {
                 // This branch triggers when all selected futures are completed / cancelled.
-                debug!("WS {}: select! else branch triggered (stream ended).", conn_id);
+                debug!("WS {}: select! else branch triggered (stream ended).", conn_id.to_hex());
                 break None;
             }
         }
     };
 
     // Unregister from ProjectServer
-    project_server
-        .disconnect(project_id.clone(), conn_id.clone())
-        .await;
-    info!("WS handler: disconnected {}", conn_id);
+    project_server.disconnect(project_id, conn_id).await;
+    info!("WS handler: disconnected {}", conn_id.to_hex());
 
     // attempt to close connection gracefully
     let _ = session.close(close_reason).await;
@@ -223,27 +242,43 @@ async fn handle_ws(
 #[derive(Debug, Clone, Default)]
 pub struct ProjectServer {
     // map project_id -> (map conn_id -> sender)
-    sessions: Arc<RwLock<HashMap<ProjectId, ProjectSessions>>>,
+    sessions: Arc<RwLock<HashMap<ObjectId, ProjectSessions>>>,
 }
 
 impl ProjectServer {
     /// Register a new connection and return its unique ID
-    pub async fn connect(&self, project_id: ProjectId, conn_tx: ConnectionSender) -> String {
-        let id = ObjectId::new().to_string();
-        info!("ProjectServer: registering session {}", id);
+    pub async fn connect(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        conn_tx: ConnectionSender,
+    ) -> ObjectId {
+        let id = ObjectId::new();
+        info!(
+            "ProjectServer: registering session {} for user {}",
+            id.to_hex(),
+            user_id.to_hex()
+        );
 
         let mut sessions = self.sessions.write().await;
-        let project_sessions = sessions.entry(project_id.clone()).or_default();
-        project_sessions.insert(id.clone(), conn_tx);
+        let project_sessions = sessions.entry(project_id).or_default();
+        project_sessions.insert(
+            id,
+            SessionInfo {
+                user_id,
+                sender: conn_tx,
+            },
+        );
 
         id
     }
 
     /// Unregister a connection
-    pub async fn disconnect(&self, project_id: ProjectId, id: String) {
+    pub async fn disconnect(&self, project_id: ObjectId, id: ObjectId) {
         info!(
             "ProjectServer: disconnecting session {} from project {}",
-            id, project_id
+            id.to_hex(),
+            project_id.to_hex()
         );
 
         let mut sessions = self.sessions.write().await;
@@ -256,17 +291,22 @@ impl ProjectServer {
     }
 
     /// Broadcast a textual message to all connected sessions in a project
-    pub async fn broadcast(&self, project_id: &ProjectId, text: &Message) {
+    pub async fn broadcast(&self, project_id: ObjectId, text: &Message) {
         let sessions = self.sessions.read().await;
 
-        if let Some(project_sessions) = sessions.get(project_id) {
+        if let Some(project_sessions) = sessions.get(&project_id) {
             let message_str = serde_json::to_string(text).unwrap();
-            for (id, tx) in project_sessions {
-                let _ = tx.send(message_str.clone());
-                debug!("Broadcast to project {}: queued to {}", project_id, id);
+            for (id, session_info) in project_sessions {
+                let _ = session_info.sender.send(message_str.clone());
+                debug!(
+                    "Broadcast to project {}: queued to session {} (user: {})",
+                    project_id.to_hex(),
+                    id.to_hex(),
+                    session_info.user_id.to_hex()
+                );
             }
         } else {
-            debug!("Broadcast: no sessions for project {}", project_id);
+            debug!("Broadcast: no sessions for project {}", project_id.to_hex());
         }
     }
 }
