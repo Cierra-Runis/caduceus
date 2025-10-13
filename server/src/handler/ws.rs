@@ -92,7 +92,7 @@ pub async fn ws(
 /// Echo text & binary messages received from the client, respond to ping messages, and monitor
 /// connection health to detect network issues and free up resources.
 async fn handle_ws(
-    chat_server: ProjectServer,
+    project_server: ProjectServer,
     project_id: ProjectId,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
@@ -105,7 +105,7 @@ async fn handle_ws(
     // Register this connection with the ProjectServer. The ProjectServer will
     // keep the mpsc sender and can use it to push messages to this WebSocket.
     // We store the returned string id to allow later disconnect.
-    let conn_id = chat_server.connect(project_id.clone(), conn_tx).await;
+    let conn_id = project_server.connect(project_id.clone(), conn_tx).await;
     info!("WS handler: registered connection {}", conn_id);
 
     let mut msg_stream = msg_stream
@@ -142,7 +142,7 @@ async fn handle_ws(
                             Ok(message) => {
                                 debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id, message);
                                 // Broadcast the message to all sessions in the same project
-                                chat_server.broadcast(&project_id, &message).await;
+                                project_server.broadcast(&project_id, &message).await;
                             }
                             Err(e) => {
                                 debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id, e);
@@ -172,11 +172,11 @@ async fn handle_ws(
             // Message pushed from ProjectServer (server -> this connection)
             // We only call `conn_rx.recv()` once here and handle both Some/None inside to
             // avoid multiple mutable borrows of `conn_rx` in the same `select!`.
-            chat_msg = conn_rx.recv() => {
-                match chat_msg {
-                    Some(chat_msg) => {
-                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id, chat_msg);
-                        if let Err(e) = session.text(chat_msg).await {
+            msg = conn_rx.recv() => {
+                match msg {
+                    Some(msg) => {
+                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id, msg);
+                        if let Err(e) = session.text(msg).await {
                             debug!("WS conn_rx.recv {}: failed to send server-pushed text: {:#?}", conn_id, e);
                             break None;
                         }
@@ -205,7 +205,7 @@ async fn handle_ws(
     };
 
     // Unregister from ProjectServer
-    chat_server
+    project_server
         .disconnect(project_id.clone(), conn_id.clone())
         .await;
     info!("WS handler: disconnected {}", conn_id);
