@@ -12,7 +12,8 @@ export const api = ky.extend({
           const res = await response.json<{
             message: string;
           }>();
-          return { ...error, message: res.message };
+          error.message = res.message;
+          return error;
         } catch {
           return error;
         }
