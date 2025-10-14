@@ -1,4 +1,6 @@
 name: Rust Coverage
+permissions:
+  contents: read
 
 on:
   push:
