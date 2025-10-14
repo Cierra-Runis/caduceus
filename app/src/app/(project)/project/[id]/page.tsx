@@ -26,7 +26,8 @@ export default async function Page(props: PageProps<'/project/[id]'>) {
       return match(error.response.status)
         .with(401, () => unauthorized())
         .with(403, () => forbidden())
-        .with(404, () => notFound());
+        .with(404, () => notFound())
+        .otherwise(() => redirect('/'));
     }
     console.error(error);
     return redirect('/');
