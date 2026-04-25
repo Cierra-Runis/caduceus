@@ -44,14 +44,12 @@
   "Layout": {
     "about": "About Caduceus",
     "accountSettings": "Account Settings",
-    "backendStatus": "Backend Status",
     "caduceus": "Caduceus",
     "contact": "Contact",
     "feedback": "Feedback",
     "goToLanding": "Go to landing page",
     "help": "Help",
     "incomingInvites": "Incoming Invites",
-    "licenseText": "MIT Licensed | © 2025 Cierra Runis",
     "logout": "Logout",
     "manageTeams": "Manage Teams",
     "newProject": "New Project",
@@ -63,8 +61,7 @@
     "wiki": "WIKI"
   },
   "Login": {
-    "backToHome": "Back to HomePage",
-    "forgetPassword": "Forget Password?",
+    "forgetPassword": "Forgot Password?",
     "labels": {
       "password": "Password",
       "username": "Username"
@@ -76,9 +73,13 @@
       "password": "Password",
       "username": "Username"
     },
-    "redirectingHome": "Redirecting to HomePage..",
+    "redirectingHome": "Redirecting to HomePage…",
     "title": "Login",
-    "welcome": "Welcome, {username}"
+    "validation": {
+      "password": "Password is required",
+      "username": "Username is required"
+    },
+    "welcome": "Welcome, {username}!"
   },
   "Project": {
     "title": "Project: {name}",
@@ -99,9 +100,7 @@
     "updatedAt": "Updated At"
   },
   "Register": {
-    "agree": "By signing up, you confirm that you have read and accepted our <privacy>Privacy Policy</privacy>",
     "alreadyHave": "Already have an account?",
-    "backToHome": "Back to HomePage",
     "creationFailed": "Register Failed",
     "descriptions": {
       "nickname": "Nickname can contain any characters you want and it will not used for identification",
@@ -120,10 +119,21 @@
       "password": "Password",
       "username": "Username"
     },
-    "redirectingLogin": "Redirecting to login page...",
+    "redirectingLogin": "Redirecting to login page…",
     "register": "Register",
     "title": "Register",
+    "validation": {
+      "confirmPassword": "Confirm Password must match Password",
+      "password": "Password should be at least 15 characters OR at least 8 characters including a number and a lowercase letter",
+      "username": "Username may only contain alphanumeric characters or single hyphens, and cannot begin or end with a hyphen"
+    },
     "welcome": "Welcome, {username}"
+  },
+  "ServiceStatus": {
+    "allServicesAvailable": "All services are available",
+    "loadingStatus": "Loading status…",
+    "noServiceAvailable": "No status available",
+    "someServicesUnavailable": "Some services are unavailable"
   },
   "Sidebar": {
     "home": "Home",
@@ -142,6 +152,7 @@
     "settings": "Settings"
   },
   "UpdateProject": {
+    "delete": "Delete",
     "labels": {
       "location": "Location",
       "name": "Name"
@@ -151,7 +162,6 @@
       "name": "Enter your project name"
     },
     "save": "Save",
-    "delete": "Delete",
     "title": "Update Project"
   }
 }

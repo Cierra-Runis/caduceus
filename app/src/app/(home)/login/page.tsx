@@ -1,105 +1,113 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
-import { addToast } from '@heroui/toast';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Field, FieldGroup } from '@/components/ui/field';
+import { Spinner } from '@/components/ui/spinner';
 import { useLogin } from '@/hooks/api/login';
-import { LoginSchema } from '@/lib/api/login';
+import { useLoginRequestSchema } from '@/lib/api/login';
 
 export default function LoginPage() {
   const router = useRouter();
   const { isMutating, trigger } = useLogin();
   const t = useTranslations('Login');
+  const LoginSchema = useLoginRequestSchema();
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
-      <Card className='w-full max-w-3xl p-4'>
-        <ZodForm
-          onValid={(data) =>
-            trigger(data, {
-              onError: (error) => {
-                addToast({
-                  color: 'danger',
-                  description: error.message,
-                  title: t('loginFailed'),
-                });
-              },
-              onSuccess: ({
-                payload: {
-                  user: { username },
+      <Card className='w-full max-w-sm'>
+        <CardHeader>
+          <CardTitle>{t('title')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ZodForm
+            defaultValues={{
+              password: '',
+              username: '',
+            }}
+            id='login-form'
+            onValid={(data) =>
+              trigger(data, {
+                onError: (error) => {
+                  toast.error(t('loginFailed'), {
+                    description: error.message,
+                  });
                 },
-              }) => {
-                addToast({
-                  color: 'success',
-                  description: t('redirectingHome'),
-                  onClose: () => router.push('/'),
-                  shouldShowTimeoutProgress: true,
-                  timeout: 3000,
-                  title: t('welcome', { username }),
-                });
-              },
-            })
-          }
-          schema={LoginSchema}
-        >
-          {(control) => (
-            <>
-              <CardHeader className='flex items-center justify-between'>
-                <h1 className='text-2xl font-bold'>{t('title')}</h1>
-                <Button as={NextLink} href='/' size='sm' variant='light'>
-                  {t('backToHome')}
-                </Button>
-              </CardHeader>
-              <CardBody>
-                <div className='flex flex-col gap-4'>
-                  <Input
-                    control={control}
-                    isRequired
-                    label={t('labels.username')}
-                    labelPlacement='outside'
-                    name='username'
-                    placeholder={t('placeholders.username')}
-                    variant='bordered'
-                  />
-                  <Input
-                    control={control}
-                    description={
-                      <NextLink className='text-primary' href='/'>
-                        {t('forgetPassword')}
-                      </NextLink>
-                    }
-                    isRequired
-                    label={t('labels.password')}
-                    labelPlacement='outside'
-                    name='password'
-                    placeholder={t('placeholders.password')}
-                    type='password'
-                    variant='bordered'
-                  />
-                </div>
-              </CardBody>
-              <CardFooter className='flex justify-end gap-4'>
-                <Button as={NextLink} href='/register' variant='light'>
-                  {t('newTo')}
-                </Button>
-                <Button
-                  color='primary'
-                  isDisabled={isMutating}
-                  isLoading={isMutating}
-                  type='submit'
-                >
-                  {t('login')}
-                </Button>
-              </CardFooter>
-            </>
-          )}
-        </ZodForm>
+                onSuccess: ({
+                  payload: {
+                    user: { username },
+                  },
+                }) => {
+                  toast.success(t('welcome', { username }), {
+                    description: t('redirectingHome'),
+                    dismissible: false,
+                    onAutoClose: () => router.push('/'),
+                  });
+                },
+              })
+            }
+            schema={LoginSchema}
+          >
+            {(control) => (
+              <FieldGroup>
+                <Input
+                  control={control}
+                  inputProps={{
+                    placeholder: t('validation.username'),
+                    required: true,
+                  }}
+                  label={t('labels.username')}
+                  name='username'
+                />
+                <Input
+                  control={control}
+                  helper={
+                    <NextLink
+                      className={`
+                        ml-auto
+                        hover:underline
+                      `}
+                      href='/'
+                    >
+                      {t('forgetPassword')}
+                    </NextLink>
+                  }
+                  inputProps={{
+                    placeholder: t('placeholders.password'),
+                    required: true,
+                    type: 'password',
+                  }}
+                  label={t('labels.password')}
+                  name='password'
+                />
+              </FieldGroup>
+            )}
+          </ZodForm>
+        </CardContent>
+        <CardFooter>
+          <Field className='justify-end' orientation='horizontal'>
+            <Button asChild variant='link'>
+              <NextLink href='/register'>{t('newTo')}</NextLink>
+            </Button>
+            <Button disabled={isMutating} form='login-form' type='submit'>
+              {isMutating && <Spinner data-icon='inline-start' />}
+              {t('login')}
+            </Button>
+          </Field>
+        </CardFooter>
       </Card>
     </main>
   );

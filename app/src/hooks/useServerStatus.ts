@@ -1,17 +1,23 @@
-import { BadgeProps } from '@heroui/badge';
 import { useMemo } from 'react';
 
 import { useRouteHealth } from './api/health';
 
+export enum ServerStatus {
+  Healthy = 'healthy',
+  Loading = 'loading',
+  Unavailable = 'unavailable',
+  Unhealthy = 'unhealthy',
+}
+
 export function useServerStatus() {
   const { data, error, isLoading } = useRouteHealth();
 
-  const color = useMemo<BadgeProps['color']>(() => {
-    if (isLoading) return 'default';
-    if (error) return 'danger';
-    if (data?.payload?.status === 'healthy') return 'success';
-    return 'warning';
+  const status = useMemo(() => {
+    if (isLoading) return ServerStatus.Loading;
+    if (error) return ServerStatus.Unavailable;
+    if (data?.payload.status === 'healthy') return ServerStatus.Healthy;
+    return ServerStatus.Unhealthy;
   }, [error, data, isLoading]);
 
-  return { color };
+  return { status };
 }

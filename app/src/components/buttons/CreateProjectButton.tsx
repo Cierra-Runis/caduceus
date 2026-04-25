@@ -1,40 +1,27 @@
 'use client';
 
-import { Button, ButtonProps } from '@heroui/button';
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  useDisclosure,
-} from '@heroui/modal';
-import { addToast } from '@heroui/toast';
-import { useTranslations } from 'next-intl';
-import { mutate } from 'swr';
+// import { Button, ButtonProps } from '@heroui/button';
+// import {
+//   Modal,
+//   ModalBody,
+//   ModalContent,
+//   ModalFooter,
+//   ModalHeader,
+//   useDisclosure,
+// } from '@heroui/modal';
+// import { addToast } from '@heroui/toast';
 
-import { Input } from '@/components/forms/Input';
-import { ZodForm } from '@/components/forms/ZodForm';
-import { useCreateProject } from '@/hooks/api/project';
-import { CreateProjectRequestSchema } from '@/lib/api/project';
+import { Button } from '@/components/ui/button';
 
-export function CreateProjectButton({
-  ownerId,
-  ownerType,
-  ...props
-}: {
-  ownerId: string;
-  ownerType: 'team' | 'user';
-} & ButtonProps) {
-  const t = useTranslations('CreateProject');
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
-
-  const { isMutating, trigger } = useCreateProject();
+export function CreateProjectButton() {
+  // const t = useTranslations('CreateProject');
+  // const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  // const { isMutating, trigger } = useCreateProject();
 
   return (
     <>
-      <Button {...props} onPress={onOpen} />
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Button />
+      {/* <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <ModalContent>
           {(onClose) => (
             <>
@@ -100,7 +87,7 @@ export function CreateProjectButton({
             </>
           )}
         </ModalContent>
-      </Modal>
+      </Modal> */}
     </>
   );
 }

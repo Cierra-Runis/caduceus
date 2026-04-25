@@ -1,12 +1,12 @@
 'use client';
 
-import { Spinner } from '@heroui/spinner';
 import MonacoEditor from '@monaco-editor/react';
 import { editor, IDisposable } from 'monaco-editor/esm/vs/editor/editor.api';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
 import { SendJsonMessage } from 'react-use-websocket/dist/lib/types';
 
+import { Spinner } from '@/components/ui/spinner';
 import {
   EditorCursorSelectionChangedMessage,
   EditorEditMessage,

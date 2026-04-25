@@ -25,5 +25,5 @@ export async function decrypt(
 export async function deleteJwt() {
   const cookie = await cookies();
   cookie.delete('token');
-  redirect('/');
+  return redirect('/');
 }

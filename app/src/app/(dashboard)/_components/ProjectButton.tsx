@@ -1,25 +1,31 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Listbox, ListboxItem } from '@heroui/listbox';
-import { Tooltip } from '@heroui/tooltip';
 import { useTranslations } from 'next-intl';
+
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function ProjectButton() {
   const t = useTranslations('Layout');
   return (
-    <Tooltip
-      content={
-        <Listbox>
-          <ListboxItem key='new-project'>{t('newProject')}</ListboxItem>
-          <ListboxItem key='incoming-invites'>
-            {t('incomingInvites')}
-          </ListboxItem>
-        </Listbox>
-      }
-      placement='bottom-start'
-    >
-      <Button>{t('project')}</Button>
+    <Tooltip>
+      <TooltipTrigger>
+        <Button>{t('project')}</Button>
+      </TooltipTrigger>
+      <TooltipContent align='start' side='bottom'>
+        {
+          //   <Listbox>
+          //   <ListboxItem key='new-project'>{t('newProject')}</ListboxItem>
+          //   <ListboxItem key='incoming-invites'>
+          //     {t('incomingInvites')}
+          //   </ListboxItem>
+          // </Listbox>
+        }
+      </TooltipContent>
     </Tooltip>
   );
 }

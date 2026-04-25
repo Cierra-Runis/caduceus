@@ -53,6 +53,7 @@ export default defineConfig([
       'out/**',
       'build/**',
       'next-env.d.ts',
+      './src/components/ui/**',
     ],
     name: 'base/',
   },

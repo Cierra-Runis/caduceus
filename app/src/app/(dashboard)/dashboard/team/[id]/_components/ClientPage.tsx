@@ -1,35 +1,13 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Spinner } from '@heroui/spinner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableColumnProps,
-  TableHeader,
-  TableRow,
-} from '@heroui/table';
-import { Tooltip } from '@heroui/tooltip';
-import {
-  IconCopy,
-  IconDownload,
-  IconPlayerPlay,
-  IconSettings,
-} from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
-import NextLink from 'next/link';
-import { match } from 'ts-pattern';
 
-import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
-import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
+import { Spinner } from '@/components/ui/spinner';
 import { useTeamProject } from '@/hooks/api/team';
-import { Project } from '@/lib/types/project';
 
-type Column = {
-  key: 'actions' | ({} & keyof Project);
-} & TableColumnProps<unknown>;
+// type Column = {
+//   key: 'actions' | ({} & keyof Project);
+// } & TableColumnProps<unknown>;
 
 export function ClientPage({ id }: { id: string }) {
   const t = useTranslations();
@@ -50,7 +28,7 @@ export function ClientPage({ id }: { id: string }) {
 
   return (
     <main className='flex h-full items-center justify-center'>
-      <Table
+      {/* <Table
         aria-label={t('Dashboard.yourProjects')}
         topContent={
           <div className='flex items-center justify-between'>
@@ -58,7 +36,7 @@ export function ClientPage({ id }: { id: string }) {
               <CreateProjectButton
                 ownerId={id}
                 ownerType='team'
-                variant='bordered'
+                variant='outline'
               >
                 {t('Dashboard.createProject')}
               </CreateProjectButton>
@@ -163,7 +141,7 @@ export function ClientPage({ id }: { id: string }) {
             </TableRow>
           )}
         </TableBody>
-      </Table>
+      </Table> */}
     </main>
   );
 }

@@ -1,131 +1,119 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Card, CardBody, CardFooter, CardHeader } from '@heroui/card';
-import { Link } from '@heroui/link';
-import { addToast } from '@heroui/toast';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Field, FieldGroup } from '@/components/ui/field';
+import { Spinner } from '@/components/ui/spinner';
 import { useRegister } from '@/hooks/api/register';
-import { RegisterRequestSchema } from '@/lib/api/register';
+import { useRegisterRequestSchema } from '@/lib/api/register';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { isMutating, trigger } = useRegister();
   const t = useTranslations('Register');
+  const RegisterRequestSchema = useRegisterRequestSchema();
 
   return (
     <main className='flex flex-1 items-center justify-center px-6 py-16'>
-      <Card className='w-full max-w-3xl p-4'>
-        <ZodForm
-          onValid={(data) =>
-            trigger(data, {
-              onError: (error) => {
-                addToast({
-                  color: 'danger',
-                  description: error.message,
-                  title: t('creationFailed'),
-                });
-              },
-              onSuccess: ({
-                payload: {
-                  user: { username },
+      <Card className='w-full max-w-lg'>
+        <CardHeader>
+          <CardTitle>{t('title')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ZodForm
+            id='register-form'
+            onValid={(data) =>
+              trigger(data, {
+                onError: (error) => {
+                  toast.error(t('creationFailed'), {
+                    description: error.message,
+                  });
                 },
-              }) => {
-                addToast({
-                  color: 'success',
-                  description: t('redirectingLogin'),
-                  onClose: () => router.push('/login'),
-                  shouldShowTimeoutProgress: true,
-                  timeout: 3000,
-                  title: t('welcome', { username }),
-                });
-              },
-            })
-          }
-          schema={RegisterRequestSchema}
-        >
-          {(control) => (
-            <>
-              <CardHeader className='flex items-center justify-between'>
-                <h1 className='text-2xl font-bold'>{t('title')}</h1>
-                <Button as={NextLink} href='/' size='sm' variant='light'>
-                  {t('backToHome')}
-                </Button>
-              </CardHeader>
-              <CardBody>
-                <div className='flex flex-col gap-4'>
-                  <Input
-                    control={control}
-                    description={t('descriptions.username')}
-                    isRequired
-                    label={t('labels.username')}
-                    labelPlacement='outside'
-                    name='username'
-                    placeholder={t('placeholders.username')}
-                    variant='bordered'
-                  />
-                  <Input
-                    control={control}
-                    description={t('descriptions.nickname')}
-                    label={t('labels.nickname')}
-                    labelPlacement='outside'
-                    name='nickname'
-                    placeholder={t('placeholders.nickname')}
-                    variant='bordered'
-                  />
-                  <Input
-                    control={control}
-                    description={t('descriptions.password')}
-                    isRequired
-                    label={t('labels.password')}
-                    labelPlacement='outside'
-                    name='password'
-                    placeholder={t('placeholders.password')}
-                    type='password'
-                    variant='bordered'
-                  />
-                  <Input
-                    control={control}
-                    isRequired
-                    label={t('labels.confirmPassword')}
-                    labelPlacement='outside'
-                    name='confirmPassword'
-                    placeholder={t('placeholders.confirmPassword')}
-                    type='password'
-                    variant='bordered'
-                  />
-                </div>
-                <p className='mt-4 text-sm'>
-                  {t.rich('agree', {
-                    privacy: (chunks) => (
-                      <Link className='text-sm' href='/privacy'>
-                        {chunks}
-                      </Link>
-                    ),
-                  })}
-                </p>
-              </CardBody>
-              <CardFooter className='flex justify-end gap-4'>
-                <Button as={NextLink} href='/login' variant='light'>
-                  {t('alreadyHave')}
-                </Button>
-                <Button
-                  color='primary'
-                  isDisabled={isMutating}
-                  isLoading={isMutating}
-                  type='submit'
-                >
-                  {t('register')}
-                </Button>
-              </CardFooter>
-            </>
-          )}
-        </ZodForm>
+                onSuccess: ({
+                  payload: {
+                    user: { username },
+                  },
+                }) => {
+                  toast.success(t('welcome', { username }), {
+                    description: t('redirectingLogin'),
+                    dismissible: false,
+                    onAutoClose: () => router.push('/login'),
+                  });
+                },
+              })
+            }
+            schema={RegisterRequestSchema}
+          >
+            {(control) => (
+              <FieldGroup>
+                <Input
+                  control={control}
+                  description={t('descriptions.username')}
+                  inputProps={{
+                    placeholder: t('placeholders.username'),
+                    required: true,
+                  }}
+                  label={t('labels.username')}
+                  name='username'
+                />
+                <Input
+                  control={control}
+                  description={t('descriptions.nickname')}
+                  inputProps={{
+                    placeholder: t('placeholders.nickname'),
+                  }}
+                  label={t('labels.nickname')}
+                  name='nickname'
+                />
+                <Input
+                  control={control}
+                  description={t('descriptions.password')}
+                  inputProps={{
+                    placeholder: t('placeholders.password'),
+                    required: true,
+                    type: 'password',
+                  }}
+                  label={t('labels.password')}
+                  name='password'
+                />
+                <Input
+                  control={control}
+                  inputProps={{
+                    placeholder: t('placeholders.confirmPassword'),
+                    required: true,
+                    type: 'password',
+                  }}
+                  label={t('labels.confirmPassword')}
+                  name='confirmPassword'
+                />
+              </FieldGroup>
+            )}
+          </ZodForm>
+        </CardContent>
+        <CardFooter>
+          <Field className='justify-end' orientation='horizontal'>
+            <Button asChild variant='link'>
+              <NextLink href='/login'>{t('alreadyHave')}</NextLink>
+            </Button>
+            <Button disabled={isMutating} form='register-form' type='submit'>
+              {isMutating && <Spinner data-icon='inline-start' />}
+              {t('register')}
+            </Button>
+          </Field>
+        </CardFooter>
       </Card>
     </main>
   );

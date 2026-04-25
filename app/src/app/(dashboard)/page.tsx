@@ -1,41 +1,14 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Spinner } from '@heroui/spinner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableColumnProps,
-  TableHeader,
-  TableRow,
-} from '@heroui/table';
-import { Tooltip } from '@heroui/tooltip';
-import {
-  IconCopy,
-  IconDownload,
-  IconPlayerPlay,
-  IconSettings,
-} from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
-import NextLink from 'next/link';
-import { match } from 'ts-pattern';
 
-import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
-import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
-import { useUserMe } from '@/hooks/api/user/me';
+import { Spinner } from '@/components/ui/spinner';
 import { useUserProject } from '@/hooks/api/user/project';
-import { Project } from '@/lib/types/project';
-
-type Column = {
-  key: 'actions' | ({} & keyof Project);
-} & TableColumnProps<unknown>;
 
 export default function Dashboard() {
   const t = useTranslations();
   const { data, error, isLoading } = useUserProject();
-  const { data: userData } = useUserMe();
+  // const { data: userData } = useUserMe();
 
   if (isLoading)
     return (
@@ -52,7 +25,7 @@ export default function Dashboard() {
 
   return (
     <main className='flex h-full items-center justify-center'>
-      <Table
+      {/* <Table
         aria-label={t('Dashboard.yourProjects')}
         topContent={
           <div className='flex items-center justify-between'>
@@ -165,7 +138,7 @@ export default function Dashboard() {
             </TableRow>
           )}
         </TableBody>
-      </Table>
+      </Table> */}
     </main>
   );
 }

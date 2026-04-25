@@ -1,17 +1,23 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Listbox, ListboxItem } from '@heroui/listbox';
-import { Tooltip } from '@heroui/tooltip';
 import { useTranslations } from 'next-intl';
-import NextLink from 'next/link';
+
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function HelpButton() {
   const t = useTranslations('Layout');
   return (
-    <Tooltip
-      content={
-        <Listbox>
+    <Tooltip>
+      <TooltipTrigger>
+        <Button>{t('help')}</Button>
+      </TooltipTrigger>
+      <TooltipContent align='start' side='bottom'>
+        {/* <Listbox>
           <ListboxItem
             as={NextLink}
             href='https://typst.app/docs/tutorial'
@@ -30,11 +36,8 @@ export function HelpButton() {
           <ListboxItem as={NextLink} href='/contact' key='contact'>
             {t('contact')}
           </ListboxItem>
-        </Listbox>
-      }
-      placement='bottom-start'
-    >
-      <Button>{t('help')}</Button>
+        </Listbox>   */}
+      </TooltipContent>
     </Tooltip>
   );
 }

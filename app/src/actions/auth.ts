@@ -6,5 +6,5 @@ import { deleteJwt } from '@/lib/session';
 
 export async function logout() {
   await deleteJwt();
-  redirect('/login');
+  return redirect('/login');
 }

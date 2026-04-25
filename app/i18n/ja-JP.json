@@ -44,14 +44,12 @@
   "Layout": {
     "about": "Caduceus について",
     "accountSettings": "アカウント設定",
-    "backendStatus": "バックエンドのステータス",
     "caduceus": "Caduceus",
     "contact": "お問い合わせ",
     "feedback": "フィードバック",
     "goToLanding": "ランディングページへ移動",
     "help": "ヘルプ",
     "incomingInvites": "招待状",
-    "licenseText": "MIT ライセンス | © 2025 Cierra Runis",
     "logout": "ログアウト",
     "manageTeams": "チームを管理",
     "newProject": "新しいプロジェクト",
@@ -63,7 +61,6 @@
     "wiki": "WIKI"
   },
   "Login": {
-    "backToHome": "ホームページに戻る",
     "forgetPassword": "パスワードをお忘れですか？",
     "labels": {
       "password": "パスワード",
@@ -76,12 +73,16 @@
       "password": "パスワード",
       "username": "ユーザー名"
     },
-    "redirectingHome": "ホームページにリダイレクトしています...",
+    "redirectingHome": "ホームページにリダイレクトしています…",
     "title": "ログイン",
-    "welcome": "ようこそ、{username}"
+    "validation": {
+      "password": "パスワードを入力してください",
+      "username": "ユーザー名を入力してください"
+    },
+    "welcome": "ようこそ、{username}！"
   },
   "Project": {
-    "title": "プロジェクト: {name}",
+    "title": "プロジェクト：{name}",
     "ws": {
       "closed": "WebSocket 接続が閉じられました",
       "error": "WebSocket エラー",
@@ -99,9 +100,7 @@
     "updatedAt": "更新日"
   },
   "Register": {
-    "agree": "サインアップすることで、当社の <privacy>プライバシーポリシー</privacy> を読み、同意したことを確認します",
     "alreadyHave": "既にアカウントをお持ちですか？",
-    "backToHome": "ホームページに戻る",
     "creationFailed": "登録に失敗しました",
     "descriptions": {
       "nickname": "ニックネームは任意の文字を使用できます識別には使用されません",
@@ -120,10 +119,21 @@
       "password": "パスワード",
       "username": "ユーザー名"
     },
-    "redirectingLogin": "ログインページにリダイレクトしています...",
+    "redirectingLogin": "ログインページにリダイレクトしています…",
     "register": "登録",
     "title": "登録",
+    "validation": {
+      "confirmPassword": "確認用パスワードはパスワードと一致する必要があります",
+      "password": "パスワードは 15 文字以上、または数字と小文字を含む 8 文字以上である必要があります",
+      "username": "ユーザー名は英数字または単一のハイフンのみ使用でき、ハイフンで開始または終了することはできません"
+    },
     "welcome": "ようこそ、{username}"
+  },
+  "ServiceStatus": {
+    "allServicesAvailable": "すべてのサービスが利用可能です",
+    "loadingStatus": "ステータスを読み込んでいます…",
+    "noServiceAvailable": "利用可能なステータスがありません",
+    "someServicesUnavailable": "一部のサービスが利用できません"
   },
   "Sidebar": {
     "home": "ホーム",

@@ -1,41 +1,17 @@
 'use client';
 
-import { Button, ButtonProps } from '@heroui/button';
-import { Listbox, ListboxItem, ListboxSection } from '@heroui/listbox';
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  useDisclosure,
-} from '@heroui/modal';
-import { addToast } from '@heroui/toast';
-import { useTranslations } from 'next-intl';
-import { Controller } from 'react-hook-form';
+import { Button } from '@/components/ui/button';
 
-import { Input } from '@/components/forms/Input';
-import { ZodForm } from '@/components/forms/ZodForm';
-import { useUserMe } from '@/hooks/api/user/me';
-import { useUserTeams } from '@/hooks/api/user/team';
-import { UpdateProjectRequestSchema } from '@/lib/api/project';
-import { Project } from '@/lib/types/project';
-
-export function UpdateProjectButton({
-  project,
-  ...props
-}: {
-  project: Project;
-} & ButtonProps) {
-  const t = useTranslations('UpdateProject');
-  const { data: user, error } = useUserMe();
-  const { data: teams } = useUserTeams();
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+export function UpdateProjectButton() {
+  // const t = useTranslations('UpdateProject');
+  // const { data: user, error } = useUserMe();
+  // const { data: teams } = useUserTeams();
+  // const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   return (
     <>
-      <Button {...props} onPress={onOpen} />
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Button />
+      {/* <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <ModalContent>
           {(onClose) => (
             <>
@@ -119,7 +95,7 @@ export function UpdateProjectButton({
             </>
           )}
         </ModalContent>
-      </Modal>
+      </Modal> */}
     </>
   );
 }

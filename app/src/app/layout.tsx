@@ -6,11 +6,9 @@ import { Kode_Mono, Saira } from 'next/font/google';
 import Script from 'next/script';
 
 import { Providers } from '@/components/roots/Providers';
+import { cn } from '@/lib/utils';
 
-const sans = Saira({
-  subsets: ['latin'],
-  variable: '--font-sans',
-});
+const geist = Saira({ subsets: ['latin'], variable: '--font-sans' });
 
 const mono = Kode_Mono({
   subsets: ['latin'],
@@ -30,10 +28,7 @@ export default function RootLayout({
   const locale = useLocale();
   return (
     <html
-      className={`
-        ${sans.variable}
-        ${mono.variable}
-      `}
+      className={cn(mono.variable, geist.variable)}
       lang={locale}
       suppressHydrationWarning
     >
@@ -44,11 +39,7 @@ export default function RootLayout({
           src='//unpkg.com/react-scan/dist/auto.global.js'
         />
       </head>
-      <body
-        className={`
-          min-h-screen bg-background font-sans text-foreground antialiased
-        `}
-      >
+      <body className={`min-h-screen antialiased`}>
         <NextIntlClientProvider>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>

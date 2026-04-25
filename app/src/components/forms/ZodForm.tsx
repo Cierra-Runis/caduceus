@@ -1,8 +1,7 @@
 'use client';
 
-import { Form, FormProps } from '@heroui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useCallback } from 'react';
+import { DetailedHTMLProps, FormHTMLAttributes, useCallback } from 'react';
 import {
   Control,
   DefaultValues,
@@ -30,7 +29,10 @@ export function ZodForm<T extends z.ZodObject>({
   onInvalid?: SubmitErrorHandler<z.input<T>>;
   onValid: SubmitHandler<z.output<T>>;
   schema: T;
-} & Omit<FormProps, 'children' | 'onInvalid' | 'onValid'>) {
+} & Omit<
+  DetailedHTMLProps<FormHTMLAttributes<HTMLFormElement>, HTMLFormElement>,
+  'children' | 'onInvalid' | 'onValid'
+>) {
   const { control, handleSubmit, setValue } = useForm({
     defaultValues,
     resolver: zodResolver(schema),
@@ -45,7 +47,7 @@ export function ZodForm<T extends z.ZodObject>({
   );
 
   return (
-    <Form
+    <form
       onSubmit={async (e) => {
         e.preventDefault();
         try {
@@ -54,10 +56,9 @@ export function ZodForm<T extends z.ZodObject>({
           // noop
         }
       }}
-      validationBehavior='aria'
       {...props}
     >
       {children(control, setValue)}
-    </Form>
+    </form>
   );
 }

@@ -1,11 +1,16 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
-import { CircularProgress } from '@heroui/progress';
 import { IconDevices, IconMoon, IconSun } from '@tabler/icons-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Spinner } from '@/components/ui/spinner';
 
 const __themes = {
   dark: {
@@ -32,32 +37,27 @@ export function ThemeButton() {
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
-    return <CircularProgress size='sm' />;
+    return <Spinner />;
   }
 
   return (
     <Popover aria-label='Theme Selector'>
       <PopoverTrigger>
-        <Button
-          isIconOnly
-          size='sm'
-          startContent={
-            __themes[(resolvedTheme || 'system') as ThemeVariant].icon
-          }
-          variant='light'
-        />
+        <Button size='sm'>
+          {__themes[(resolvedTheme || 'system') as ThemeVariant].icon}
+        </Button>
       </PopoverTrigger>
       <PopoverContent className='flex flex-row gap-1 p-2'>
         {Object.entries(__themes).map(([key, { icon, title }]) => (
           <Button
             aria-label={title}
-            isIconOnly
             key={key}
-            onPress={() => setTheme(key)}
-            size='sm'
-            startContent={icon}
-            variant={theme === key ? 'faded' : 'light'}
-          />
+            onClick={() => setTheme(key)}
+            size='icon'
+            variant={theme === key ? 'outline' : 'ghost'}
+          >
+            {icon}
+          </Button>
         ))}
       </PopoverContent>
     </Popover>
@@ -74,13 +74,13 @@ export function ThemeButtons() {
       {Object.entries(__themes).map(([key, { icon, title }]) => (
         <Button
           aria-label={title}
-          isIconOnly
           key={key}
-          onPress={() => setTheme(key)}
-          size='sm'
-          startContent={icon}
-          variant={!mounted ? 'light' : theme === key ? 'faded' : 'light'}
-        />
+          onClick={() => setTheme(key)}
+          size='icon'
+          variant={!mounted ? 'outline' : theme === key ? 'outline' : 'ghost'}
+        >
+          {icon}
+        </Button>
       ))}
     </>
   );

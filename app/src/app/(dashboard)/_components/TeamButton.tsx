@@ -1,26 +1,27 @@
 'use client';
 
-import { Button } from '@heroui/button';
-import { Listbox, ListboxItem } from '@heroui/listbox';
-import { Tooltip } from '@heroui/tooltip';
 import { useTranslations } from 'next-intl';
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function TeamButton() {
   const t = useTranslations('Layout');
   return (
-    <Tooltip
-      content={
-        <Listbox>
+    <Tooltip>
+      <TooltipTrigger>{t('team')}</TooltipTrigger>
+      <TooltipContent align='start' side='bottom'>
+        {/* <Listbox>
           <ListboxItem key='new-team'>{t('newTeam')}</ListboxItem>
           <ListboxItem key='manage-teams'>{t('manageTeams')}</ListboxItem>
           <ListboxItem key='incoming-invites'>
             {t('incomingInvites')}
           </ListboxItem>
-        </Listbox>
-      }
-      placement='bottom-start'
-    >
-      <Button>{t('team')}</Button>
+        </Listbox> */}
+      </TooltipContent>
     </Tooltip>
   );
 }

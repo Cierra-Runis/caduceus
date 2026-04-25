@@ -1,33 +1,15 @@
 'use client';
 
-import { Button, ButtonProps } from '@heroui/button';
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  useDisclosure,
-} from '@heroui/modal';
-import { addToast } from '@heroui/toast';
-import { IconPlus } from '@tabler/icons-react';
-import { useTranslations } from 'next-intl';
-import { mutate } from 'swr';
+import { Dialog } from '../ui/dialog';
 
-import { Input } from '@/components/forms/Input';
-import { ZodForm } from '@/components/forms/ZodForm';
-import { useCreateTeam } from '@/hooks/api/team';
-import { CreateTeamRequestSchema } from '@/lib/api/team';
-
-export function CreateTeamButton({ ...props }: ButtonProps) {
-  const t = useTranslations('CreateTeam');
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
-
-  const { isMutating, trigger } = useCreateTeam();
+export function CreateTeamButton() {
+  // const t = useTranslations('CreateTeam');
+  // const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  // const { isMutating, trigger } = useCreateTeam();
 
   return (
-    <>
-      <Button isIconOnly onPress={onOpen} {...props}>
+    <Dialog>
+      {/* <Button isIconOnly onPress={onOpen} {...props}>
         <IconPlus />
       </Button>
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -89,7 +71,7 @@ export function CreateTeamButton({ ...props }: ButtonProps) {
             </>
           )}
         </ModalContent>
-      </Modal>
-    </>
+      </Modal> */}
+    </Dialog>
   );
 }
