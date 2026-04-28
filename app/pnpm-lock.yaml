@@ -23,9 +23,6 @@ importers:
       '@t3-oss/env-nextjs':
         specifier: ^0.13.8
         version: 0.13.8(typescript@5.9.3)(zod@4.1.12)
-      '@tabler/icons-react':
-        specifier: ^3.35.0
-        version: 3.35.0(react@19.1.1)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1714,14 +1711,6 @@ packages:
         optional: true
       zod:
         optional: true
-
-  '@tabler/icons-react@3.35.0':
-    resolution: {integrity: sha512-XG7t2DYf3DyHT5jxFNp5xyLVbL4hMJYJhiSdHADzAjLRYfL7AnjlRfiHDHeXxkb2N103rEIvTsBRazxXtAUz2g==}
-    peerDependencies:
-      react: '>= 16'
-
-  '@tabler/icons@3.35.0':
-    resolution: {integrity: sha512-yYXe+gJ56xlZFiXwV9zVoe3FWCGuZ/D7/G4ZIlDtGxSx5CGQK110wrnT29gUj52kEZoxqF7oURTk97GQxELOFQ==}
 
   '@tailwindcss/node@4.1.16':
     resolution: {integrity: sha512-BX5iaSsloNuvKNHRN3k2RcCuTEgASTo77mofW0vmeHkfrDWaoFAFvNHpEgtu0eqyypcyiBkDWzSMxJhp3AUVcw==}
@@ -6384,13 +6373,6 @@ snapshots:
     optionalDependencies:
       typescript: 5.9.3
       zod: 4.1.12
-
-  '@tabler/icons-react@3.35.0(react@19.1.1)':
-    dependencies:
-      '@tabler/icons': 3.35.0
-      react: 19.1.1
-
-  '@tabler/icons@3.35.0': {}
 
   '@tailwindcss/node@4.1.16':
     dependencies:

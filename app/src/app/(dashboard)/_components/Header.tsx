@@ -1,6 +1,6 @@
 'use client';
 
-import { IconCloud } from '@tabler/icons-react';
+import { CloudIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ export function Header() {
   const t = useTranslations('Layout');
   return (
     <Badge variant='ghost'>
-      <IconCloud className='w-[1.25em]' data-icon='inline-start' />
+      <CloudIcon className='w-[1.25em]' data-icon='inline-start' />
       {data?.payload?.username ?? t('caduceus')}
     </Badge>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { IconSettings } from '@tabler/icons-react';
+import { SettingsIcon } from 'lucide-react';
 import NextLink from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 
@@ -55,7 +55,7 @@ export function SideBar() {
                   : '/dashboard/settings'
             }
           >
-            <IconSettings />
+            <SettingsIcon />
           </NextLink>
         </Button>
       </SidebarFooter>
@@ -113,10 +113,7 @@ function TeamList() {
           <TooltipContent side='right'>{t.name}</TooltipContent>
         </Tooltip>
       ))}
-      <CreateTeamButton
-      // className='aspect-square h-auto w-full'
-      // variant='ghost'
-      />
+      <CreateTeamButton />
     </ScrollArea>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { IconDevices, IconMoon, IconSun } from '@tabler/icons-react';
+import { MonitorSmartphoneIcon, MoonIcon, SunIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
@@ -14,16 +14,16 @@ import { Spinner } from '@/components/ui/spinner';
 
 const __themes = {
   dark: {
-    icon: <IconMoon className='w-5' />,
+    icon: <MoonIcon />,
     title: 'Dark',
   },
   light: {
-    icon: <IconSun className='w-5' />,
+    icon: <SunIcon />,
     title: 'Light',
   },
   system: {
     // Default theme is light
-    icon: <IconDevices className='w-5' />,
+    icon: <MonitorSmartphoneIcon />,
     title: 'System',
   },
 } as const;

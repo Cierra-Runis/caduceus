@@ -1,13 +1,13 @@
 'use client';
 
 import {
-  IconArchive,
-  IconHome,
-  IconMap,
-  IconPencil,
-  IconSearch,
-  IconSettings,
-} from '@tabler/icons-react';
+  ArchiveIcon,
+  EditIcon,
+  HomeIcon,
+  MapIcon,
+  SearchIcon,
+  SettingsIcon,
+} from 'lucide-react';
 import NextLink from 'next/link';
 import { useCallback } from 'react';
 
@@ -37,7 +37,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
           size='icon'
           variant='ghost'
         >
-          <IconArchive />
+          <ArchiveIcon />
         </Button>
         <Button
           className='aspect-square h-auto w-full shrink-0'
@@ -45,7 +45,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
           size='icon'
           variant='ghost'
         >
-          <IconSearch />
+          <SearchIcon />
         </Button>
         <Button
           className='aspect-square h-auto w-full shrink-0'
@@ -53,7 +53,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
           size='icon'
           variant='ghost'
         >
-          <IconMap />
+          <MapIcon />
         </Button>
         <Button
           className='aspect-square h-auto w-full shrink-0'
@@ -61,7 +61,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
           size='icon'
           variant='ghost'
         >
-          <IconPencil />
+          <EditIcon />
         </Button>
       </ScrollArea>
       <div className='flex w-full shrink-0 flex-col items-center'>
@@ -72,7 +72,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
           `}
         >
           <Button onClick={toggleSidebarPanel} size='icon' variant='ghost'>
-            <IconSettings />
+            <SettingsIcon />
           </Button>
         </div>
         <div
@@ -83,7 +83,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
         >
           <Button asChild size='icon' variant='ghost'>
             <NextLink href='/'>
-              <IconHome />
+              <HomeIcon />
             </NextLink>
           </Button>
         </div>

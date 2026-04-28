@@ -1,14 +1,31 @@
 'use client';
 
-import { Dialog } from '../ui/dialog';
+import { PlusIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+
+import { Button } from '../ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '../ui/dialog';
 
 export function CreateTeamButton() {
-  // const t = useTranslations('CreateTeam');
+  const t = useTranslations('CreateTeam');
   // const { isOpen, onOpen, onOpenChange } = useDisclosure();
   // const { isMutating, trigger } = useCreateTeam();
 
   return (
     <Dialog>
+      <DialogTrigger className='aspect-square h-auto w-full'>
+        <Button asChild size='icon' variant='ghost'>
+          <PlusIcon />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogTitle>{t('title')}</DialogTitle>
+      </DialogContent>
       {/* <Button isIconOnly onPress={onOpen} {...props}>
         <IconPlus />
       </Button>

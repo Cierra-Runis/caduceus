@@ -8,7 +8,6 @@ import {
   MenubarGroup,
   MenubarItem,
   MenubarMenu,
-  MenubarShortcut,
   MenubarTrigger,
 } from '@/components/ui/menubar';
 
@@ -50,32 +49,6 @@ export const NavBar = () => {
               <MenubarGroup>
                 <MenubarItem>{t('Layout.newProject')}</MenubarItem>
                 <MenubarItem>{t('Layout.incomingInvites')}</MenubarItem>
-              </MenubarGroup>
-            </MenubarContent>
-          </MenubarMenu>
-          <MenubarMenu>
-            <MenubarTrigger>File</MenubarTrigger>
-            <MenubarContent>
-              <MenubarGroup>
-                <MenubarItem>
-                  New Tab <MenubarShortcut>⌘T</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem>New Window</MenubarItem>
-                <MenubarItem>Share</MenubarItem>
-                <MenubarItem>Print</MenubarItem>
-              </MenubarGroup>
-            </MenubarContent>
-          </MenubarMenu>
-          <MenubarMenu>
-            <MenubarTrigger>File</MenubarTrigger>
-            <MenubarContent>
-              <MenubarGroup>
-                <MenubarItem>
-                  New Tab <MenubarShortcut>⌘T</MenubarShortcut>
-                </MenubarItem>
-                <MenubarItem>New Window</MenubarItem>
-                <MenubarItem>Share</MenubarItem>
-                <MenubarItem>Print</MenubarItem>
               </MenubarGroup>
             </MenubarContent>
           </MenubarMenu>
