@@ -1,8 +1,9 @@
 use bson::oid::ObjectId;
 use futures_util::TryStreamExt;
 use mongodb::error::Result;
+use mongodb::options::ReturnDocument;
 
-use crate::models::project::{OwnerType, Project};
+use crate::models::project::{FileContent, OwnerType, Project};
 
 #[async_trait::async_trait]
 pub trait ProjectRepo {
@@ -13,6 +14,17 @@ pub trait ProjectRepo {
         owner_id: ObjectId,
         owner_type: OwnerType,
     ) -> Result<Vec<Project>>;
+    /// Replace one file's content, bump its version and `updated_at` (and the
+    /// project's), and return the updated project. `None` if the project or the
+    /// file does not exist. The file is addressed by its stable id, not path,
+    /// so a concurrent rename does not misroute the write.
+    async fn update_file_content(
+        &self,
+        project_id: ObjectId,
+        file_id: ObjectId,
+        content: FileContent,
+        size: i64,
+    ) -> Result<Option<Project>>;
 }
 
 #[derive(Clone)]
@@ -50,6 +62,32 @@ impl ProjectRepo for MongoProjectRepo {
         let cursor = self.collection.find(filter).await?;
         let projects: Vec<Project> = cursor.try_collect().await?;
         Ok(projects)
+    }
+
+    async fn update_file_content(
+        &self,
+        project_id: ObjectId,
+        file_id: ObjectId,
+        content: FileContent,
+        size: i64,
+    ) -> Result<Option<Project>> {
+        let content_bson = bson::to_bson(&content)?;
+        let now = bson::DateTime::now();
+        let update = bson::doc! {
+            "$set": {
+                "files.$[f].content": content_bson,
+                "files.$[f].size": size,
+                "files.$[f].updated_at": now,
+                "updated_at": now,
+            },
+            "$inc": { "files.$[f].version": 1 },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .array_filters(vec![bson::doc! { "f._id": file_id }])
+            .return_document(ReturnDocument::After)
+            .await
     }
 }
 
@@ -91,6 +129,28 @@ pub mod tests {
                 .cloned()
                 .collect();
             Ok(filtered_projects)
+        }
+
+        async fn update_file_content(
+            &self,
+            project_id: ObjectId,
+            file_id: ObjectId,
+            content: FileContent,
+            size: i64,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            let Some(file) = project.files.iter_mut().find(|f| f.id == file_id) else {
+                return Ok(None);
+            };
+            file.content = content;
+            file.size = size;
+            file.version += 1;
+            file.updated_at = OffsetDateTime::now_utc();
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
         }
     }
 

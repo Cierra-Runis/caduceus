@@ -1,4 +1,4 @@
-use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use bson::oid::ObjectId;
 use bson::serde_helpers::serialize_object_id_as_hex_string;
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,34 @@ pub async fn find_by_id(
     match data.project_service.find_by_id(project_id).await {
         Ok(project) => {
             let response = ApiResponse::success("Project fetched successfully", project);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct UpdateFileRequest {
+    pub text: String,
+}
+
+pub async fn update_file(
+    path: actix_web::web::Path<(String, String)>,
+    body: actix_web::web::Json<UpdateFileRequest>,
+    data: actix_web::web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    let (id, file_id) = path.into_inner();
+    let project_id = ObjectId::parse_str(id).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+    let file_id = ObjectId::parse_str(file_id).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    match data
+        .project_service
+        .update_file(project_id, user.sub, file_id, body.text.clone())
+        .await
+    {
+        Ok(payload) => {
+            let response = ApiResponse::success("File updated successfully", payload);
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => Err(e),

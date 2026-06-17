@@ -1,9 +1,11 @@
 use bson::oid::ObjectId;
 use derive_more::Display;
-use time::OffsetDateTime;
 
 use crate::{
-    models::project::{OwnerType, Project, ProjectPayload},
+    models::project::{
+        FileContent, OwnerType, Project, ProjectDetailPayload, ProjectFile, ProjectPayload,
+        UpdateFilePayload,
+    },
     repo::{project::ProjectRepo, team::TeamRepo, user::UserRepo},
 };
 
@@ -75,6 +77,11 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             },
         };
 
+        // Seed an entry file so the project is editable/compilable immediately.
+        let entry_file = ProjectFile::default();
+        let now = entry_file.updated_at;
+        let entry_id = entry_file.id;
+
         let project = self
             .project_repo
             .create(Project {
@@ -83,10 +90,10 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 owner_id,
                 owner_type,
                 creator_id: creator.id,
-                files: vec![],
-                created_at: OffsetDateTime::now_utc(),
-                updated_at: OffsetDateTime::now_utc(),
-                entry: None,
+                files: vec![entry_file],
+                created_at: now,
+                updated_at: now,
+                entry: Some(entry_id),
                 pinned_version: None,
             })
             .await
@@ -98,9 +105,45 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
     pub async fn find_by_id(
         &self,
         project_id: ObjectId,
-    ) -> Result<ProjectPayload, ProjectServiceError> {
+    ) -> Result<ProjectDetailPayload, ProjectServiceError> {
         match self.project_repo.find_by_id(project_id).await {
             Ok(Some(project)) => Ok(project.into()),
+            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => Err(ProjectServiceError::Database(e)),
+        }
+    }
+
+    /// Persist a text edit to a single file. Caller must have access. Returns
+    /// the file's new version/timestamp. Whole-buffer save (not a delta) — this
+    /// is the at-rest store, orthogonal to how edits are *synced* between
+    /// collaborators (that becomes CRDT in M5).
+    pub async fn update_file(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        file_id: ObjectId,
+        text: String,
+    ) -> Result<UpdateFilePayload, ProjectServiceError> {
+        match self.accessible(project_id, user_id).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ProjectServiceError::AccessDenied),
+            Err(e) => return Err(e),
+        };
+
+        let size = text.len() as i64;
+        let content = FileContent::Text { text };
+
+        match self
+            .project_repo
+            .update_file_content(project_id, file_id, content, size)
+            .await
+        {
+            Ok(Some(project)) => project
+                .files
+                .into_iter()
+                .find(|file| file.id == file_id)
+                .map(UpdateFilePayload::from)
+                .ok_or(ProjectServiceError::ProjectNotFound),
             Ok(None) => Err(ProjectServiceError::ProjectNotFound),
             Err(e) => Err(ProjectServiceError::Database(e)),
         }
@@ -487,5 +530,91 @@ mod tests {
 
         let has_access = service.accessible(project_id, other_user_id).await.unwrap();
         assert!(!has_access);
+    }
+
+    fn project_with_file(project_id: ObjectId, owner_id: ObjectId, file_id: ObjectId) -> Project {
+        Project {
+            id: project_id,
+            name: "test".to_string(),
+            owner_id,
+            owner_type: OwnerType::User,
+            creator_id: owner_id,
+            files: vec![ProjectFile {
+                id: file_id,
+                path: "main.typ".to_string(),
+                content: FileContent::Text {
+                    text: "old".to_string(),
+                },
+                size: 3,
+                version: 1,
+                updated_at: OffsetDateTime::now_utc(),
+            }],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            entry: Some(file_id),
+            pinned_version: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_file_success() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let payload = service
+            .update_file(project_id, owner_id, file_id, "new body".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(payload.id, file_id.to_hex());
+        assert_eq!(payload.version, 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_file_access_denied() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service
+            .update_file(project_id, other_user_id, file_id, "x".to_string())
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
+    }
+
+    #[tokio::test]
+    async fn test_update_file_not_found() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        // Access passes (owner) but the file id does not exist.
+        let res = service
+            .update_file(project_id, owner_id, ObjectId::new(), "x".to_string())
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
     }
 }
