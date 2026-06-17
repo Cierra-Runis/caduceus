@@ -82,6 +82,9 @@
     "welcome": "你好呀，{username}！"
   },
   "Project": {
+    "save": {
+      "failed": "保存 {path} 失败"
+    },
     "title": "项目：{name}",
     "ws": {
       "closed": "WebSocket 连接已关闭",

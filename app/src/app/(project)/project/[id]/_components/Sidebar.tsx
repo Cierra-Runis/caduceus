@@ -9,14 +9,17 @@ import {
   SettingsIcon,
 } from 'lucide-react';
 import NextLink from 'next/link';
-import { useCallback } from 'react';
+import { RefObject, useCallback } from 'react';
+import { ImperativePanelHandle } from 'react-resizable-panels';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-import { SidebarPanelProps } from './SidebarPanel';
+export interface SidebarProps {
+  sidebarPanelRef: RefObject<ImperativePanelHandle | null>;
+}
 
-export function Sidebar({ sidebarPanelRef }: SidebarPanelProps) {
+export function Sidebar({ sidebarPanelRef }: SidebarProps) {
   const toggleSidebarPanel = useCallback(() => {
     const current = sidebarPanelRef?.current;
     if (!current) return;

@@ -1,50 +1,52 @@
 'use client';
 
 import MonacoEditor from '@monaco-editor/react';
-import { editor, IDisposable } from 'monaco-editor/esm/vs/editor/editor.api';
+import { editor } from 'monaco-editor/esm/vs/editor/editor.api';
 import { useTheme } from 'next-themes';
-import { useEffect, useRef } from 'react';
-import { SendJsonMessage } from 'react-use-websocket/dist/lib/types';
+import { useEffect, useState } from 'react';
+import { MonacoBinding } from 'y-monaco';
+import { WebsocketProvider } from 'y-websocket';
+import * as Y from 'yjs';
 
 import { Spinner } from '@/components/ui/spinner';
-import {
-  EditorCursorSelectionChangedMessage,
-  EditorEditMessage,
-  MessageType,
-} from '@/lib/message';
 
-export function Editor({ sendMessage }: { sendMessage: SendJsonMessage }) {
-  const editorRef = useRef<editor.IStandaloneCodeEditor>(null);
-  const disposableRef = useRef<IDisposable>(null);
+export interface EditorProps {
+  /// Virtual-FS path of the file currently open in the editor.
+  path: string;
+  provider: null | WebsocketProvider;
+  ydoc: Y.Doc;
+}
+
+// Collaborative Monaco buffer. The editor's model is bound to the focused
+// file's `Y.Text` via y-monaco, so edits flow through the CRDT (and remote
+// cursors render from awareness). There is no controlled `value`: Yjs owns the
+// content. Typst syntax intelligence comes later with tinymist (M4).
+export function Editor({ path, provider, ydoc }: EditorProps) {
   const { resolvedTheme } = useTheme();
+  const [instance, setInstance] = useState<editor.IStandaloneCodeEditor | null>(
+    null,
+  );
 
-  const handleMount = (editor: editor.IStandaloneCodeEditor) => {
-    editorRef.current = editor;
-    disposableRef.current = editor.onDidChangeCursorSelection((e) => {
-      sendMessage<EditorCursorSelectionChangedMessage>({
-        data: e,
-        type: MessageType.CURSOR_SELECTION_CHANGED,
-      });
-    });
-  };
-
+  // Rebind whenever the focused file (or the editor/provider) changes. The
+  // binding seeds the model from the shared text and keeps the two in sync;
+  // destroying it on cleanup detaches before we bind the next file.
   useEffect(() => {
-    return () => {
-      disposableRef.current?.dispose();
-      disposableRef.current = null;
-    };
-  }, []);
+    const model = instance?.getModel();
+    if (!instance || !model || !provider || !path) return;
+
+    const binding = new MonacoBinding(
+      ydoc.getText(path),
+      model,
+      new Set([instance]),
+      provider.awareness,
+    );
+    return () => binding.destroy();
+  }, [instance, provider, ydoc, path]);
 
   return (
     <MonacoEditor
       loading={<Spinner />}
-      onChange={(_, event) =>
-        sendMessage<EditorEditMessage>({
-          data: event,
-          type: MessageType.EDIT,
-        })
-      }
-      onMount={handleMount}
+      onMount={setInstance}
       options={{
         cursorBlinking: 'smooth',
         fontFamily: 'var(--font-mono)',
