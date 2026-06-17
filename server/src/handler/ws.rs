@@ -1,36 +1,29 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, thread, time::Duration};
 
-use actix_web::rt;
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::ResponseError;
+use actix_web::http::StatusCode;
+use actix_web::{HttpRequest, HttpResponse, rt, web};
 use actix_ws::AggregatedMessage;
 use bson::oid::ObjectId;
-
-// Type alias for connection sender to reduce type complexity
-type ConnectionSender = mpsc::UnboundedSender<String>;
-
-// Session info containing user id and connection sender
-#[derive(Debug, Clone)]
-struct SessionInfo {
-    user_id: ObjectId,
-    sender: ConnectionSender,
-}
-
-// Type alias for project sessions map: conn_id -> SessionInfo
-type ProjectSessions = HashMap<ObjectId, SessionInfo>;
-
-use actix_web::http::StatusCode;
-use actix_web::ResponseError;
 use derive_more::Display;
 use futures_util::StreamExt as _;
 use tokio::{
-    sync::{mpsc, RwLock},
-    time::{interval, Instant},
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    task::LocalSet,
+    time::{Instant, interval},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+use yrs::{
+    Doc, GetString, ReadTxn, Text, Transact,
+    sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
+    updates::encoder::{Encode, Encoder, EncoderV1},
+};
 
+use crate::config::WsConfig;
+use crate::models::project::FileContent;
 use crate::models::response::ApiResponse;
 use crate::models::user::UserClaims;
-use crate::models::ws::Message;
+use crate::repo::project::{MongoProjectRepo, ProjectRepo};
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -61,11 +54,12 @@ impl ResponseError for WebSocketError {
     }
 }
 
-/// How often heartbeat pings are sent
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+/// y-protocol message-type tag for awareness frames (sync is `0`). The tag is a
+/// single lib0 varint byte for values < 128, so the first byte identifies it.
+const MSG_AWARENESS: u8 = 1;
 
-/// How long before lack of client response causes a timeout
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
+/// A `(file_id, path, text)` triple used to hydrate a room from stored files.
+type FileSeed = (ObjectId, String, String);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -74,6 +68,7 @@ pub async fn ws(
     stream: web::Payload,
     data: actix_web::web::Data<crate::AppState>,
     project_server: web::Data<ProjectServer>,
+    ws_config: web::Data<WsConfig>,
     user: UserClaims,
 ) -> Result<HttpResponse, WebSocketError> {
     let project_id =
@@ -86,227 +81,363 @@ pub async fn ws(
         Err(_) => return Err(WebSocketError::ProjectNotFound),
     };
 
+    // Seed data to hydrate the room's CRDT document from the stored text files.
+    // Only the *first* connection to a project uses it; later joiners sync
+    // against the already-live document.
+    let project = match data
+        .project_service
+        .project_repo
+        .find_by_id(project_id)
+        .await
+    {
+        Ok(Some(project)) => project,
+        Ok(None) => return Err(WebSocketError::ProjectNotFound),
+        Err(_) => return Err(WebSocketError::ProjectNotFound),
+    };
+    let seed: Vec<FileSeed> = project
+        .files
+        .into_iter()
+        .filter_map(|file| match file.content {
+            FileContent::Text { text } => Some((file.id, file.path, text)),
+            FileContent::Binary { .. } => None,
+        })
+        .collect();
+
     let (res, session, stream) = match actix_ws::handle(&req, stream) {
         Ok(tuple) => tuple,
         Err(e) => return Err(WebSocketError::HandshakeFailed(e)),
     };
 
-    // spawn websocket handler (and don't await it) so that the response is returned immediately
-    // the handler will register with the ProjectServer and forward messages
-    // spawn the websocket handler on the actix runtime
     rt::spawn(handle_ws(
         project_server.as_ref().clone(),
         project_id,
-        user.sub,
+        seed,
         session,
         stream,
+        ws_config.as_ref().clone(),
     ));
 
     Ok(res)
 }
 
-/// Echo text & binary messages received from the client, respond to ping messages, and monitor
-/// connection health to detect network issues and free up resources.
+/// Per-connection loop. Bridges this WebSocket to the single-threaded room
+/// manager: client frames are forwarded as [`Command::Data`], and messages the
+/// manager routes back (initial sync, peers' updates, awareness) arrive on
+/// `out_rx` and are written to the socket.
 async fn handle_ws(
     project_server: ProjectServer,
     project_id: ObjectId,
-    user_id: ObjectId,
+    seed: Vec<FileSeed>,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
+    ws_config: WsConfig,
 ) {
+    let heartbeat_interval = Duration::from_secs(ws_config.heartbeat_interval_secs);
+    let client_timeout = Duration::from_secs(ws_config.client_timeout_secs);
     let mut last_heartbeat = Instant::now();
-    let mut interval = interval(HEARTBEAT_INTERVAL);
+    let mut interval = interval(heartbeat_interval);
 
-    let (conn_tx, mut conn_rx) = mpsc::unbounded_channel();
-
-    // Register this connection with the ProjectServer. The ProjectServer will
-    // keep the mpsc sender and can use it to push messages to this WebSocket.
-    // We store the returned ObjectId to allow later disconnect.
-    let conn_id = project_server.connect(project_id, user_id, conn_tx).await;
-    info!(
-        "WS handler: registered connection {} for user {}",
-        conn_id.to_hex(),
-        user_id.to_hex()
-    );
+    let conn_id = ObjectId::new();
+    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    project_server.join(project_id, seed, conn_id, out_tx);
+    info!("WS handler: joined project {}", project_id.to_hex());
 
     let mut msg_stream = msg_stream
-        .max_frame_size(128 * 1024)
+        .max_frame_size(1024 * 1024)
         .aggregate_continuations()
-        .max_continuation_size(2 * 1024 * 1024);
+        .max_continuation_size(8 * 1024 * 1024);
 
-    // The main loop for this WebSocket session.
-    // We listen to two independent message sources in parallel using `tokio::select!`:
-    // 1) `msg_stream.next()` - messages coming from the WebSocket client (incoming frames)
-    // 2) `conn_rx.recv()`   - messages pushed from the ProjectServer (server -> this client)
-    // The loop exits when a Close frame is received, when heartbeats time out, or when both
-    // streams are closed.
     let close_reason = loop {
         tokio::select! {
             Some(Ok(msg)) = msg_stream.next() => {
                 match msg {
                     AggregatedMessage::Ping(bytes) => {
                         last_heartbeat = Instant::now();
-                        if let Err(e) = session.pong(&bytes).await {
-                            debug!("AggregatedMessage::Ping {}: failed to send Pong: {:#?}", conn_id.to_hex(), e);
-                            break None;
-                        }
-                        debug!("AggregatedMessage::Ping {}: received Ping, sent Pong", conn_id.to_hex());
+                        if session.pong(&bytes).await.is_err() { break None; }
                     }
                     AggregatedMessage::Pong(_) => {
                         last_heartbeat = Instant::now();
-                        debug!("AggregatedMessage::Pong {}: received Pong", conn_id.to_hex());
-                    }
-                    AggregatedMessage::Text(text) => {
-                        let message: Result<Message, serde_json::Error> = serde_json::from_str(text.to_string().as_str());
-
-                        match message {
-                            Ok(message) => {
-                                debug!("AggregatedMessage::Text {}: received Text message: {:?}", conn_id.to_hex(), message);
-                                // Broadcast the message to all sessions in the same project
-                                project_server.broadcast(project_id, &message).await;
-                            }
-                            Err(e) => {
-                                debug!("AggregatedMessage::Text {}: failed to parse JSON message: {:#?}", conn_id.to_hex(), e);
-                                // Optionally, you could choose to close the connection here
-                                // break Some(actix_ws::CloseReason {
-                                //     code: actix_ws::CloseCode::Invalid,
-                                //     description: Some("Invalid JSON".to_string()),
-                                // });
-                            }
-
-                      }
                     }
                     AggregatedMessage::Binary(bin) => {
-                        debug!("AggregatedMessage::Binary {}: received Binary message ({} bytes)", conn_id.to_hex(), bin.len());
-                        if let Err(e) = session.binary(bin).await {
-                            debug!("AggregatedMessage::Binary {}: failed to send Binary echo: {:#?}", conn_id.to_hex(), e);
-                            break None;
-                        }
+                        last_heartbeat = Instant::now();
+                        project_server.data(project_id, conn_id, bin.to_vec());
                     }
-                    AggregatedMessage::Close(reason) => {
-                        debug!("AggregatedMessage::Close {}: received Close message: {:?}", conn_id.to_hex(), reason);
-                        break reason;
-                    },
+                    AggregatedMessage::Text(_) => {
+                        // The collaboration protocol is binary; ignore text.
+                    }
+                    AggregatedMessage::Close(reason) => break reason,
                 }
             }
 
-            // Message pushed from ProjectServer (server -> this connection)
-            // We only call `conn_rx.recv()` once here and handle both Some/None inside to
-            // avoid multiple mutable borrows of `conn_rx` in the same `select!`.
-            msg = conn_rx.recv() => {
+            msg = out_rx.recv() => {
                 match msg {
-                    Some(msg) => {
-                        debug!("WS conn_rx.recv {}: sending message from ProjectServer: {}", conn_id.to_hex(), msg);
-                        if let Err(e) = session.text(msg).await {
-                            debug!("WS conn_rx.recv {}: failed to send server-pushed text: {:#?}", conn_id.to_hex(), e);
-                            break None;
-                        }
+                    Some(bytes) => {
+                        if session.binary(bytes).await.is_err() { break None; }
                     }
-                    None => {
-                        // The sender side (`conn_tx`) was dropped; no more server messages.
-                        debug!("WS conn_rx.recv {}: conn_rx closed (conn_tx dropped).", conn_id.to_hex());
-                        break None;
-                    }
+                    None => break None,
                 }
             }
 
             _ = interval.tick() => {
-                if Instant::now().duration_since(last_heartbeat) > CLIENT_TIMEOUT {
+                if Instant::now().duration_since(last_heartbeat) > client_timeout {
                     break None;
                 }
                 let _ = session.ping(b"").await;
             }
 
-            else => {
-                // This branch triggers when all selected futures are completed / cancelled.
-                debug!("WS {}: select! else branch triggered (stream ended).", conn_id.to_hex());
-                break None;
-            }
+            else => break None,
         }
     };
 
-    // Unregister from ProjectServer
-    project_server.disconnect(project_id, conn_id).await;
-    info!("WS handler: disconnected {}", conn_id.to_hex());
-
-    // attempt to close connection gracefully
+    project_server.leave(project_id, conn_id);
+    info!("WS handler: left project {}", project_id.to_hex());
     let _ = session.close(close_reason).await;
 }
 
-/// ProjectServer manages WebSocket connections without using Actix actors.
-///
-/// Responsibilities:
-/// - Maintain mapping of connection id -> session sender
-/// - Handle connection/disconnection registration
-/// - Broadcast messages between sessions in the same project
-#[derive(Debug, Clone, Default)]
+/// Commands sent from connection handlers (any worker thread) to the
+/// single-threaded room manager. Everything here is `Send`; the `yrs` document
+/// itself never leaves the manager thread.
+enum Command {
+    Join {
+        project_id: ObjectId,
+        seed: Vec<FileSeed>,
+        conn_id: ObjectId,
+        out: UnboundedSender<Vec<u8>>,
+    },
+    Data {
+        project_id: ObjectId,
+        conn_id: ObjectId,
+        data: Vec<u8>,
+    },
+    Leave {
+        project_id: ObjectId,
+        conn_id: ObjectId,
+    },
+}
+
+/// Handle to the collaboration subsystem, stored in actix app data. Cheap to
+/// clone and `Send + Sync` (it is just a channel sender), unlike the `yrs`
+/// types it fronts.
+#[derive(Clone)]
 pub struct ProjectServer {
-    // map project_id -> (map conn_id -> sender)
-    sessions: Arc<RwLock<HashMap<ObjectId, ProjectSessions>>>,
+    cmd_tx: UnboundedSender<Command>,
 }
 
 impl ProjectServer {
-    /// Register a new connection and return its unique ID
-    pub async fn connect(
+    pub fn new(project_repo: MongoProjectRepo, ws_config: WsConfig) -> Self {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        // The room manager owns all `yrs` state on a dedicated thread running a
+        // current-thread runtime + LocalSet, so the `!Send` documents never have
+        // to cross threads.
+        thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build room-manager runtime");
+            let local = LocalSet::new();
+            local.block_on(&rt, room_manager(cmd_rx, project_repo, ws_config));
+        });
+        ProjectServer { cmd_tx }
+    }
+
+    fn join(
         &self,
         project_id: ObjectId,
-        user_id: ObjectId,
-        conn_tx: ConnectionSender,
-    ) -> ObjectId {
-        let id = ObjectId::new();
-        info!(
-            "ProjectServer: registering session {} for user {}",
-            id.to_hex(),
-            user_id.to_hex()
-        );
-
-        let mut sessions = self.sessions.write().await;
-        let project_sessions = sessions.entry(project_id).or_default();
-        project_sessions.insert(
-            id,
-            SessionInfo {
-                user_id,
-                sender: conn_tx,
-            },
-        );
-
-        id
+        seed: Vec<FileSeed>,
+        conn_id: ObjectId,
+        out: UnboundedSender<Vec<u8>>,
+    ) {
+        let _ = self.cmd_tx.send(Command::Join {
+            project_id,
+            seed,
+            conn_id,
+            out,
+        });
     }
 
-    /// Unregister a connection
-    pub async fn disconnect(&self, project_id: ObjectId, id: ObjectId) {
-        info!(
-            "ProjectServer: disconnecting session {} from project {}",
-            id.to_hex(),
-            project_id.to_hex()
-        );
+    fn data(&self, project_id: ObjectId, conn_id: ObjectId, data: Vec<u8>) {
+        let _ = self.cmd_tx.send(Command::Data {
+            project_id,
+            conn_id,
+            data,
+        });
+    }
 
-        let mut sessions = self.sessions.write().await;
-        if let Some(project_sessions) = sessions.get_mut(&project_id) {
-            project_sessions.remove(&id);
-            if project_sessions.is_empty() {
-                sessions.remove(&project_id);
+    fn leave(&self, project_id: ObjectId, conn_id: ObjectId) {
+        let _ = self.cmd_tx.send(Command::Leave {
+            project_id,
+            conn_id,
+        });
+    }
+}
+
+/// One live collaboration room: the shared CRDT document plus its connections.
+/// Lives entirely on the room-manager thread.
+struct RoomState {
+    awareness: Awareness,
+    conns: HashMap<ObjectId, UnboundedSender<Vec<u8>>>,
+    /// path -> file id, for writing text snapshots back to the right file.
+    files: HashMap<String, ObjectId>,
+    /// Last text persisted per path, to skip unchanged files.
+    last: HashMap<String, String>,
+}
+
+impl RoomState {
+    fn new(seed: Vec<FileSeed>) -> RoomState {
+        let doc = Doc::new();
+        // Seed from stored text. The server is authoritative on cold start;
+        // clients connect empty and receive this via sync, which avoids two
+        // parties both inserting the initial text (CRDT would merge those into
+        // duplicated content).
+        let mut files = HashMap::new();
+        for (id, path, text) in seed {
+            let root = doc.get_or_insert_text(path.as_str());
+            if !text.is_empty() {
+                let mut txn = doc.transact_mut();
+                root.insert(&mut txn, 0, &text);
+            }
+            files.insert(path, id);
+        }
+        RoomState {
+            awareness: Awareness::new(doc),
+            conns: HashMap::new(),
+            files,
+            last: HashMap::new(),
+        }
+    }
+}
+
+/// Single-threaded owner of every room. Serves commands and periodically
+/// flushes text to MongoDB.
+async fn room_manager(
+    mut cmd_rx: UnboundedReceiver<Command>,
+    repo: MongoProjectRepo,
+    ws_config: WsConfig,
+) {
+    let mut rooms: HashMap<ObjectId, RoomState> = HashMap::new();
+    let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
+
+    loop {
+        tokio::select! {
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Some(Command::Join { project_id, seed, conn_id, out }) => {
+                        let room = rooms.entry(project_id).or_insert_with(|| RoomState::new(seed));
+                        // Send the initial sync step 1 + awareness state.
+                        let mut encoder = EncoderV1::new();
+                        if DefaultProtocol.start(&room.awareness, &mut encoder).is_ok() {
+                            let _ = out.send(encoder.to_vec());
+                        }
+                        room.conns.insert(conn_id, out);
+                    }
+                    Some(Command::Data { project_id, conn_id, data }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            handle_data(room, conn_id, data);
+                        }
+                    }
+                    Some(Command::Leave { project_id, conn_id }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            room.conns.remove(&conn_id);
+                            if room.conns.is_empty() {
+                                // Keep the room (and its CRDT document) in memory
+                                // even with no connections. Re-deriving the doc
+                                // from text on every (re)join produces independent
+                                // insertions of the same characters, which the CRDT
+                                // merges into DUPLICATED content. A reconnecting
+                                // client must re-sync against the SAME document.
+                                // Just flush its text now.
+                                persist_room(project_id, room, &repo);
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+            _ = persist_tick.tick() => {
+                for (project_id, room) in rooms.iter_mut() {
+                    persist_room(*project_id, room, &repo);
+                }
             }
         }
     }
+}
 
-    /// Broadcast a textual message to all connected sessions in a project
-    pub async fn broadcast(&self, project_id: ObjectId, text: &Message) {
-        let sessions = self.sessions.read().await;
+/// Apply one client frame to the room's document and fan the result out.
+fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
+    let is_awareness = data.first() == Some(&MSG_AWARENESS);
 
-        if let Some(project_sessions) = sessions.get(&project_id) {
-            let message_str = serde_json::to_string(text).unwrap();
-            for (id, session_info) in project_sessions {
-                let _ = session_info.sender.send(message_str.clone());
-                debug!(
-                    "Broadcast to project {}: queued to session {} (user: {})",
-                    project_id.to_hex(),
-                    id.to_hex(),
-                    session_info.user_id.to_hex()
-                );
+    // Run the protocol against the shared document, and diff the state before /
+    // after to capture exactly what this frame changed.
+    let before = room.awareness.doc().transact().state_vector();
+    let replies = DefaultProtocol.handle(&mut room.awareness, &data);
+    let doc_update = {
+        let txn = room.awareness.doc().transact();
+        (txn.state_vector() != before).then(|| txn.encode_state_as_update_v1(&before))
+    };
+
+    // Sync replies (e.g. the sync step 2 carrying current content) go back to
+    // the sender only.
+    match replies {
+        Ok(replies) => {
+            if let Some(origin) = room.conns.get(&conn_id) {
+                for reply in replies {
+                    let _ = origin.send(reply.encode_v1());
+                }
             }
-        } else {
-            debug!("Broadcast: no sessions for project {}", project_id.to_hex());
         }
+        Err(e) => debug!("WS protocol error: {:?}", e),
+    }
+
+    // Applied document changes and awareness frames go to everyone else.
+    if let Some(update) = doc_update {
+        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+        broadcast(room, conn_id, &msg);
+    }
+    if is_awareness {
+        broadcast(room, conn_id, &data);
+    }
+}
+
+/// Send a frame to every connection in the room except `origin`.
+fn broadcast(room: &RoomState, origin: ObjectId, msg: &[u8]) {
+    for (conn_id, tx) in &room.conns {
+        if *conn_id != origin {
+            let _ = tx.send(msg.to_vec());
+        }
+    }
+}
+
+/// Flush each changed file's current CRDT text back to MongoDB. Whole-text
+/// snapshot (not a delta), so the at-rest store stays plain text and REST loads,
+/// preview, and PDF export never need to understand the CRDT.
+fn persist_room(project_id: ObjectId, room: &mut RoomState, repo: &MongoProjectRepo) {
+    let snapshot: Vec<(String, ObjectId, String)> = {
+        let txn = room.awareness.doc().transact();
+        room.files
+            .iter()
+            .filter_map(|(path, id)| {
+                txn.get_text(path.as_str())
+                    .map(|text| (path.clone(), *id, text.get_string(&txn)))
+            })
+            .collect()
+    };
+
+    for (path, id, text) in snapshot {
+        if room.last.get(&path).is_some_and(|prev| prev == &text) {
+            continue;
+        }
+        room.last.insert(path, text.clone());
+        let repo = repo.clone();
+        // Snapshot is already taken (no document borrow held across the await),
+        // so the write can run as its own task on this thread's LocalSet.
+        tokio::task::spawn_local(async move {
+            let size = text.len() as i64;
+            if let Err(e) = repo
+                .update_file_content(project_id, id, FileContent::Text { text }, size)
+                .await
+            {
+                warn!("WS persist failed in {}: {:?}", project_id.to_hex(), e);
+            }
+        });
     }
 }
