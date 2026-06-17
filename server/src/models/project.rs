@@ -63,6 +63,22 @@ pub struct ProjectFile {
     pub updated_at: OffsetDateTime,
 }
 
+const DEFAULT_MAIN_TYP: &str = "= Untitled\n\nStart writing Typst here.\n";
+impl Default for ProjectFile {
+    fn default() -> Self {
+        Self {
+            id: ObjectId::new(),
+            path: "main.typ".to_string(),
+            content: FileContent::Text {
+                text: DEFAULT_MAIN_TYP.to_string(),
+            },
+            size: DEFAULT_MAIN_TYP.len() as i64,
+            version: 0,
+            updated_at: OffsetDateTime::now_utc(),
+        }
+    }
+}
+
 /// The content of a [`ProjectFile`]. Text and binary are split at the type
 /// level so that M3 (image/asset upload) does not have to reshape the core
 /// model: text lives inline in the Mongo document, binaries live elsewhere and
@@ -159,6 +175,122 @@ impl From<ProjectFile> for ProjectFilePayload {
             size: file.size,
             version: file.version,
             updated_at: file.updated_at,
+        }
+    }
+}
+
+/// Editor-facing payload for opening a single project. Unlike [`ProjectPayload`]
+/// (used by the list endpoints), this inlines text file content: the Typst
+/// compiler resolves `#import`/`#image` across the *entire* file tree, not just
+/// the focused tab, so the client needs the whole virtual FS up front. Lazy
+/// per-file loading would not serve the preview.
+#[derive(Serialize)]
+pub struct ProjectDetailPayload {
+    pub id: String,
+    pub name: String,
+    pub owner_id: String,
+    pub owner_type: OwnerType,
+    pub creator_id: String,
+    pub files: Vec<ProjectFileDetailPayload>,
+    #[serde(with = "rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "rfc3339")]
+    pub updated_at: OffsetDateTime,
+    /// The compile entry, as the file's id (hex). The client resolves it to a
+    /// path against `files` — id is the stable key, path can be renamed.
+    pub entry: Option<String>,
+    pub pinned_version: Option<Version>,
+}
+
+/// A single file with its content inlined, for the editor's initial load.
+#[derive(Serialize)]
+pub struct ProjectFileDetailPayload {
+    pub id: String,
+    pub path: String,
+    pub content: FileContentPayload,
+    pub size: i64,
+    pub version: i32,
+    #[serde(with = "rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
+/// Wire form of [`FileContent`]. Text is inlined so the compiler can use it
+/// immediately; a binary stays a reference (`storageKey`) — its bytes are
+/// served separately once asset delivery lands (M3).
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum FileContentPayload {
+    Text {
+        text: String,
+    },
+    Binary {
+        #[serde(rename = "storageKey")]
+        storage_key: String,
+    },
+}
+
+impl From<FileContent> for FileContentPayload {
+    fn from(content: FileContent) -> Self {
+        match content {
+            FileContent::Text { text } => FileContentPayload::Text { text },
+            FileContent::Binary { storage_key } => FileContentPayload::Binary {
+                storage_key: storage_key.to_hex(),
+            },
+        }
+    }
+}
+
+impl From<ProjectFile> for ProjectFileDetailPayload {
+    fn from(file: ProjectFile) -> Self {
+        ProjectFileDetailPayload {
+            id: file.id.to_hex(),
+            path: file.path,
+            content: file.content.into(),
+            size: file.size,
+            version: file.version,
+            updated_at: file.updated_at,
+        }
+    }
+}
+
+/// Returned after a file content save. Just the freshly bumped version and
+/// timestamp — enough for the client to track save state / optimistic
+/// concurrency without echoing the text it just sent.
+#[derive(Serialize)]
+pub struct UpdateFilePayload {
+    pub id: String,
+    pub version: i32,
+    #[serde(with = "rfc3339")]
+    pub updated_at: OffsetDateTime,
+}
+
+impl From<ProjectFile> for UpdateFilePayload {
+    fn from(file: ProjectFile) -> Self {
+        UpdateFilePayload {
+            id: file.id.to_hex(),
+            version: file.version,
+            updated_at: file.updated_at,
+        }
+    }
+}
+
+impl From<Project> for ProjectDetailPayload {
+    fn from(project: Project) -> Self {
+        ProjectDetailPayload {
+            id: project.id.to_hex(),
+            name: project.name,
+            owner_id: project.owner_id.to_hex(),
+            owner_type: project.owner_type,
+            files: project
+                .files
+                .into_iter()
+                .map(ProjectFileDetailPayload::from)
+                .collect(),
+            creator_id: project.creator_id.to_hex(),
+            created_at: project.created_at,
+            updated_at: project.updated_at,
+            entry: project.entry.map(|id| id.to_hex()),
+            pinned_version: project.pinned_version,
         }
     }
 }
