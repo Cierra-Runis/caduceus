@@ -1,14 +1,33 @@
 'use client';
 
+import { CopyIcon, DownloadIcon, PlayIcon, SettingsIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import NextLink from 'next/link';
 
+import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
+import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useUserMe } from '@/hooks/api/user/me';
 import { useUserProject } from '@/hooks/api/user/project';
 
 export default function Dashboard() {
   const t = useTranslations();
   const { data, error, isLoading } = useUserProject();
-  // const { data: userData } = useUserMe();
+  const { data: user } = useUserMe();
 
   if (isLoading)
     return (
@@ -24,121 +43,90 @@ export default function Dashboard() {
     );
 
   return (
-    <main className='flex h-full items-center justify-center'>
-      {/* <Table
-        aria-label={t('Dashboard.yourProjects')}
-        topContent={
-          <div className='flex items-center justify-between'>
-            <div>
-              <CreateProjectButton
-                ownerId={userData?.payload?.id || ''}
-                ownerType='user'
-                variant='bordered'
-              >
-                {t('Dashboard.createProject')}
-              </CreateProjectButton>
-            </div>
-            <div>
-              <Button isIconOnly variant='ghost'>
-                <IconSettings className='w-4' />
-              </Button>
-            </div>
-          </div>
-        }
-        topContentPlacement='outside'
-      >
-        <TableHeader<Column>
-          columns={[
-            { children: t('ProjectPayload.name'), key: 'name' },
-            { children: t('ProjectPayload.createdAt'), key: 'created_at' },
-            { children: t('ProjectPayload.updatedAt'), key: 'updated_at' },
-            { align: 'center', children: t('Table.actions'), key: 'actions' },
-          ]}
-        >
-          {({ children, key, ...props }) => (
-            <TableColumn key={key} {...props}>
-              {children}
-            </TableColumn>
-          )}
+    <main className='flex h-full flex-col gap-4 p-6'>
+      <div className='flex items-center justify-between'>
+        <h1 className='font-heading text-lg font-medium'>
+          {t('Dashboard.yourProjects')}
+        </h1>
+        <CreateProjectButton ownerId={user?.payload.id ?? ''} ownerType='user'>
+          {t('Dashboard.createProject')}
+        </CreateProjectButton>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('ProjectPayload.name')}</TableHead>
+            <TableHead>{t('ProjectPayload.createdAt')}</TableHead>
+            <TableHead>{t('ProjectPayload.updatedAt')}</TableHead>
+            <TableHead className='text-center'>{t('Table.actions')}</TableHead>
+          </TableRow>
         </TableHeader>
-        <TableBody
-          emptyContent={t('Dashboard.noProjects')}
-          items={data.payload}
-        >
-          {(item) => (
-            <TableRow key={item.id}>
-              {(columnKey) => {
-                return match(columnKey as Column['key'])
-                  .with('id', () => <TableCell>{item.id}</TableCell>)
-                  .with('owner_id', () => (
-                    <TableCell>{item.owner_id}</TableCell>
-                  ))
-                  .with('owner_type', () => (
-                    <TableCell>{item.owner_type}</TableCell>
-                  ))
-                  .with('creator_id', () => (
-                    <TableCell>{item.creator_id}</TableCell>
-                  ))
-                  .with('name', () => <TableCell>{item.name}</TableCell>)
-                  .with('created_at', () => (
-                    <TableCell>
-                      {item.created_at.toLocaleDateString()}
-                    </TableCell>
-                  ))
-                  .with('updated_at', () => (
-                    <TableCell>
-                      {item.updated_at.toLocaleDateString()}
-                    </TableCell>
-                  ))
-                  .with('actions', () => (
-                    <TableCell
-                      className={`flex items-center justify-center gap-1`}
-                    >
-                      <Tooltip content={t('Table.open')}>
-                        <Button
-                          as={NextLink}
-                          href={`/project/${item.id}`}
-                          isIconOnly
-                          size='sm'
-                          startContent={<IconPlayerPlay className='w-4' />}
-                          variant='bordered'
-                        />
-                      </Tooltip>
-                      <Tooltip content={t('Table.download')}>
-                        <Button
-                          isIconOnly
-                          size='sm'
-                          startContent={<IconDownload className='w-4' />}
-                          // TODO: Implement
-                          variant='bordered'
-                        />
-                      </Tooltip>
-                      <Tooltip content={t('Table.duplicate')}>
-                        <Button
-                          isIconOnly
-                          size='sm'
-                          startContent={<IconCopy className='w-4' />}
-                          // TODO: Implement
-                          variant='bordered'
-                        />
-                      </Tooltip>
-                      <Tooltip content={t('Table.settings')}>
-                        <UpdateProjectButton
-                          isIconOnly
-                          project={item}
-                          size='sm'
-                          startContent={<IconSettings className='w-4' />}
-                          variant='bordered'
-                        />
-                      </Tooltip>
-                    </TableCell>
-                  ))
-                  .exhaustive();
-              }}
+        <TableBody>
+          {data.payload.length === 0 ? (
+            <TableRow>
+              <TableCell
+                className='h-24 text-center text-muted-foreground'
+                colSpan={4}
+              >
+                {t('Dashboard.noProjects')}
+              </TableCell>
             </TableRow>
+          ) : (
+            data.payload.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell className='font-medium'>{item.name}</TableCell>
+                <TableCell>{item.created_at.toLocaleDateString()}</TableCell>
+                <TableCell>{item.updated_at.toLocaleDateString()}</TableCell>
+                <TableCell>
+                  <div className='flex items-center justify-center gap-1'>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button asChild size='icon-sm' variant='outline'>
+                          <NextLink href={`/project/${item.id}`}>
+                            <PlayIcon />
+                          </NextLink>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('Table.open')}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {/* TODO: Implement download */}
+                        <Button size='icon-sm' variant='outline'>
+                          <DownloadIcon />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('Table.download')}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {/* TODO: Implement duplicate */}
+                        <Button size='icon-sm' variant='outline'>
+                          <CopyIcon />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('Table.duplicate')}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <UpdateProjectButton
+                          project={item}
+                          size='icon-sm'
+                          variant='outline'
+                        >
+                          <SettingsIcon />
+                        </UpdateProjectButton>
+                      </TooltipTrigger>
+                      <TooltipContent>{t('Table.settings')}</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
           )}
         </TableBody>
-      </Table> */}
+      </Table>
     </main>
   );
 }
