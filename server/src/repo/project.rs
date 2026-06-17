@@ -114,7 +114,7 @@ pub mod tests {
             files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
-            preview: None,
+            entry: None,
             pinned_version: None,
         };
 
