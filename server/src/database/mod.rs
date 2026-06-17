@@ -1,4 +1,4 @@
-use mongodb::{error::Error, Client, Database as MongoDatabase};
+use mongodb::{Client, Database as MongoDatabase, error::Error};
 
 #[derive(Clone)]
 pub struct Database {

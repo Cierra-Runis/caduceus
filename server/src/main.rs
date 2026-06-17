@@ -1,14 +1,14 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer, web};
 use server::{
+    AppState,
     config::Config,
     database::Database,
     handler::{self, ws::ProjectServer},
     middleware::jwt::JwtMiddleware,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
-    AppState,
 };
 use std::{env, io};
 use tracing_subscriber::fmt;
@@ -55,8 +55,10 @@ async fn main() -> io::Result<()> {
         },
     });
 
-    // Create ProjectServer instance (actor-less implementation)
-    let project_server = ProjectServer::default();
+    // Create ProjectServer instance (actor-less implementation). It owns a repo
+    // handle so collaboration rooms can persist live CRDT text back to MongoDB.
+    let ws_config = config.ws.clone();
+    let project_server = ProjectServer::new(project_repo.clone(), ws_config.clone());
 
     let jwt_secret = config.jwt_secret.clone();
     let address = config.address.clone();
@@ -68,6 +70,7 @@ async fn main() -> io::Result<()> {
             .wrap(cors)
             .app_data(data.clone())
             .app_data(web::Data::new(project_server.clone()))
+            .app_data(web::Data::new(ws_config.clone()))
             .route("/api/health", web::get().to(handler::health::health))
             .route("/api/register", web::post().to(handler::user::register))
             .route("/api/login", web::post().to(handler::user::login))
@@ -80,7 +83,11 @@ async fn main() -> io::Result<()> {
                     .route("/project", web::post().to(handler::project::create))
                     .service(
                         web::scope("/project/{id}")
-                            .route("", web::get().to(handler::project::find_by_id)),
+                            .route("", web::get().to(handler::project::find_by_id))
+                            .route(
+                                "/file/{file_id}",
+                                web::put().to(handler::project::update_file),
+                            ),
                     )
                     .service(
                         web::scope("/user")

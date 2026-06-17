@@ -11,6 +11,42 @@ pub enum Error {
     Parse(config::ConfigError),
 }
 
+/// WebSocket collaboration tuning knobs.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WsConfig {
+    /// Seconds between heartbeat pings sent to clients.
+    #[serde(default = "WsConfig::default_heartbeat_interval_secs")]
+    pub heartbeat_interval_secs: u64,
+    /// Seconds of silence before a client is considered timed out.
+    #[serde(default = "WsConfig::default_client_timeout_secs")]
+    pub client_timeout_secs: u64,
+    /// Seconds between CRDT-to-MongoDB persistence flushes.
+    #[serde(default = "WsConfig::default_persist_interval_secs")]
+    pub persist_interval_secs: u64,
+}
+
+impl WsConfig {
+    fn default_heartbeat_interval_secs() -> u64 {
+        5
+    }
+    fn default_client_timeout_secs() -> u64 {
+        10
+    }
+    fn default_persist_interval_secs() -> u64 {
+        3
+    }
+}
+
+impl Default for WsConfig {
+    fn default() -> Self {
+        Self {
+            heartbeat_interval_secs: Self::default_heartbeat_interval_secs(),
+            client_timeout_secs: Self::default_client_timeout_secs(),
+            persist_interval_secs: Self::default_persist_interval_secs(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     cors: Option<CorsConfig>,
@@ -18,6 +54,8 @@ pub struct Config {
     pub db_name: String,
     pub address: Vec<String>,
     pub jwt_secret: String,
+    #[serde(default)]
+    pub ws: WsConfig,
 }
 
 impl Config {

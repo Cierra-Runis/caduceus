@@ -6,3 +6,7 @@ db_name: caduceus_test
 address:
   - localhost:8080
 jwt_secret: vBr6PyDyrLLLZbwUzDiW
+ws:
+  heartbeat_interval_secs: 5
+  client_timeout_secs: 10
+  persist_interval_secs: 3
