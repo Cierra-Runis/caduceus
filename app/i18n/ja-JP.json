@@ -82,6 +82,9 @@
     "welcome": "ようこそ、{username}！"
   },
   "Project": {
+    "save": {
+      "failed": "{path} の保存に失敗しました"
+    },
     "title": "プロジェクト：{name}",
     "ws": {
       "closed": "WebSocket 接続が閉じられました",

@@ -82,6 +82,9 @@
     "welcome": "Welcome, {username}!"
   },
   "Project": {
+    "save": {
+      "failed": "Failed to save {path}"
+    },
     "title": "Project: {name}",
     "ws": {
       "closed": "WebSocket connection closed",
