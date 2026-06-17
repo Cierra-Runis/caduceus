@@ -37,6 +37,7 @@ const eslintPluginBetterTailwindCssConfig = {
   rules: {
     ...eslintPluginBetterTailwindCss.configs['recommended-warn'].rules,
     ...eslintPluginBetterTailwindCss.configs['recommended-error'].rules,
+    "better-tailwindcss/enforce-consistent-line-wrapping": "off",
   },
   settings: {
     'better-tailwindcss': {
