@@ -14,8 +14,9 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use yrs::{
-    Doc, GetString, ReadTxn, Text, Transact,
+    ClientID, Doc, GetString, ReadTxn, Text, Transact,
     sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
+    updates::decoder::Decode as _,
     updates::encoder::{Encode, Encoder, EncoderV1},
 };
 
@@ -276,6 +277,10 @@ impl ProjectServer {
 struct RoomState {
     awareness: Awareness,
     conns: HashMap<ObjectId, UnboundedSender<Vec<u8>>>,
+    /// Which connection last reported each awareness client id, so a
+    /// connection's cursor/presence can be retracted when it leaves instead
+    /// of lingering as a ghost participant (see `handle_data`/`Leave`).
+    client_owner: HashMap<ClientID, ObjectId>,
     /// path -> file id, for writing text snapshots back to the right file.
     files: HashMap<String, ObjectId>,
     /// Last text persisted per path, to skip unchanged files.
@@ -301,6 +306,7 @@ impl RoomState {
         RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
+            client_owner: HashMap::new(),
             files,
             last: HashMap::new(),
         }
@@ -338,6 +344,29 @@ async fn room_manager(
                     Some(Command::Leave { project_id, conn_id }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
                             room.conns.remove(&conn_id);
+
+                            // Retract this connection's awareness state (cursor,
+                            // presence) so peers drop it immediately, rather than
+                            // leaving a ghost participant until the process
+                            // restarts (the room itself is kept alive with no
+                            // connections, see below).
+                            let orphaned: Vec<_> = room
+                                .client_owner
+                                .iter()
+                                .filter(|(_, owner)| **owner == conn_id)
+                                .map(|(client_id, _)| *client_id)
+                                .collect();
+                            if !orphaned.is_empty() {
+                                for client_id in &orphaned {
+                                    room.client_owner.remove(client_id);
+                                    room.awareness.remove_state(*client_id);
+                                }
+                                if let Ok(update) = room.awareness.update_with_clients(orphaned) {
+                                    let msg = YMessage::Awareness(update).encode_v1();
+                                    broadcast(room, conn_id, &msg);
+                                }
+                            }
+
                             if room.conns.is_empty() {
                                 // Keep the room (and its CRDT document) in memory
                                 // even with no connections. Re-deriving the doc
@@ -394,6 +423,14 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
         broadcast(room, conn_id, &msg);
     }
     if is_awareness {
+        // Track which connection last reported each awareness client id, so
+        // it can be retracted if this connection disconnects without
+        // reporting a `null` state itself (e.g. a crash or dropped socket).
+        if let Ok(YMessage::Awareness(update)) = YMessage::decode_v1(&data) {
+            for client_id in update.clients.keys() {
+                room.client_owner.insert(*client_id, conn_id);
+            }
+        }
         broadcast(room, conn_id, &data);
     }
 }
