@@ -12,10 +12,10 @@ export const env = createEnv({
   },
   server: {
     ANALYZE: z
-      .string()
+      .string().trim()
       .optional()
       .transform((val) => val === 'true'),
-    JWT_SECRET: z.string().nonempty(),
+    JWT_SECRET: z.string().trim().nonempty(),
     NODE_ENV: z.enum(['development', 'test', 'production']),
   },
 });

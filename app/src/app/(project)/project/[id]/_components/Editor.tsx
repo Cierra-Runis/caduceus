@@ -1,7 +1,7 @@
 'use client';
 
 import MonacoEditor from '@monaco-editor/react';
-import { editor } from 'monaco-editor/esm/vs/editor/editor.api';
+import { editor } from 'monaco-editor';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 import { MonacoBinding } from 'y-monaco';

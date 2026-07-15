@@ -10,16 +10,13 @@ import eslintPluginBetterTailwindCss from 'eslint-plugin-better-tailwindcss';
 /// https://github.com/azat-io/eslint-plugin-perfectionist
 /// ESLint plugin for sorting various data such as objects, imports, types, enums, JSX props, etc.
 import eslintPluginPerfectionist from 'eslint-plugin-perfectionist';
-/// https://github.com/marcalexiei/eslint-plugin-zod-x
+/// https://github.com/marcalexiei/eslint-zod
 /// ESLint plugin that adds custom linting rules to enforce best practices when using Zod.
-import eslintPluginZodX from 'eslint-plugin-zod-x';
+import eslintPluginZod from 'eslint-plugin-zod';
 /// https://typescript-eslint.io/getting-started
 /// Powerful static analysis for JavaScript and TypeScript.
 import { defineConfig } from 'eslint/config';
 import eslintPluginTypeScript from 'typescript-eslint';
-
-/// FIXME: https://github.com/vercel/next.js/issues/73655#issuecomment-3344699670
-const { flatConfig: eslintPluginNextFlatConfig } = eslintPluginNext;
 
 const eslintPluginBetterTailwindCssConfig = {
   files: ['**/*.{jsx,tsx}'],
@@ -63,6 +60,6 @@ export default defineConfig([
   eslintPluginTypeScript.configs.stylistic,
   eslintPluginBetterTailwindCssConfig,
   eslintPluginPerfectionist.configs['recommended-alphabetical'],
-  eslintPluginNextFlatConfig.recommended,
-  eslintPluginZodX.configs.recommended,
+  eslintPluginNext.configs.recommended,
+  eslintPluginZod.configs.recommended,
 ]);

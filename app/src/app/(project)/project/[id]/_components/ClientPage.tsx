@@ -1,11 +1,11 @@
 'use client';
 
 import { GripVerticalIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  ImperativePanelHandle,
-  PanelGroup,
-  PanelResizeHandle,
+    Group,
+    Separator,
+    usePanelRef,
 } from 'react-resizable-panels';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
@@ -19,9 +19,9 @@ import { Sidebar } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
-  const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
-  const editorPanelRef = useRef<ImperativePanelHandle>(null);
-  const previewPanelRef = useRef<ImperativePanelHandle>(null);
+  const sidebarPanelRef = usePanelRef();
+  const editorPanelRef = usePanelRef();
+  const previewPanelRef = usePanelRef();
 
   // One Y.Doc per project; each text file is a Y.Text keyed by its path. The
   // doc is pure JS (SSR-safe); the WebSocket provider is browser-only, so it is
@@ -67,7 +67,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   return (
     <div className='flex h-screen'>
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
-      <PanelGroup direction='horizontal'>
+      <Group orientation='horizontal'>
         <SidebarPanel
           entry={entry}
           focus={focus}
@@ -75,24 +75,24 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           paths={textPaths}
           sidebarPanelRef={sidebarPanelRef}
         />
-        <PanelResizeHandle className='flex w-4 items-center justify-center'>
+        <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
-        </PanelResizeHandle>
+        </Separator>
         <EditorPanel
           editorPanelRef={editorPanelRef}
           path={focus}
           provider={provider}
           ydoc={ydoc}
         />
-        <PanelResizeHandle className='flex w-4 items-center justify-center'>
+        <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
-        </PanelResizeHandle>
+        </Separator>
         <PreviewPanel
           entryPath={entry}
           files={files}
           previewPanelRef={previewPanelRef}
         />
-      </PanelGroup>
+      </Group>
     </div>
   );
 }

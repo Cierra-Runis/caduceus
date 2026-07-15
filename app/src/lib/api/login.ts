@@ -6,17 +6,17 @@ import { UserSchema } from '../types/user';
 export const useLoginRequestSchema = () => {
   const t = useTranslations('Login.validation');
   return z.object({
-    password: z.string(t('password')).nonempty(t('password')),
-    username: z.string(t('username')).nonempty(t('username')),
+    password: z.string(t('password')).trim().nonempty(t('password')),
+    username: z.string(t('username')).trim().nonempty(t('username')),
   });
 };
 
 export type LoginRequest = z.infer<ReturnType<typeof useLoginRequestSchema>>;
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;
 export const LoginResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: z.object({
-    token: z.string(),
+    token: z.string().trim(),
     user: UserSchema,
   }),
 });

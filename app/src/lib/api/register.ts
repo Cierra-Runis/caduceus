@@ -8,17 +8,17 @@ export const useRegisterRequestSchema = () => {
   return z
     .object({
       confirmPassword: z
-        .string(t('confirmPassword'))
+        .string(t('confirmPassword')).trim()
         .nonempty(t('confirmPassword')),
-      nickname: z.string().optional(),
+      nickname: z.string().trim().optional(),
       password: z
-        .string(t('password'))
+        .string(t('password')).trim()
         .regex(
           /^(?=.{15,}$)|(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/,
           t('password'),
         ),
       username: z
-        .string(t('username'))
+        .string(t('username')).trim()
         .regex(/^(?!-)[a-zA-Z0-9-]{1,39}(?<!-)$/, t('username')),
     })
     .refine((data) => data.password === data.confirmPassword, {
@@ -32,9 +32,9 @@ export type RegisterRequest = z.infer<
 >;
 export type RegisterResponse = z.infer<typeof RegisterResponseSchema>;
 export const RegisterResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: z.object({
-    token: z.string(),
+    token: z.string().trim(),
     user: UserSchema,
   }),
 });

@@ -9,13 +9,13 @@ export type CreateProjectRequest = {
 } & z.infer<typeof CreateProjectRequestSchema>;
 export const CreateProjectRequestSchema = z.object({
   name: z
-    .string('Project name is required')
+    .string('Project name is required').trim()
     .nonempty('Project name is required'),
 });
 
 export type CreateProjectResponse = z.infer<typeof CreateProjectResponseSchema>;
 export const CreateProjectResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: ProjectSchema,
 });
 
@@ -23,14 +23,14 @@ export const CreateProjectResponseSchema = z.object({
 // the detail payload with the full file tree and inlined content.
 export type ProjectDetailResponse = z.infer<typeof ProjectDetailResponseSchema>;
 export const ProjectDetailResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: ProjectDetailSchema,
 });
 
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
 export const UpdateProjectRequestSchema = z.object({
-  name: z.string().nonempty('Project name is required'),
-  owner_id: z.string(),
+  name: z.string().trim().nonempty('Project name is required'),
+  owner_id: z.string().trim(),
   owner_type: z.enum(['team', 'user']),
 });
 
@@ -38,10 +38,10 @@ export const UpdateProjectRequestSchema = z.object({
 // freshly bumped version/timestamp.
 export type UpdateFileResponse = z.infer<typeof UpdateFileResponseSchema>;
 export const UpdateFileResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: z.object({
-    id: z.string(),
-    updated_at: z.string().transform((str) => new Date(str)),
+    id: z.string().trim(),
+    updated_at: z.string().trim().transform((str) => new Date(str)),
     version: z.number(),
   }),
 });

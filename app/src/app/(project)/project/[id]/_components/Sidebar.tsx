@@ -1,22 +1,22 @@
 'use client';
 
 import {
-  ArchiveIcon,
-  EditIcon,
-  HomeIcon,
-  MapIcon,
-  SearchIcon,
-  SettingsIcon,
+    ArchiveIcon,
+    EditIcon,
+    HomeIcon,
+    MapIcon,
+    SearchIcon,
+    SettingsIcon,
 } from 'lucide-react';
 import NextLink from 'next/link';
 import { RefObject, useCallback } from 'react';
-import { ImperativePanelHandle } from 'react-resizable-panels';
+import { PanelImperativeHandle } from 'react-resizable-panels';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export interface SidebarProps {
-  sidebarPanelRef: RefObject<ImperativePanelHandle | null>;
+  sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
 export function Sidebar({ sidebarPanelRef }: SidebarProps) {

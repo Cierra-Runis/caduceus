@@ -4,12 +4,12 @@ import { ProjectSchema } from '@/lib/types/project';
 import { TeamSchema } from '@/lib/types/team';
 
 export const CreateTeamRequestSchema = z.object({
-  name: z.string('Team name is required').nonempty('Team name is required'),
+  name: z.string('Team name is required').trim().nonempty('Team name is required'),
 });
 export type CreateTeamRequest = z.infer<typeof CreateTeamRequestSchema>;
 
 export const CreateTeamResponseSchema = z.object({
-  message: z.string(),
+  message: z.string().trim(),
   payload: TeamSchema,
 });
 export type CreateTeamResponse = z.infer<typeof CreateTeamResponseSchema>;

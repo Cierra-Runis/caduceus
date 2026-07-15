@@ -2,7 +2,7 @@
 
 import { FileIcon } from 'lucide-react';
 import { RefObject } from 'react';
-import { ImperativePanelHandle, Panel } from 'react-resizable-panels';
+import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
 import { cn } from '@/lib/utils';
 
@@ -13,7 +13,7 @@ export interface SidebarPanelProps {
   focus: string;
   onSelect: (path: string) => void;
   paths: string[];
-  sidebarPanelRef: RefObject<ImperativePanelHandle | null>;
+  sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
 export function SidebarPanel({
@@ -29,8 +29,7 @@ export function SidebarPanel({
       defaultSize={0}
       id='sidebar'
       minSize={10}
-      order={0}
-      ref={sidebarPanelRef}
+      panelRef={sidebarPanelRef}
     >
       <ul className='flex flex-col py-2'>
         {paths.map((path) => (

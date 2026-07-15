@@ -1,5 +1,5 @@
 use bcrypt::BcryptError;
-use bcrypt::{non_truncating_hash, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, non_truncating_hash};
 use bson::oid::ObjectId;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,8 @@ use crate::repo::project::ProjectRepo;
 use crate::repo::team::TeamRepo;
 use crate::repo::user::UserRepo;
 
-pub struct UserService<R: UserRepo, T: TeamRepo, P: ProjectRepo> {
-    pub user_repo: R,
+pub struct UserService<U: UserRepo, T: TeamRepo, P: ProjectRepo> {
+    pub user_repo: U,
     pub team_repo: T,
     pub project_repo: P,
     pub secret: String,

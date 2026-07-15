@@ -17,7 +17,7 @@ const publicRoutes = ['/login', '/register'];
 //
 // The middleware checks the user's authentication status based on a JWT stored in cookies
 // and redirects them accordingly.
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   // Decrypt the jwt from the cookie

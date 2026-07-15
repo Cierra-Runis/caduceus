@@ -1,14 +1,14 @@
 'use client';
 
 import { RefObject, useEffect, useRef, useState } from 'react';
-import { ImperativePanelHandle, Panel } from 'react-resizable-panels';
+import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
 import { compileProject } from '@/lib/typst';
 
 export interface PreviewPanelProps {
   entryPath: null | string;
   files: Record<string, string>;
-  previewPanelRef: RefObject<ImperativePanelHandle | null>;
+  previewPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
 // Debounced client-side compile loop: project files -> typst.ts WASM -> SVG.
@@ -58,8 +58,7 @@ export function PreviewPanel({
       defaultSize={50}
       id='preview'
       minSize={20}
-      order={2}
-      ref={previewPanelRef}
+      panelRef={previewPanelRef}
     >
       <div className='h-full overflow-auto p-4'>
         {error ? (
