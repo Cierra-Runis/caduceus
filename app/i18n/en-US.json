@@ -82,6 +82,9 @@
     "welcome": "Welcome, {username}!"
   },
   "Project": {
+    "presence": {
+      "online": "{count} online"
+    },
     "save": {
       "failed": "Failed to save {path}"
     },

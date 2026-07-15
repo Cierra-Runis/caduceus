@@ -82,6 +82,9 @@
     "welcome": "你好呀，{username}！"
   },
   "Project": {
+    "presence": {
+      "online": "{count} 人在线"
+    },
     "save": {
       "failed": "保存 {path} 失败"
     },

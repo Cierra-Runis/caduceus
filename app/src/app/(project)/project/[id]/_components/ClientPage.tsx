@@ -10,10 +10,13 @@ import {
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
+import { useUserMe } from '@/hooks/api/user/me';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
+import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
 
 import { EditorPanel } from './EditorPanel';
+import { PresenceBar } from './PresenceBar';
 import { PreviewPanel } from './PreviewPanel';
 import { Sidebar } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
@@ -22,6 +25,18 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   const sidebarPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
   const previewPanelRef = usePanelRef();
+
+  const { data: me } = useUserMe();
+  const localUser = useMemo<null | PresenceUser>(() => {
+    const user = me?.payload;
+    if (!user) return null;
+    return {
+      avatarUri: user.avatar_uri,
+      color: presenceColor(user.id),
+      id: user.id,
+      name: user.nickname || user.username,
+    };
+  }, [me]);
 
   // One Y.Doc per project; each text file is a Y.Text keyed by its path. The
   // doc is pure JS (SSR-safe); the WebSocket provider is browser-only, so it is
@@ -50,6 +65,22 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     return () => ws.destroy();
   }, [project.id, ydoc]);
 
+  // Publish who we are on the shared awareness map, so peers can render our
+  // avatar/cursor. Waits on the profile fetch, so a slow `user/me` doesn't
+  // block the provider from connecting.
+  useEffect(() => {
+    if (!provider || !localUser) return;
+    provider.awareness.setLocalStateField('user', localUser);
+  }, [provider, localUser]);
+
+  // Keep remote cursor/selection decorations (rendered by y-monaco from
+  // awareness, see Editor.tsx) colored and labeled. Lives here rather than in
+  // Editor.tsx because it only needs the provider, not the focused file.
+  useEffect(() => {
+    if (!provider) return;
+    return syncRemoteCursorStyles(provider.awareness);
+  }, [provider]);
+
   // Mirror the CRDT text into React state for the preview compiler. Updates
   // arrive once the provider syncs the server-seeded content and on every edit.
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -65,7 +96,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   }, [ydoc, textPaths]);
 
   return (
-    <div className='flex h-screen'>
+    <div className='relative flex h-screen'>
+      <div className='absolute top-2 right-2 z-10'>
+        <PresenceBar me={localUser} provider={provider} />
+      </div>
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <Group orientation='horizontal'>
         <SidebarPanel

@@ -82,6 +82,9 @@
     "welcome": "ようこそ、{username}！"
   },
   "Project": {
+    "presence": {
+      "online": "{count} 人がオンライン"
+    },
     "save": {
       "failed": "{path} の保存に失敗しました"
     },
