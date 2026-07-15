@@ -4,16 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-actix-ws = "0.3.0"
+actix-ws = "0.4.0"
 actix-web = "4"
 actix-cors = "0.7.1"
 async-trait = "0.1.89"
 bson = { version = "2.15.0", features = ["chrono-0_4", "time-0_3"] }
-bcrypt = "0.17.1"
+bcrypt = "0.19.2"
 config = "0.15.15"
 derive_more = "2.0.1"
 futures-util = "0.3"
-jsonwebtoken = "9.3.1"
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["use_pem", "rust_crypto"] }
 log = "0.4.28"
 mongodb = "3.2.5"
 regex = "1.11.2"
@@ -29,9 +29,9 @@ yrs = "0.27.2"
 
 [dev-dependencies]
 actix-rt = "2.10.1"
-httpmock = "0.7.0"
-mockall = "0.13.1"
-reqwest = { version = "0.12.15", features = ["json", "cookies"] }
+httpmock = "0.8.3"
+mockall = "0.15.0"
+reqwest = { version = "0.13.4", features = ["json", "cookies"] }
 serial_test = "3.2.0"
 tokio-test = "0.4.4"
 
