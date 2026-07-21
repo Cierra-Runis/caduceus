@@ -1,0 +1,16 @@
+// GENERATED FILE — DO NOT EDIT.
+// Emitted by openapi-zod-client from docs/openapi.json (which is itself
+// generated from the Rust server; see server/src/openapi.rs).
+// Regenerate with `pnpm codegen:api`.
+/* eslint-disable */
+import { z } from "zod";
+
+{{#each schemas}}
+const {{@key}} = {{{this}}};
+{{/each}}
+
+export const schemas = {
+{{#each schemas}}
+	{{@key}},
+{{/each}}
+};

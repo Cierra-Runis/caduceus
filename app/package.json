@@ -54,8 +54,10 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-zod": "^4.7.1",
     "monaco-editor": "^0.55.1",
+    "openapi-zod-client": "^1.18.3",
     "prettier": "^3.9.5",
     "tailwindcss": "^4.3.2",
+    "tsx": "^4.23.1",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.64.0"
   },
@@ -64,10 +66,12 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "codegen:api": "tsx scripts/codegen-api.ts",
     "dev": "next dev --turbopack",
     "i18n:check": "i18n-check -s en-US --locales ./messages",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "test:api-contract": "tsx scripts/codegen-api.ts --check && tsx scripts/check-api-drift.ts"
   },
   "type": "module",
   "version": "0.1.0"
