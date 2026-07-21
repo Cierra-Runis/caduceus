@@ -1,0 +1,45 @@
+name: API Contract
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'app/**'
+      - 'docs/openapi.json'
+      - '.github/workflows/api-contract.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'app/**'
+      - 'docs/openapi.json'
+      - '.github/workflows/api-contract.yml'
+
+jobs:
+  contract:
+    name: Generated schemas in sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # https://github.com/pnpm/action-setup — version read from packageManager
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: pnpm install --frozen-lockfile
+
+      - name: Check generated schemas and hand-written schema drift
+        working-directory: ./app
+        run: pnpm test:api-contract
