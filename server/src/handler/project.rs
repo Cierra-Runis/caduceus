@@ -83,6 +83,26 @@ pub async fn find_by_id(
     }
 }
 
+/// Clone a project the caller can access into a new, independent project.
+/// Access is enforced inside `ProjectService::duplicate` itself (mirroring
+/// `update_file`), so there is no separate check here.
+pub async fn duplicate(
+    id: actix_web::web::Path<String>,
+    data: actix_web::web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    match data.project_service.duplicate(project_id, user.sub).await {
+        Ok(project) => {
+            let response = ApiResponse::success("Project duplicated successfully", project);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct UpdateFileRequest {
     pub text: String,
