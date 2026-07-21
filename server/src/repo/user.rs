@@ -69,39 +69,82 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_mongo_user_repo() {
+    async fn test_repo() -> MongoUserRepo {
         let config = config::Config::load("config/test.yaml").unwrap();
-        let repo = MongoUserRepo {
-            collection: mongodb::Client::with_uri_str(config.mongo_uri)
-                .await
-                .unwrap()
-                .database("test_db")
-                .collection("users"),
-        };
+        let client = mongodb::Client::with_uri_str(config.mongo_uri)
+            .await
+            .unwrap();
+        MongoUserRepo {
+            collection: client.database(&config.db_name).collection("users"),
+        }
+    }
 
-        let user = User {
+    fn new_user() -> User {
+        User {
             id: ObjectId::new(),
-            username: ObjectId::new().to_hex(),
+            username: format!("test_user_{}", ObjectId::new().to_hex()),
             nickname: "Test User".to_string(),
             password: "hashed_password".to_string(),
             avatar_uri: None,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
-        };
+        }
+    }
 
-        // Test create
-        let created_user = repo.create(user.clone()).await.unwrap();
-        assert_eq!(created_user.username, user.username);
+    async fn cleanup(repo: &MongoUserRepo, id: ObjectId) {
+        let _ = repo
+            .collection
+            .delete_one(doc! { user::FIELD_ID: id })
+            .await;
+    }
 
-        // Test find_by_id
-        let found_user = repo.find_by_id(created_user.id).await.unwrap();
-        assert!(found_user.is_some());
-        assert_eq!(found_user.unwrap().username, user.username);
+    #[tokio::test]
+    async fn test_create_and_find_by_id() {
+        let repo = test_repo().await;
+        let user = new_user();
 
-        // Test find_by_username
-        let found_user = repo.find_by_username(&user.username).await.unwrap();
-        assert!(found_user.is_some());
-        assert_eq!(found_user.unwrap().id, user.id);
+        let created = repo.create(user.clone()).await.unwrap();
+        assert_eq!(created.id, user.id);
+        assert_eq!(created.username, user.username);
+
+        let found = repo.find_by_id(user.id).await.unwrap();
+        assert!(found.is_some());
+        let found = found.unwrap();
+        assert_eq!(found.id, user.id);
+        assert_eq!(found.username, user.username);
+        assert_eq!(found.nickname, user.nickname);
+        assert_eq!(found.password, user.password);
+
+        cleanup(&repo, user.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_find_by_id_not_found() {
+        let repo = test_repo().await;
+        let found = repo.find_by_id(ObjectId::new()).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_and_find_by_username() {
+        let repo = test_repo().await;
+        let user = new_user();
+        repo.create(user.clone()).await.unwrap();
+
+        let found = repo.find_by_username(&user.username).await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, user.id);
+
+        cleanup(&repo, user.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_find_by_username_not_found() {
+        let repo = test_repo().await;
+        let found = repo
+            .find_by_username(&format!("nonexistent_{}", ObjectId::new().to_hex()))
+            .await
+            .unwrap();
+        assert!(found.is_none());
     }
 }
