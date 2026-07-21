@@ -5,8 +5,7 @@ use server::{
     AppState,
     config::Config,
     database::Database,
-    handler::{self, ws::ProjectServer},
-    middleware::jwt::JwtMiddleware,
+    handler::ws::ProjectServer,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
 };
@@ -71,40 +70,7 @@ async fn main() -> io::Result<()> {
             .app_data(data.clone())
             .app_data(web::Data::new(project_server.clone()))
             .app_data(web::Data::new(ws_config.clone()))
-            .route("/api/health", web::get().to(handler::health::health))
-            .route("/api/register", web::post().to(handler::user::register))
-            .route("/api/login", web::post().to(handler::user::login))
-            .route("/api/logout", web::post().to(handler::user::logout))
-            .service(
-                web::scope("/api")
-                    .wrap(JwtMiddleware::new(jwt_secret.clone()))
-                    .route("/team", web::post().to(handler::team::create))
-                    .route("/team/projects", web::get().to(handler::team::projects))
-                    .route("/project", web::post().to(handler::project::create))
-                    .service(
-                        web::scope("/project/{id}")
-                            .route("", web::get().to(handler::project::find_by_id))
-                            .route(
-                                "/file/{file_id}",
-                                web::put().to(handler::project::update_file),
-                            )
-                            .route(
-                                "/duplicate",
-                                web::post().to(handler::project::duplicate),
-                            ),
-                    )
-                    .service(
-                        web::scope("/user")
-                            .route("/me", web::get().to(handler::user::me))
-                            .route("/teams", web::get().to(handler::user::teams))
-                            .route("/projects", web::get().to(handler::user::projects)),
-                    ),
-            )
-            .service(
-                web::scope("/ws")
-                    .wrap(JwtMiddleware::new(jwt_secret.clone()))
-                    .route("/project/{id}", web::get().to(handler::ws::ws)),
-            )
+            .configure(|cfg| server::routes::configure(cfg, jwt_secret.clone()))
             .wrap(actix_web::middleware::Logger::default())
     };
 

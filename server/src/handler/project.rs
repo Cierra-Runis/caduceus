@@ -130,3 +130,63 @@ pub async fn update_file(
         Err(e) => Err(e),
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use actix_web::body::to_bytes;
+
+    #[test]
+    fn test_project_service_error_status_codes() {
+        assert_eq!(
+            ProjectServiceError::UserNotFound.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ProjectServiceError::OwnerNotFound(OwnerType::User).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ProjectServiceError::OwnerNotFound(OwnerType::Team).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ProjectServiceError::ProjectNotFound.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ProjectServiceError::AccessDenied.status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ProjectServiceError::CreatorNotMatchOwner.status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ProjectServiceError::CreatorNotMemberOfTeam.status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ProjectServiceError::InvalidOwnerType.status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ProjectServiceError::Database(mongodb::error::Error::custom("boom")).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_project_service_error_response_body() {
+        let resp = ProjectServiceError::AccessDenied.error_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let body = to_bytes(resp.into_body()).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json["message"],
+            "Access denied: You do not have permission to access this project"
+        );
+        assert_eq!(json["payload"], serde_json::Value::Null);
+    }
+}

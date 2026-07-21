@@ -58,3 +58,36 @@ pub async fn projects(
         Err(e) => Err(e),
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use actix_web::{ResponseError, body::to_bytes};
+
+    #[test]
+    fn test_team_service_error_status_codes() {
+        assert_eq!(
+            TeamServiceError::UserNotFound.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            TeamServiceError::TeamNotFound.status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            TeamServiceError::Database(mongodb::error::Error::custom("boom")).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_team_service_error_response_body() {
+        let resp = TeamServiceError::TeamNotFound.error_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = to_bytes(resp.into_body()).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["message"], "Team not found");
+        assert_eq!(json["payload"], serde_json::Value::Null);
+    }
+}
