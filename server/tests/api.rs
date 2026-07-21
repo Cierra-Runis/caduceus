@@ -198,6 +198,7 @@ async fn test_project_crud_flow() {
     let files = body["payload"]["files"].as_array().unwrap();
     let entry_file = files.iter().find(|f| f["id"] == entry.as_str()).unwrap();
     assert_eq!(entry_file["content"]["kind"], "text");
+    let initial_version = entry_file["version"].as_i64().unwrap();
 
     // Update the entry file: version bumps.
     let req = test::TestRequest::put()
@@ -208,7 +209,7 @@ async fn test_project_crud_flow() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["payload"]["version"], 2);
+    assert_eq!(body["payload"]["version"], initial_version + 1);
 
     // Nonexistent file id in a real project → 404 (regression guard for the
     // array_filters bug fixed in repo::project).
