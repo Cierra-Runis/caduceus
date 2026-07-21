@@ -28,6 +28,7 @@ validator = { version = "0.20.0", features = ["derive"] }
 yrs = "0.27.2"
 
 [dev-dependencies]
+actix-http = "3.13.1"
 actix-rt = "2.10.1"
 httpmock = "0.8.3"
 mockall = "0.15.0"
