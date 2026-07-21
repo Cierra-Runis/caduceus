@@ -105,12 +105,25 @@ impl ProjectRepo for MongoProjectRepo {
 pub mod tests {
     use super::*;
     use crate::config;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use time::OffsetDateTime;
 
-    #[derive(Default)]
+    /// In-memory stand-in for [`MongoProjectRepo`]. The store sits behind an
+    /// `Arc`, so a clone is another handle to the same data — mirroring how a
+    /// cloned `mongodb::Collection` still targets the same database. Keep it
+    /// that way: a deep-copying `Clone` would let two services in one test
+    /// silently stop seeing each other's writes.
+    #[derive(Clone, Default)]
     pub struct MockProjectRepo {
-        pub projects: Mutex<Vec<Project>>,
+        pub projects: Arc<Mutex<Vec<Project>>>,
+    }
+
+    impl From<Vec<Project>> for MockProjectRepo {
+        fn from(projects: Vec<Project>) -> Self {
+            Self {
+                projects: Arc::new(Mutex::new(projects)),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -164,6 +177,18 @@ pub mod tests {
     }
 
     use crate::models::project::ProjectFile;
+
+    #[tokio::test]
+    async fn test_mock_clones_share_state() {
+        let repo = MockProjectRepo::default();
+        let clone = repo.clone();
+
+        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
+        clone.create(project.clone()).await.unwrap();
+
+        let found = repo.find_by_id(project.id).await.unwrap();
+        assert_eq!(found.map(|p| p.id), Some(project.id));
+    }
 
     async fn test_repo() -> MongoProjectRepo {
         let config = config::Config::load("config/test.yaml").unwrap();

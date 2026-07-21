@@ -43,11 +43,24 @@ pub mod tests {
     use crate::config;
 
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
-    #[derive(Default)]
+    /// In-memory stand-in for [`MongoUserRepo`]. The store sits behind an
+    /// `Arc`, so a clone is another handle to the same data — mirroring how a
+    /// cloned `mongodb::Collection` still targets the same database. Keep it
+    /// that way: a deep-copying `Clone` would let two services in one test
+    /// silently stop seeing each other's writes.
+    #[derive(Clone, Default)]
     pub struct MockUserRepo {
-        pub users: Mutex<Vec<User>>,
+        pub users: Arc<Mutex<Vec<User>>>,
+    }
+
+    impl From<Vec<User>> for MockUserRepo {
+        fn from(users: Vec<User>) -> Self {
+            Self {
+                users: Arc::new(Mutex::new(users)),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -67,6 +80,18 @@ pub mod tests {
             users.push(user.clone());
             Ok(user)
         }
+    }
+
+    #[tokio::test]
+    async fn test_mock_clones_share_state() {
+        let repo = MockUserRepo::default();
+        let clone = repo.clone();
+
+        let user = new_user();
+        clone.create(user.clone()).await.unwrap();
+
+        let found = repo.find_by_id(user.id).await.unwrap();
+        assert_eq!(found.map(|u| u.id), Some(user.id));
     }
 
     async fn test_repo() -> MongoUserRepo {

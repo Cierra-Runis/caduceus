@@ -84,22 +84,19 @@ mod tests {
     use crate::models::user::User;
     use crate::repo::project::tests::MockProjectRepo;
     use crate::repo::{team::tests::MockTeamRepo, user::tests::MockUserRepo};
-    use std::sync::Mutex;
 
     #[tokio::test]
     async fn test_create_success() {
         let service = TeamService {
-            user_repo: MockUserRepo {
-                users: Mutex::new(vec![User {
-                    id: ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
-                    username: "test_user".to_string(),
-                    nickname: "Test User".to_string(),
-                    password: "hashed_password".to_string(),
-                    avatar_uri: None,
-                    created_at: OffsetDateTime::now_utc(),
-                    updated_at: OffsetDateTime::now_utc(),
-                }]),
-            },
+            user_repo: MockUserRepo::from(vec![User {
+                id: ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
+                username: "test_user".to_string(),
+                nickname: "Test User".to_string(),
+                password: "hashed_password".to_string(),
+                avatar_uri: None,
+                created_at: OffsetDateTime::now_utc(),
+                updated_at: OffsetDateTime::now_utc(),
+            }]),
             team_repo: MockTeamRepo::default(),
             project_repo: MockProjectRepo::default(),
         };

@@ -44,11 +44,24 @@ impl TeamRepo for MongoTeamRepo {
 pub mod tests {
     use super::*;
     use crate::config;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
-    #[derive(Default)]
+    /// In-memory stand-in for [`MongoTeamRepo`]. The store sits behind an
+    /// `Arc`, so a clone is another handle to the same data — mirroring how a
+    /// cloned `mongodb::Collection` still targets the same database. Keep it
+    /// that way: a deep-copying `Clone` would let two services in one test
+    /// silently stop seeing each other's writes.
+    #[derive(Clone, Default)]
     pub struct MockTeamRepo {
-        pub teams: Mutex<Vec<Team>>,
+        pub teams: Arc<Mutex<Vec<Team>>>,
+    }
+
+    impl From<Vec<Team>> for MockTeamRepo {
+        fn from(teams: Vec<Team>) -> Self {
+            Self {
+                teams: Arc::new(Mutex::new(teams)),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -80,15 +93,25 @@ pub mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_mock_clones_share_state() {
+        let repo = MockTeamRepo::default();
+        let clone = repo.clone();
+
+        let team = new_team(vec![]);
+        clone.create(team.clone()).await.unwrap();
+
+        let found = repo.find_by_id(team.id).await.unwrap();
+        assert_eq!(found.map(|t| t.id), Some(team.id));
+    }
+
     async fn test_repo() -> MongoTeamRepo {
         let config = config::Config::load("config/test.yaml").unwrap();
         let client = mongodb::Client::with_uri_str(config.mongo_uri)
             .await
             .unwrap();
         MongoTeamRepo {
-            collection: client
-                .database(&config.db_name)
-                .collection::<Team>("teams"),
+            collection: client.database(&config.db_name).collection::<Team>("teams"),
         }
     }
 
