@@ -2,6 +2,7 @@
 
 import { DownloadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -15,11 +16,17 @@ export function DownloadProjectButton({
   ...props
 }: {
   project: Project;
-} & Omit<React.ComponentProps<typeof Button>, 'children' | 'onClick'>) {
+} & Omit<React.ComponentProps<typeof Button>, 'children'>) {
   const t = useTranslations('DownloadProject');
-  const { isMutating, trigger } = useProjectDetail();
+  const { trigger } = useProjectDetail();
+  // Tracks the whole fetch-then-compile flow, not just the network step: the
+  // WASM compile (`compileProjectToPdf`) can run long after `trigger`
+  // resolves, and the button must keep showing "busy" for all of it or a
+  // slow/stuck compile looks identical to nothing having happened.
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const download = async () => {
+    setIsDownloading(true);
     try {
       const { payload } = await trigger(project.id);
       const pdf = await compileProjectToPdf(
@@ -31,12 +38,25 @@ export function DownloadProjectButton({
       toast.error(t('failed'), {
         description: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      setIsDownloading(false);
     }
   };
 
   return (
-    <Button disabled={isMutating} onClick={download} {...props}>
-      {isMutating ? <Spinner /> : <DownloadIcon />}
+    // `props` spreads first: this is rendered via `TooltipTrigger asChild`,
+    // which injects its own `onClick`/`ref`/focus handlers into the child's
+    // props via Slot cloning. Spreading after our explicit `onClick` would
+    // silently overwrite it, so the incoming handler is composed instead.
+    <Button
+      {...props}
+      disabled={isDownloading}
+      onClick={(event) => {
+        props.onClick?.(event);
+        void download();
+      }}
+    >
+      {isDownloading ? <Spinner /> : <DownloadIcon />}
     </Button>
   );
 }
