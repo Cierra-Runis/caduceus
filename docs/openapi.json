@@ -1,0 +1,1707 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "caduceus API",
+    "description": "REST API of the caduceus collaborative Typst editor. Protected routes authenticate via a JWT, sent either as an HttpOnly `token` cookie or an `Authorization: Bearer` header.",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_HealthPayload"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Logged in; also sets the `token` cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_AuthPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "description": "Logged out; clears the `token` cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project": {
+      "post": {
+        "tags": [
+          "project"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Project created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_ProjectPayload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid owner type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Creator does not match owner or is not a team member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Owner not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}": {
+      "get": {
+        "tags": [
+          "project"
+        ],
+        "operationId": "find_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Project id (24-char hex ObjectId)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project with full file tree and inlined text content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_ProjectDetailPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No access to this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "project"
+        ],
+        "summary": "Clone a project the caller can access into a new, independent project.\nAccess is enforced inside `ProjectService::duplicate` itself (mirroring\n`update_file`), so there is no separate check here.",
+        "operationId": "duplicate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Source project id (24-char hex ObjectId)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The newly created copy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_ProjectPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No access to the source project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/file/{file_id}": {
+      "put": {
+        "tags": [
+          "project"
+        ],
+        "operationId": "update_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Project id (24-char hex ObjectId)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "description": "File id (24-char hex ObjectId)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File saved; returns the bumped version and timestamp",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_UpdateFilePayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No access to this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/register": {
+      "post": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "User registered; also sets the `token` cookie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_AuthPayload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Password too long",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Username already taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/team": {
+      "post": {
+        "tags": [
+          "team"
+        ],
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Team created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_TeamPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Creator not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/team/projects": {
+      "get": {
+        "tags": [
+          "team"
+        ],
+        "operationId": "projects",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Team id (24-char hex ObjectId)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects owned by the team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_Vec_ProjectPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/me": {
+      "get": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "The current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_UserPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/projects": {
+      "get": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "projects",
+        "responses": {
+          "200": {
+            "description": "Projects the current user can access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_Vec_ProjectPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/teams": {
+      "get": {
+        "tags": [
+          "user"
+        ],
+        "operationId": "teams",
+        "responses": {
+          "200": {
+            "description": "Teams the current user belongs to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccess_Vec_TeamPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMessage": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for bodies\nwithout a payload: every error response, plus payload-less successes such\nas logout. `#[serde(skip_serializing_if)]` removes the `payload` key\nentirely in this case, so the wire shape is just `{ \"message\": ... }`.",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiSuccess_AuthPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "required": [
+              "user",
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "type": "string"
+              },
+              "user": {
+                "$ref": "#/components/schemas/UserPayload"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_HealthPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/HealthStatus"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_ProjectDetailPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Editor-facing payload for opening a single project. Unlike [`ProjectPayload`]\n(used by the list endpoints), this inlines text file content: the Typst\ncompiler resolves `#import`/`#image` across the *entire* file tree, not just\nthe focused tab, so the client needs the whole virtual FS up front. Lazy\nper-file loading would not serve the preview.",
+            "required": [
+              "id",
+              "name",
+              "owner_id",
+              "owner_type",
+              "creator_id",
+              "files",
+              "created_at",
+              "updated_at",
+              "entry",
+              "pinned_version"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "creator_id": {
+                "type": "string"
+              },
+              "entry": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The compile entry, as the file's id (hex). The client resolves it to a\npath against `files` — id is the stable key, path can be renamed."
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectFileDetailPayload"
+                }
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner_id": {
+                "type": "string"
+              },
+              "owner_type": {
+                "$ref": "#/components/schemas/OwnerType"
+              },
+              "pinned_version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_ProjectPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "owner_id",
+              "owner_type",
+              "creator_id",
+              "files",
+              "created_at",
+              "updated_at",
+              "entry",
+              "pinned_version"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "creator_id": {
+                "type": "string"
+              },
+              "entry": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectFilePayload"
+                }
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "owner_id": {
+                "type": "string"
+              },
+              "owner_type": {
+                "$ref": "#/components/schemas/OwnerType"
+              },
+              "pinned_version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_TeamPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "avatar_uri",
+              "creator_id",
+              "member_ids",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "avatar_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "creator_id": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "member_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "name": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_UpdateFilePayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Returned after a file content save. Just the freshly bumped version and\ntimestamp — enough for the client to track save state / optimistic\nconcurrency without echoing the text it just sent.",
+            "required": [
+              "id",
+              "version",
+              "updated_at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "version": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_UserPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "required": [
+              "id",
+              "username",
+              "nickname",
+              "avatar_uri",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "avatar_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "id": {
+                "type": "string"
+              },
+              "nickname": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "username": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_Vec_ProjectPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "owner_id",
+                "owner_type",
+                "creator_id",
+                "files",
+                "created_at",
+                "updated_at",
+                "entry",
+                "pinned_version"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "creator_id": {
+                  "type": "string"
+                },
+                "entry": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectFilePayload"
+                  }
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "owner_id": {
+                  "type": "string"
+                },
+                "owner_type": {
+                  "$ref": "#/components/schemas/OwnerType"
+                },
+                "pinned_version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ApiSuccess_Vec_TeamPayload": {
+        "type": "object",
+        "description": "Doc-only mirror of [`crate::models::response::ApiResponse`] for responses\nthat always carry a payload. `ApiResponse.payload` is an `Option` only so\none struct can serve both cases; on the wire a success body is always\n`{ \"message\": ..., \"payload\": ... }`, which is what this schema states\n(a `ToSchema` derive on the real struct would wrongly mark `payload`\noptional and nullable). A test below pins this equivalence.",
+        "required": [
+          "message",
+          "payload"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "avatar_uri",
+                "creator_id",
+                "member_ids",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "avatar_uri": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "creator_id": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "member_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "name": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AuthPayload": {
+        "type": "object",
+        "required": [
+          "user",
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserPayload"
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "owner_id",
+          "owner_type",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_type": {
+            "$ref": "#/components/schemas/OwnerType"
+          }
+        }
+      },
+      "CreateTeamRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "FileContentPayload": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "storageKey",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "binary"
+                ]
+              },
+              "storageKey": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "Wire form of [`FileContent`]. Text is inlined so the compiler can use it\nimmediately; a binary stays a reference (`storageKey`) — its bytes are\nserved separately once asset delivery lands (M3)."
+      },
+      "FileKind": {
+        "type": "string",
+        "enum": [
+          "text",
+          "binary"
+        ]
+      },
+      "HealthPayload": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        }
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "healthy"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "OwnerType": {
+        "type": "string",
+        "enum": [
+          "user",
+          "team"
+        ]
+      },
+      "ProjectDetailPayload": {
+        "type": "object",
+        "description": "Editor-facing payload for opening a single project. Unlike [`ProjectPayload`]\n(used by the list endpoints), this inlines text file content: the Typst\ncompiler resolves `#import`/`#image` across the *entire* file tree, not just\nthe focused tab, so the client needs the whole virtual FS up front. Lazy\nper-file loading would not serve the preview.",
+        "required": [
+          "id",
+          "name",
+          "owner_id",
+          "owner_type",
+          "creator_id",
+          "files",
+          "created_at",
+          "updated_at",
+          "entry",
+          "pinned_version"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creator_id": {
+            "type": "string"
+          },
+          "entry": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The compile entry, as the file's id (hex). The client resolves it to a\npath against `files` — id is the stable key, path can be renamed."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectFileDetailPayload"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_type": {
+            "$ref": "#/components/schemas/OwnerType"
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectFileDetailPayload": {
+        "type": "object",
+        "description": "A single file with its content inlined, for the editor's initial load.",
+        "required": [
+          "id",
+          "path",
+          "content",
+          "size",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/FileContentPayload"
+          },
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProjectFilePayload": {
+        "type": "object",
+        "description": "File metadata for listings. Deliberately does NOT inline `content`: the\ndirectory/tree view only needs path + kind, and the body is fetched\nper-file when a tab is opened.",
+        "required": [
+          "id",
+          "path",
+          "kind",
+          "size",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FileKind"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProjectPayload": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "owner_id",
+          "owner_type",
+          "creator_id",
+          "files",
+          "created_at",
+          "updated_at",
+          "entry",
+          "pinned_version"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creator_id": {
+            "type": "string"
+          },
+          "entry": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectFilePayload"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_type": {
+            "$ref": "#/components/schemas/OwnerType"
+          },
+          "pinned_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "TeamPayload": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "avatar_uri",
+          "creator_id",
+          "member_ids",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "avatar_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creator_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "member_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UpdateFilePayload": {
+        "type": "object",
+        "description": "Returned after a file content save. Just the freshly bumped version and\ntimestamp — enough for the client to track save state / optimistic\nconcurrency without echoing the text it just sent.",
+        "required": [
+          "id",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "UpdateFileRequest": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "UserPayload": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "nickname",
+          "avatar_uri",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "avatar_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Service health"
+    },
+    {
+      "name": "user",
+      "description": "Authentication and the current user"
+    },
+    {
+      "name": "team",
+      "description": "Teams"
+    },
+    {
+      "name": "project",
+      "description": "Projects and their files"
+    }
+  ]
+}

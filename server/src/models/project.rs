@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 
 use time::serde::rfc3339;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Display)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Display, utoipa::ToSchema)]
 pub enum OwnerType {
     #[serde(rename = "user")]
     User,
@@ -108,14 +108,14 @@ impl FileContent {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum FileKind {
     Text,
     Binary,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ProjectPayload {
     pub id: String,
     pub name: String,
@@ -127,14 +127,18 @@ pub struct ProjectPayload {
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
+    // `required`: serde always emits these keys (None -> null), never absent
+    #[schema(required)]
     pub entry: Option<String>,
+    // semver::Version serializes as its string form, e.g. "1.2.3"
+    #[schema(value_type = Option<String>, required)]
     pub pinned_version: Option<Version>,
 }
 
 /// File metadata for listings. Deliberately does NOT inline `content`: the
 /// directory/tree view only needs path + kind, and the body is fetched
 /// per-file when a tab is opened.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ProjectFilePayload {
     pub id: String,
     pub path: String,
@@ -184,7 +188,7 @@ impl From<ProjectFile> for ProjectFilePayload {
 /// compiler resolves `#import`/`#image` across the *entire* file tree, not just
 /// the focused tab, so the client needs the whole virtual FS up front. Lazy
 /// per-file loading would not serve the preview.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ProjectDetailPayload {
     pub id: String,
     pub name: String,
@@ -198,12 +202,14 @@ pub struct ProjectDetailPayload {
     pub updated_at: OffsetDateTime,
     /// The compile entry, as the file's id (hex). The client resolves it to a
     /// path against `files` — id is the stable key, path can be renamed.
+    #[schema(required)]
     pub entry: Option<String>,
+    #[schema(value_type = Option<String>, required)]
     pub pinned_version: Option<Version>,
 }
 
 /// A single file with its content inlined, for the editor's initial load.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ProjectFileDetailPayload {
     pub id: String,
     pub path: String,
@@ -217,7 +223,7 @@ pub struct ProjectFileDetailPayload {
 /// Wire form of [`FileContent`]. Text is inlined so the compiler can use it
 /// immediately; a binary stays a reference (`storageKey`) — its bytes are
 /// served separately once asset delivery lands (M3).
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum FileContentPayload {
     Text {
@@ -256,7 +262,7 @@ impl From<ProjectFile> for ProjectFileDetailPayload {
 /// Returned after a file content save. Just the freshly bumped version and
 /// timestamp — enough for the client to track save state / optimistic
 /// concurrency without echoing the text it just sent.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct UpdateFilePayload {
     pub id: String,
     pub version: i32,

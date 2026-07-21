@@ -35,7 +35,7 @@ pub enum UserServiceError {
     Database(mongodb::error::Error),
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 pub struct AuthPayload {
     pub user: UserPayload,
     pub token: String,

@@ -18,10 +18,12 @@ pub struct Team {
     pub updated_at: OffsetDateTime,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct TeamPayload {
     pub id: String,
     pub name: String,
+    // `required`: serde always emits the key (None -> null), it is never absent
+    #[schema(required)]
     pub avatar_uri: Option<String>,
     pub creator_id: String,
     pub member_ids: Vec<String>,

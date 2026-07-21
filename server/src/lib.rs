@@ -5,6 +5,7 @@ pub mod database;
 pub mod handler;
 pub mod middleware;
 pub mod models;
+pub mod openapi;
 pub mod repo;
 pub mod services;
 

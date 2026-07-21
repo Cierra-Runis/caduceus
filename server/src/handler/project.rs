@@ -28,14 +28,30 @@ impl ResponseError for ProjectServiceError {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, utoipa::ToSchema)]
 pub struct CreateProjectRequest {
+    // ObjectId crosses the wire as its 24-char hex form
+    #[schema(value_type = String)]
     #[serde(serialize_with = "serialize_object_id_as_hex_string")]
     pub owner_id: ObjectId,
     pub owner_type: OwnerType,
     pub name: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/project",
+    tag = "project",
+    request_body = CreateProjectRequest,
+    responses(
+        (status = 200, description = "Project created", body = crate::openapi::ApiSuccess<crate::models::project::ProjectPayload>),
+        (status = 400, description = "Invalid owner type", body = crate::openapi::ApiMessage),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 403, description = "Creator does not match owner or is not a team member", body = crate::openapi::ApiMessage),
+        (status = 404, description = "Owner not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn create(
     req: actix_web::web::Json<CreateProjectRequest>,
     data: actix_web::web::Data<crate::AppState>,
@@ -59,6 +75,21 @@ pub async fn create(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/project/{id}",
+    tag = "project",
+    params(
+        ("id" = String, Path, description = "Project id (24-char hex ObjectId)"),
+    ),
+    responses(
+        (status = 200, description = "Project with full file tree and inlined text content", body = crate::openapi::ApiSuccess<crate::models::project::ProjectDetailPayload>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 403, description = "No access to this project", body = crate::openapi::ApiMessage),
+        (status = 404, description = "Project not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn find_by_id(
     id: actix_web::web::Path<String>,
     data: actix_web::web::Data<crate::AppState>,
@@ -86,6 +117,21 @@ pub async fn find_by_id(
 /// Clone a project the caller can access into a new, independent project.
 /// Access is enforced inside `ProjectService::duplicate` itself (mirroring
 /// `update_file`), so there is no separate check here.
+#[utoipa::path(
+    post,
+    path = "/api/project/{id}/duplicate",
+    tag = "project",
+    params(
+        ("id" = String, Path, description = "Source project id (24-char hex ObjectId)"),
+    ),
+    responses(
+        (status = 200, description = "The newly created copy", body = crate::openapi::ApiSuccess<crate::models::project::ProjectPayload>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 403, description = "No access to the source project", body = crate::openapi::ApiMessage),
+        (status = 404, description = "Project not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn duplicate(
     id: actix_web::web::Path<String>,
     data: actix_web::web::Data<crate::AppState>,
@@ -103,11 +149,28 @@ pub async fn duplicate(
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, utoipa::ToSchema)]
 pub struct UpdateFileRequest {
     pub text: String,
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/project/{id}/file/{file_id}",
+    tag = "project",
+    params(
+        ("id" = String, Path, description = "Project id (24-char hex ObjectId)"),
+        ("file_id" = String, Path, description = "File id (24-char hex ObjectId)"),
+    ),
+    request_body = UpdateFileRequest,
+    responses(
+        (status = 200, description = "File saved; returns the bumped version and timestamp", body = crate::openapi::ApiSuccess<crate::models::project::UpdateFilePayload>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 403, description = "No access to this project", body = crate::openapi::ApiMessage),
+        (status = 404, description = "Project or file not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn update_file(
     path: actix_web::web::Path<(String, String)>,
     body: actix_web::web::Json<UpdateFileRequest>,

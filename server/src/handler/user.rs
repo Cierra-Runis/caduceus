@@ -33,12 +33,24 @@ impl ResponseError for UserServiceError {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/register",
+    tag = "user",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "User registered; also sets the `token` cookie", body = crate::openapi::ApiSuccess<crate::services::user::AuthPayload>),
+        (status = 400, description = "Password too long", body = crate::openapi::ApiMessage),
+        (status = 409, description = "Username already taken", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn register(
     req: web::Json<RegisterRequest>,
     data: web::Data<crate::AppState>,
@@ -69,12 +81,24 @@ pub async fn register(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/login",
+    tag = "user",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Logged in; also sets the `token` cookie", body = crate::openapi::ApiSuccess<crate::services::user::AuthPayload>),
+        (status = 401, description = "Wrong password", body = crate::openapi::ApiMessage),
+        (status = 404, description = "User not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn login(
     req: web::Json<LoginRequest>,
     data: web::Data<crate::AppState>,
@@ -105,6 +129,14 @@ pub async fn login(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/logout",
+    tag = "user",
+    responses(
+        (status = 200, description = "Logged out; clears the `token` cookie", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn logout() -> HttpResponse {
     let cookie = Cookie::build("token", "")
         .path("/")
@@ -116,6 +148,17 @@ pub async fn logout() -> HttpResponse {
     HttpResponse::Ok().cookie(cookie).json(response)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/user/teams",
+    tag = "user",
+    responses(
+        (status = 200, description = "Teams the current user belongs to", body = crate::openapi::ApiSuccess<Vec<crate::models::team::TeamPayload>>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 404, description = "User not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn teams(
     data: web::Data<crate::AppState>,
     user: UserClaims,
@@ -129,6 +172,17 @@ pub async fn teams(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/user/projects",
+    tag = "user",
+    responses(
+        (status = 200, description = "Projects the current user can access", body = crate::openapi::ApiSuccess<Vec<crate::models::project::ProjectPayload>>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 404, description = "User not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn projects(
     data: web::Data<crate::AppState>,
     user: UserClaims,
@@ -142,6 +196,17 @@ pub async fn projects(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/user/me",
+    tag = "user",
+    responses(
+        (status = 200, description = "The current user", body = crate::openapi::ApiSuccess<crate::models::user::UserPayload>),
+        (status = 401, description = "Missing or invalid JWT", body = crate::openapi::ApiMessage),
+        (status = 404, description = "User not found", body = crate::openapi::ApiMessage),
+        (status = 500, description = "Internal error", body = crate::openapi::ApiMessage),
+    )
+)]
 pub async fn me(
     data: web::Data<crate::AppState>,
     user: UserClaims,

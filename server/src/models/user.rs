@@ -27,11 +27,13 @@ pub struct User {
     pub updated_at: OffsetDateTime,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, utoipa::ToSchema)]
 pub struct UserPayload {
     pub id: String,
     pub username: String,
     pub nickname: String,
+    // `required`: serde always emits the key (None -> null), it is never absent
+    #[schema(required)]
     pub avatar_uri: Option<String>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
