@@ -83,11 +83,20 @@ impl ProjectRepo for MongoProjectRepo {
             "$inc": { "files.$[f].version": 1 },
         };
 
-        self.collection
+        let updated = self
+            .collection
             .find_one_and_update(bson::doc! { "_id": project_id }, update)
             .array_filters(vec![bson::doc! { "f._id": file_id }])
             .return_document(ReturnDocument::After)
-            .await
+            .await?;
+
+        // `array_filters` matching zero elements is not an error: the update
+        // still applies to the document (bumping the top-level `updated_at`
+        // above) and `find_one_and_update` still returns `Some`, even though
+        // nothing in `files` actually changed. Filter that case out here so a
+        // nonexistent `file_id` in an existing project is reported as `None`,
+        // same as a nonexistent project, per this method's contract.
+        Ok(updated.filter(|project| project.files.iter().any(|f| f.id == file_id)))
     }
 }
 
