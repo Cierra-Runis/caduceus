@@ -31,6 +31,9 @@
   },
   "Dashboard": {
     "createProject": "Create Project",
+    "duplicated": "Project duplicated successfully!",
+    "duplicationFailed": "Duplication Failed",
+    "duplicationSucceeded": "Duplication Successful",
     "failedToLoad": "Failed to load projects",
     "noProjects": "You have no projects. Create one to get started!",
     "yourProjects": "Your Projects"

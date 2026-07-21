@@ -6,6 +6,8 @@ import {
   CreateProjectRequest,
   CreateProjectResponse,
   CreateProjectResponseSchema,
+  DuplicateProjectResponse,
+  DuplicateProjectResponseSchema,
   ProjectDetailResponse,
   ProjectDetailResponseSchema,
 } from '@/lib/api/project';
@@ -20,10 +22,6 @@ export const useCreateProject = () =>
       ),
   );
 
-// On-demand fetch of a single project's detail (full file tree + entry). The
-// dashboard's project list only carries `ProjectPayload` summaries, so
-// anything needing file contents (e.g. compiling for download) triggers this
-// manually rather than reading it off a cached SWR key.
 export const useProjectDetail = () =>
   useSWRMutation<ProjectDetailResponse, Error, string, string>(
     'project',
@@ -31,4 +29,11 @@ export const useProjectDetail = () =>
       ProjectDetailResponseSchema.parse(
         await api.get(`${key}/${id}`).json(),
       ),
+  );
+
+export const useDuplicateProject = (id: string) =>
+  useSWRMutation<DuplicateProjectResponse, Error, string>(
+    `project/${id}/duplicate`,
+    async (key) =>
+      DuplicateProjectResponseSchema.parse(await api.post(key).json()),
   );
