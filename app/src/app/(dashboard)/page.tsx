@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
+import { DuplicateProjectButton } from '@/components/buttons/DuplicateProjectButton';
 import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -101,10 +102,13 @@ export default function Dashboard() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        {/* TODO: Implement duplicate */}
-                        <Button size='icon-sm' variant='outline'>
+                        <DuplicateProjectButton
+                          project={item}
+                          size='icon-sm'
+                          variant='outline'
+                        >
                           <CopyIcon />
-                        </Button>
+                        </DuplicateProjectButton>
                       </TooltipTrigger>
                       <TooltipContent>{t('Table.duplicate')}</TooltipContent>
                     </Tooltip>

@@ -19,6 +19,16 @@ export const CreateProjectResponseSchema = z.object({
   payload: ProjectSchema,
 });
 
+// Response for cloning a project (POST /project/{id}/duplicate): the new
+// project, owned the same way as the source, with the requester as creator.
+export type DuplicateProjectResponse = z.infer<
+  typeof DuplicateProjectResponseSchema
+>;
+export const DuplicateProjectResponseSchema = z.object({
+  message: z.string().trim(),
+  payload: ProjectSchema,
+});
+
 // Response for opening a single project in the editor (GET /project/{id}):
 // the detail payload with the full file tree and inlined content.
 export type ProjectDetailResponse = z.infer<typeof ProjectDetailResponseSchema>;
