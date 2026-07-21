@@ -43,6 +43,7 @@
     "@next/bundle-analyzer": "16.2.10",
     "@next/eslint-plugin-next": "16.2.10",
     "@tailwindcss/postcss": "^4.3.2",
+    "@testing-library/react": "^16.3.2",
     "@types/negotiator": "^0.6.4",
     "@types/node": "^26.1.1",
     "@types/react": "19.2.17",
@@ -53,11 +54,13 @@
     "eslint-plugin-perfectionist": "^5.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-zod": "^4.7.1",
+    "jsdom": "^29.1.1",
     "monaco-editor": "^0.55.1",
     "prettier": "^3.9.5",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.64.0"
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10"
   },
   "name": "app",
   "packageManager": "pnpm@10.17.0",
@@ -67,7 +70,8 @@
     "dev": "next dev --turbopack",
     "i18n:check": "i18n-check -s en-US --locales ./messages",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run"
   },
   "type": "module",
   "version": "0.1.0"

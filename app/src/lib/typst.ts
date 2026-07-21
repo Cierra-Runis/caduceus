@@ -19,6 +19,10 @@ export interface TypstSourceFile {
   text: string;
 }
 
+export function abs(path: string): string {
+  return `/${path.replace(/^\/+/, '')}`;
+}
+
 /// Compile a project's text files to an SVG string, starting from `entryPath`.
 ///
 /// The whole text tree is fed to the compiler (not just the focused file)
@@ -53,10 +57,6 @@ export async function compileProjectToPdf(
   const pdf = await $typst.pdf({ mainFilePath: abs(entryPath) });
   if (!pdf) throw new Error('Typst compiler produced no PDF output.');
   return pdf;
-}
-
-function abs(path: string): string {
-  return `/${path.replace(/^\/+/, '')}`;
 }
 
 function ensureInit() {
