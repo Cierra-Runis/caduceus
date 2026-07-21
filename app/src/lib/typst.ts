@@ -36,6 +36,25 @@ export async function compileProject(
   return $typst.svg({ mainFilePath: abs(entryPath) });
 }
 
+/// Compile a project's text files to PDF bytes, starting from `entryPath`.
+///
+/// Mirrors `compileProject`, swapping the renderer's `.svg()` for the
+/// compiler's `.pdf()`. `$typst.pdf()` types its result as possibly
+/// `undefined` (no successful document), which we surface as a thrown error
+/// so callers only ever deal with bytes or a caught failure.
+export async function compileProjectToPdf(
+  entryPath: string,
+  files: TypstSourceFile[],
+): Promise<Uint8Array> {
+  ensureInit();
+  for (const file of files) {
+    await $typst.addSource(abs(file.path), file.text);
+  }
+  const pdf = await $typst.pdf({ mainFilePath: abs(entryPath) });
+  if (!pdf) throw new Error('Typst compiler produced no PDF output.');
+  return pdf;
+}
+
 function abs(path: string): string {
   return `/${path.replace(/^\/+/, '')}`;
 }
