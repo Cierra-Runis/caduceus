@@ -38,6 +38,9 @@
     "noProjects": "You have no projects. Create one to get started!",
     "yourProjects": "Your Projects"
   },
+  "DownloadProject": {
+    "failed": "Download Failed"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "An open-source alternative to <typstApp>Typst App</typstApp>",

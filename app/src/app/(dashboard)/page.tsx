@@ -1,10 +1,11 @@
 'use client';
 
-import { CopyIcon, DownloadIcon, PlayIcon, SettingsIcon } from 'lucide-react';
+import { CopyIcon, PlayIcon, SettingsIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
+import { DownloadProjectButton } from '@/components/buttons/DownloadProjectButton';
 import { DuplicateProjectButton } from '@/components/buttons/DuplicateProjectButton';
 import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
 import { Button } from '@/components/ui/button';
@@ -93,10 +94,11 @@ export default function Dashboard() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        {/* TODO: Implement download */}
-                        <Button size='icon-sm' variant='outline'>
-                          <DownloadIcon />
-                        </Button>
+                        <DownloadProjectButton
+                          project={item}
+                          size='icon-sm'
+                          variant='outline'
+                        />
                       </TooltipTrigger>
                       <TooltipContent>{t('Table.download')}</TooltipContent>
                     </Tooltip>
