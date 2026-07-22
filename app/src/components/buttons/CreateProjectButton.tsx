@@ -20,6 +20,7 @@ import {
 import { FieldGroup } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { useCreateProject } from '@/hooks/api/project';
+import { teamProjectKey } from '@/hooks/api/team';
 import { CreateProjectRequestSchema } from '@/lib/api/project';
 
 export function CreateProjectButton({
@@ -63,7 +64,11 @@ export function CreateProjectButton({
                     description: t('created'),
                   });
                   setOpen(false);
-                  mutate(`${ownerType}/projects`);
+                  mutate(
+                    ownerType === 'team'
+                      ? teamProjectKey(ownerId)
+                      : 'user/projects',
+                  );
                 },
               },
             )

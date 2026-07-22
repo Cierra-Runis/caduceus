@@ -24,13 +24,13 @@ export const useCreateTeam = () => {
   );
 };
 
+// SWR key for a team's project list. The team id is part of the key so each
+// team gets its own cache entry, and the key doubles as the request path.
+// Mutating call sites must build the key through this helper too.
+export const teamProjectKey = (id: string) => `team/projects?id=${id}`;
+
 export const useTeamProject = ({ id }: { id: string }) =>
-  useSWR<TeamProjectResponse, HTTPError, string>('team/projects', async (key) =>
-    TeamProjectResponseSchema.parse(
-      await api
-        .get(key, {
-          searchParams: { id },
-        })
-        .json(),
-    ),
+  useSWR<TeamProjectResponse, HTTPError, string>(
+    teamProjectKey(id),
+    async (key) => TeamProjectResponseSchema.parse(await api.get(key).json()),
   );
