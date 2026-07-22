@@ -63,15 +63,11 @@ impl Default for WsConfig {
 /// ```
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageConfig {
-    Gridfs,
+    #[default]
+    GridFs,
     S3(S3Config),
-}
-
-impl Default for StorageConfig {
-    fn default() -> Self {
-        StorageConfig::Gridfs
-    }
 }
 
 /// Connection details for an S3-compatible object store (AWS S3, MinIO, …).
@@ -148,8 +144,9 @@ impl Config {
 mod tests {
     use super::*;
     use actix_web::{
-        http::{header, Method},
-        test, web, App, HttpResponse,
+        App, HttpResponse,
+        http::{Method, header},
+        test, web,
     };
     use serial_test::serial;
 
@@ -208,10 +205,11 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_client_error());
-        assert!(resp
-            .headers()
-            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
-            .is_none());
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
 
         // A plain request from an external origin must not receive any CORS
         // allow headers, so browsers deny the cross-origin read.
@@ -220,10 +218,11 @@ mod tests {
             .insert_header((header::ORIGIN, "https://attacker.example"))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp
-            .headers()
-            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
-            .is_none());
+        assert!(
+            resp.headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
     }
 
     #[actix_web::test]

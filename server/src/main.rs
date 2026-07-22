@@ -45,14 +45,12 @@ async fn main() -> io::Result<()> {
     // Resolve the binary-asset backend from config: GridFS by default (no extra
     // infrastructure), or an S3-compatible object store when configured.
     let asset_store = match &config.storage {
-        StorageConfig::Gridfs => {
-            AssetStoreKind::GridFs(GridFsAssetStore {
-                bucket: database.db.gridfs_bucket(None),
-            })
+        StorageConfig::GridFs => AssetStoreKind::GridFs(GridFsAssetStore {
+            bucket: database.db.gridfs_bucket(None),
+        }),
+        StorageConfig::S3(s3) => {
+            AssetStoreKind::S3(S3AssetStore::new(s3).expect("Failed to initialise S3 asset store"))
         }
-        StorageConfig::S3(s3) => AssetStoreKind::S3(
-            S3AssetStore::new(s3).expect("Failed to initialise S3 asset store"),
-        ),
     };
 
     let data = web::Data::new(AppState {
