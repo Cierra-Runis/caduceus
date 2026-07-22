@@ -2,29 +2,35 @@
 
 import { CloudIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useParams } from 'next/navigation';
 
 import { Badge } from '@/components/ui/badge';
 import { useUserMe } from '@/hooks/api/user/me';
 import { useUserTeams } from '@/hooks/api/user/team';
 
-// Route-aware workspace label in the middle of the navbar: the team's name
-// on a team page, the user's own name everywhere else, falling back to the
-// app name while either is still loading. `id` is `/dashboard/team/[id]`'s
-// param — the only dynamic segment under this layout — so its presence is
-// what marks a team page.
-export function Header() {
+// Workspace label in the middle of the navbar. Which variant renders for
+// which route is decided by the `@header` parallel-route slot (see
+// `../@header`), so the label itself never inspects the URL: team pages
+// mount `TeamHeader` with a compiler-checked id from their route params,
+// everything else renders `UserHeader`.
+
+export function TeamHeader({ teamId }: { teamId: string }) {
   const t = useTranslations('Layout');
-  const { id } = useParams<{ id?: string }>();
-  const { data: user } = useUserMe();
   const { data: teams } = useUserTeams();
+  const team = teams?.payload.find((team) => team.id === teamId);
+  return <HeaderBadge>{team?.name ?? t('caduceus')}</HeaderBadge>;
+}
 
-  const team = id ? teams?.payload.find((team) => team.id === id) : undefined;
+export function UserHeader() {
+  const t = useTranslations('Layout');
+  const { data: user } = useUserMe();
+  return <HeaderBadge>{user?.payload.username ?? t('caduceus')}</HeaderBadge>;
+}
 
+function HeaderBadge({ children }: { children: React.ReactNode }) {
   return (
     <Badge variant='ghost'>
       <CloudIcon className='w-[1.25em]' data-icon='inline-start' />
-      {team?.name ?? user?.payload.username ?? t('caduceus')}
+      {children}
     </Badge>
   );
 }

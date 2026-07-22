@@ -11,9 +11,7 @@ import {
   MenubarTrigger,
 } from '@/components/ui/menubar';
 
-import { Header } from './Header';
-
-export const NavBar = () => {
+export const NavBar = ({ header }: { header: React.ReactNode }) => {
   const t = useTranslations();
   return (
     <header
@@ -55,14 +53,15 @@ export const NavBar = () => {
             </MenubarContent>
           </MenubarMenu>
         </Menubar>
-        {/* Centered over the menubar; non-interactive, so let clicks pass
-            through to whatever sits underneath. */}
+        {/* The `@header` parallel-route slot, centered over the menubar;
+            non-interactive, so let clicks pass through to whatever sits
+            underneath. */}
         <div
           className={`
             pointer-events-none absolute left-1/2 -translate-x-1/2
           `}
         >
-          <Header />
+          {header}
         </div>
       </div>
     </header>
