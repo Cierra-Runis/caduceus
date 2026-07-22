@@ -274,32 +274,55 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         project_id: ObjectId,
         user_id: ObjectId,
     ) -> Result<bool, ProjectServiceError> {
-        let project = match self.project_repo.find_by_id(project_id).await {
-            Ok(Some(project)) => project,
-            Ok(None) => return Err(ProjectServiceError::ProjectNotFound),
+        match load_accessible(&self.project_repo, &self.team_repo, project_id, user_id).await {
+            Ok(_) => Ok(true),
+            Err(ProjectServiceError::AccessDenied) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// Load a project only if `user_id` is allowed to access it, returning the
+/// project itself. Shared by [`ProjectService`] and other services (e.g. asset
+/// upload/serve) so the access rule — creator, personal owner, or team member —
+/// lives in exactly one place. Returns the loaded project so callers that also
+/// need its contents don't fetch it twice.
+///
+/// Errors distinguish the cases callers care about: [`ProjectServiceError::ProjectNotFound`]
+/// (no such project), [`ProjectServiceError::AccessDenied`] (exists but not
+/// permitted), and database/dangling-team errors.
+pub async fn load_accessible<P: ProjectRepo, T: TeamRepo>(
+    project_repo: &P,
+    team_repo: &T,
+    project_id: ObjectId,
+    user_id: ObjectId,
+) -> Result<Project, ProjectServiceError> {
+    let project = match project_repo.find_by_id(project_id).await {
+        Ok(Some(project)) => project,
+        Ok(None) => return Err(ProjectServiceError::ProjectNotFound),
+        Err(e) => return Err(ProjectServiceError::Database(e)),
+    };
+
+    // The creator always has access.
+    if project.creator_id == user_id {
+        return Ok(project);
+    }
+
+    let allowed = match project.owner_type {
+        // A personally-owned project is accessible only to its owner.
+        OwnerType::User => project.owner_id == user_id,
+        // A team-owned project is accessible to any team member.
+        OwnerType::Team => match team_repo.find_by_id(project.owner_id).await {
+            Ok(Some(team)) => team.member_ids.contains(&user_id),
+            Ok(None) => return Err(ProjectServiceError::OwnerNotFound(OwnerType::Team)),
             Err(e) => return Err(ProjectServiceError::Database(e)),
-        };
+        },
+    };
 
-        // Check if user is the creator
-        if project.creator_id == user_id {
-            return Ok(true);
-        }
-
-        // Check based on owner type
-        match project.owner_type {
-            OwnerType::User => {
-                // If owner is a user, check if it's the same user
-                Ok(project.owner_id == user_id)
-            }
-            OwnerType::Team => {
-                // If owner is a team, check if user is a team member
-                match self.team_repo.find_by_id(project.owner_id).await {
-                    Ok(Some(team)) => Ok(team.member_ids.contains(&user_id)),
-                    Ok(None) => Err(ProjectServiceError::OwnerNotFound(OwnerType::Team)),
-                    Err(e) => Err(ProjectServiceError::Database(e)),
-                }
-            }
-        }
+    if allowed {
+        Ok(project)
+    } else {
+        Err(ProjectServiceError::AccessDenied)
     }
 }
 

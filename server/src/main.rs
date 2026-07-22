@@ -3,11 +3,18 @@
 use actix_web::{App, HttpServer, web};
 use server::{
     AppState,
-    config::Config,
+    config::{Config, StorageConfig},
     database::Database,
     handler::ws::ProjectServer,
-    repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
-    services::{project::ProjectService, team::TeamService, user::UserService},
+    repo::{
+        asset::{AssetStoreKind, GridFsAssetStore, S3AssetStore},
+        project::MongoProjectRepo,
+        team::MongoTeamRepo,
+        user::MongoUserRepo,
+    },
+    services::{
+        asset::AssetService, project::ProjectService, team::TeamService, user::UserService,
+    },
 };
 use std::{env, io};
 use tracing_subscriber::fmt;
@@ -35,6 +42,19 @@ async fn main() -> io::Result<()> {
         collection: database.db.collection("projects"),
     };
 
+    // Resolve the binary-asset backend from config: GridFS by default (no extra
+    // infrastructure), or an S3-compatible object store when configured.
+    let asset_store = match &config.storage {
+        StorageConfig::Gridfs => {
+            AssetStoreKind::GridFs(GridFsAssetStore {
+                bucket: database.db.gridfs_bucket(None),
+            })
+        }
+        StorageConfig::S3(s3) => AssetStoreKind::S3(
+            S3AssetStore::new(s3).expect("Failed to initialise S3 asset store"),
+        ),
+    };
+
     let data = web::Data::new(AppState {
         user_service: UserService {
             user_repo: user_repo.clone(),
@@ -51,6 +71,11 @@ async fn main() -> io::Result<()> {
             project_repo: project_repo.clone(),
             user_repo: user_repo.clone(),
             team_repo: team_repo.clone(),
+        },
+        asset_service: AssetService {
+            project_repo: project_repo.clone(),
+            team_repo: team_repo.clone(),
+            asset_store,
         },
     });
 

@@ -2,6 +2,10 @@ use actix_web::web;
 
 use crate::{handler, middleware::jwt::JwtMiddleware};
 
+/// Maximum accepted size for a single binary-asset upload (25 MiB) — comfortably
+/// covers images and fonts while bounding memory per request.
+const ASSET_UPLOAD_LIMIT: usize = 25 * 1024 * 1024;
+
 /// Register every HTTP route on the given config. Shared between the real
 /// server in `main.rs` and the API integration tests, so the routing table
 /// (paths, methods, which scopes sit behind the JWT middleware) cannot drift
@@ -24,6 +28,19 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                         .route(
                             "/file/{file_id}",
                             web::put().to(handler::project::update_file),
+                        )
+                        // Binary-asset upload accepts a raw body; raise the
+                        // extractor's payload cap (default 256 KiB) so images and
+                        // fonts fit. Scoped to this resource so other endpoints
+                        // keep the tight default.
+                        .service(
+                            web::resource("/asset")
+                                .app_data(web::PayloadConfig::new(ASSET_UPLOAD_LIMIT))
+                                .route(web::post().to(handler::asset::upload_asset)),
+                        )
+                        .route(
+                            "/asset/{file_id}",
+                            web::get().to(handler::asset::get_asset),
                         )
                         .route("/duplicate", web::post().to(handler::project::duplicate)),
                 )

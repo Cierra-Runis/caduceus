@@ -14,9 +14,16 @@ use bson::oid::ObjectId;
 use server::{
     AppState,
     config::Config,
-    repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
+    repo::{
+        asset::{AssetStoreKind, GridFsAssetStore},
+        project::MongoProjectRepo,
+        team::MongoTeamRepo,
+        user::MongoUserRepo,
+    },
     routes,
-    services::{project::ProjectService, team::TeamService, user::UserService},
+    services::{
+        asset::AssetService, project::ProjectService, team::TeamService, user::UserService,
+    },
 };
 
 async fn test_app() -> (
@@ -52,9 +59,16 @@ async fn test_app() -> (
             project_repo: project_repo.clone(),
         },
         project_service: ProjectService {
-            project_repo,
+            project_repo: project_repo.clone(),
             user_repo,
+            team_repo: team_repo.clone(),
+        },
+        asset_service: AssetService {
+            project_repo,
             team_repo,
+            asset_store: AssetStoreKind::GridFs(GridFsAssetStore {
+                bucket: db.gridfs_bucket(None),
+            }),
         },
     });
 
@@ -282,6 +296,119 @@ async fn test_project_crud_flow() {
     assert_eq!(resp.status(), 404);
     let req = test::TestRequest::get()
         .uri("/api/project/not-an-object-id")
+        .cookie(cookie)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 404);
+}
+
+#[actix_web::test]
+async fn test_asset_upload_download_flow() {
+    let (app, _config) = test_app().await;
+    let (cookie, user_id, _) = register_user(&app).await;
+
+    // Create a project to attach the asset to.
+    let req = test::TestRequest::post()
+        .uri("/api/project")
+        .cookie(cookie.clone())
+        .set_json(serde_json::json!({
+            "owner_id": user_id,
+            "owner_type": "user",
+            "name": "asset project",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let project_id = body["payload"]["id"].as_str().unwrap().to_string();
+
+    // Upload a binary asset (a tiny PNG-ish byte blob) with a content type.
+    let bytes = vec![0x89u8, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/project/{project_id}/asset?path=logo.png"))
+        .cookie(cookie.clone())
+        .insert_header((actix_web::http::header::CONTENT_TYPE, "image/png"))
+        .set_payload(bytes.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["payload"]["path"], "logo.png");
+    assert_eq!(body["payload"]["content"]["kind"], "binary");
+    assert_eq!(body["payload"]["size"].as_i64().unwrap(), bytes.len() as i64);
+    let file_id = body["payload"]["id"].as_str().unwrap().to_string();
+
+    // The detail payload now lists the binary file as a storage-key reference.
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let asset_file = body["payload"]["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["id"] == file_id.as_str())
+        .unwrap();
+    assert_eq!(asset_file["content"]["kind"], "binary");
+    assert!(
+        asset_file["content"]["storageKey"]
+            .as_str()
+            .is_some_and(|k| !k.is_empty())
+    );
+
+    // Fetch the bytes back with the stored content type.
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()
+            .get(actix_web::http::header::CONTENT_TYPE)
+            .map(|v| v.to_str().unwrap()),
+        Some("image/png")
+    );
+    let returned = test::read_body(resp).await;
+    assert_eq!(returned.as_ref(), bytes.as_slice());
+
+    // A stranger cannot read the asset.
+    let (other_cookie, _, _) = register_user(&app).await;
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
+        .cookie(other_cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403);
+
+    // Nor upload into it.
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/project/{project_id}/asset?path=evil.png"))
+        .cookie(other_cookie)
+        .insert_header((actix_web::http::header::CONTENT_TYPE, "image/png"))
+        .set_payload(vec![1u8, 2, 3])
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403);
+
+    // Fetching the project's seeded text file *as an asset* is a 400 (not a
+    // binary), and an unknown file id is a 404.
+    let entry = body["payload"]["entry"].as_str().unwrap().to_string();
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}/asset/{entry}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/project/{project_id}/asset/{}",
+            ObjectId::new().to_hex()
+        ))
         .cookie(cookie)
         .to_request();
     let resp = test::call_service(&app, req).await;

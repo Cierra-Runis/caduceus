@@ -3,7 +3,7 @@ use futures_util::TryStreamExt;
 use mongodb::error::Result;
 use mongodb::options::ReturnDocument;
 
-use crate::models::project::{FileContent, OwnerType, Project};
+use crate::models::project::{FileContent, OwnerType, Project, ProjectFile};
 
 #[async_trait::async_trait]
 pub trait ProjectRepo {
@@ -25,6 +25,12 @@ pub trait ProjectRepo {
         content: FileContent,
         size: i64,
     ) -> Result<Option<Project>>;
+    /// Append a new file to a project's `files` array, bump the project's
+    /// `updated_at`, and return the updated project. `None` if the project does
+    /// not exist. Used by asset upload to attach a freshly stored binary; the
+    /// caller has already persisted the bytes and holds the storage key on
+    /// `file.content`.
+    async fn add_file(&self, project_id: ObjectId, file: ProjectFile) -> Result<Option<Project>>;
     /// Update a project's metadata (name + ownership), bump `updated_at`, and
     /// return the updated project. `None` if the project does not exist.
     async fn update_metadata(
@@ -108,6 +114,19 @@ impl ProjectRepo for MongoProjectRepo {
         Ok(updated.filter(|project| project.files.iter().any(|f| f.id == file_id)))
     }
 
+    async fn add_file(&self, project_id: ObjectId, file: ProjectFile) -> Result<Option<Project>> {
+        let file_bson = bson::to_bson(&file)?;
+        let update = bson::doc! {
+            "$push": { "files": file_bson },
+            "$set": { "updated_at": bson::DateTime::now() },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .return_document(ReturnDocument::After)
+            .await
+    }
+
     async fn update_metadata(
         &self,
         project_id: ObjectId,
@@ -189,6 +208,20 @@ pub mod tests {
             file.size = size;
             file.version += 1;
             file.updated_at = OffsetDateTime::now_utc();
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
+        }
+
+        async fn add_file(
+            &self,
+            project_id: ObjectId,
+            file: ProjectFile,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            project.files.push(file);
             project.updated_at = OffsetDateTime::now_utc();
             Ok(Some(project.clone()))
         }

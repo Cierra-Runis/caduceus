@@ -47,6 +47,56 @@ impl Default for WsConfig {
     }
 }
 
+/// Binary-asset storage backend, chosen per deployment. Defaults to GridFS so a
+/// self-hosted instance needs nothing beyond the MongoDB it already runs;
+/// object-storage deployments select `s3` and supply an [`S3Config`].
+///
+/// Internally tagged by `backend`, so YAML reads e.g.
+/// ```yaml
+/// storage:
+///   backend: s3
+///   endpoint: http://localhost:9000
+///   bucket: caduceus
+///   access_key: minioadmin
+///   secret_key: minioadmin
+///   path_style: true
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "backend", rename_all = "lowercase")]
+pub enum StorageConfig {
+    Gridfs,
+    S3(S3Config),
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        StorageConfig::Gridfs
+    }
+}
+
+/// Connection details for an S3-compatible object store (AWS S3, MinIO, …).
+#[derive(Debug, Clone, Deserialize)]
+pub struct S3Config {
+    /// Service endpoint, e.g. `http://localhost:9000` for a local MinIO.
+    pub endpoint: String,
+    /// Bucket that holds uploaded assets. Must already exist.
+    pub bucket: String,
+    #[serde(default = "S3Config::default_region")]
+    pub region: String,
+    pub access_key: String,
+    pub secret_key: String,
+    /// Path-style addressing (`endpoint/bucket/key`). Required by MinIO and most
+    /// non-AWS S3 implementations; AWS itself uses virtual-hosted style.
+    #[serde(default)]
+    pub path_style: bool,
+}
+
+impl S3Config {
+    fn default_region() -> String {
+        "us-east-1".to_string()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     cors: Option<CorsConfig>,
@@ -56,6 +106,8 @@ pub struct Config {
     pub jwt_secret: String,
     #[serde(default)]
     pub ws: WsConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 impl Config {
@@ -137,6 +189,7 @@ mod tests {
             address: vec!["localhost:8080".to_string()],
             jwt_secret: "secret".to_string(),
             ws: WsConfig::default(),
+            storage: StorageConfig::default(),
         };
 
         let app = test::init_service(

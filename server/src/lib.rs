@@ -10,12 +10,17 @@ pub mod routes;
 pub mod services;
 
 use crate::{
-    repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
-    services::{project::ProjectService, team::TeamService, user::UserService},
+    repo::{
+        asset::AssetStoreKind, project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo,
+    },
+    services::{
+        asset::AssetService, project::ProjectService, team::TeamService, user::UserService,
+    },
 };
 
 pub struct AppState {
     pub user_service: UserService<MongoUserRepo, MongoTeamRepo, MongoProjectRepo>,
     pub team_service: TeamService<MongoTeamRepo, MongoUserRepo, MongoProjectRepo>,
     pub project_service: ProjectService<MongoProjectRepo, MongoUserRepo, MongoTeamRepo>,
+    pub asset_service: AssetService<MongoProjectRepo, MongoTeamRepo, AssetStoreKind>,
 }

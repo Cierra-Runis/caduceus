@@ -94,7 +94,13 @@ pub enum FileContent {
     Text { text: String },
     /// A binary asset (image, font, …) stored outside the document — in GridFS
     /// or object storage — and referenced here by its storage key.
-    Binary { storage_key: ObjectId },
+    ///
+    /// The key is an opaque `String` rather than a backend-specific type on
+    /// purpose: a GridFS `ObjectId`, an S3/MinIO object path, and a Git blob SHA
+    /// are all just strings. Committing to `String` now (before any binary is
+    /// persisted) means swapping the storage backend — or backing files onto a
+    /// linked Git repository — never requires migrating stored documents.
+    Binary { storage_key: String },
 }
 
 impl FileContent {
@@ -233,9 +239,7 @@ impl From<FileContent> for FileContentPayload {
     fn from(content: FileContent) -> Self {
         match content {
             FileContent::Text { text } => FileContentPayload::Text { text },
-            FileContent::Binary { storage_key } => FileContentPayload::Binary {
-                storage_key: storage_key.to_hex(),
-            },
+            FileContent::Binary { storage_key } => FileContentPayload::Binary { storage_key },
         }
     }
 }
