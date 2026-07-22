@@ -21,6 +21,7 @@ mod tests {
     use crate::config::Config;
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_database_connection() {
         let config = Config::load("config/test.yaml").unwrap();
         let database = Database::new(&config.mongo_uri, &config.db_name).await;

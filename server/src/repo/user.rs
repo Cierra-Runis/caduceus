@@ -99,6 +99,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_create_and_find_by_id() {
         let repo = test_repo().await;
         let user = new_user();
@@ -119,6 +120,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_find_by_id_not_found() {
         let repo = test_repo().await;
         let found = repo.find_by_id(ObjectId::new()).await.unwrap();
@@ -126,6 +128,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_create_and_find_by_username() {
         let repo = test_repo().await;
         let user = new_user();
@@ -139,6 +142,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_find_by_username_not_found() {
         let repo = test_repo().await;
         let found = repo
