@@ -1,3 +1,24 @@
+# Security overrides for vulnerable transitive deps. Each entry can be removed
+# once its parent dependency resolves to the patched version on its own.
+overrides:
+  # GHSA-frvp-7c67-39w9; via shadcn>@modelcontextprotocol/sdk, which declares
+  # ^1.19.9 — remove once the MCP SDK moves to @hono/node-server v2
+  '@hono/node-server': '>=2.0.5'
+  # 17 advisories, e.g. GHSA-cmwh-pvxp-8882; via monaco-editor, which pins an
+  # exact version (3.4.8 as of 0.56.0) — remove once it pins >=3.4.12
+  dompurify: '>=3.4.12'
+  # GHSA-v2hh-gcrm-f6hx; via shadcn>...>ajv, which declares ^3.0.1 — kept only
+  # to guarantee the floor, safe to remove after any lockfile refresh
+  fast-uri: '>=3.1.4'
+  # GHSA-qx2v-qp2m-jg93; next pins 8.4.31 exactly (still on 16.2.11) — remove
+  # once next depends on >=8.5.10
+  postcss: '>=8.5.10'
+  # GHSA-f88m-g3jw-g9cj; next declares ^0.34.5 — remove once next allows 0.35
+  sharp: '>=0.35.0'
+  # GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx; @open-rpc/client-js pins 8.18.3
+  # exactly with no newer release — remove once it ships an updated pin
+  ws: '>=8.21.0'
+
 allowBuilds:
   "@heroui/shared-utils": true
   "@tailwindcss/oxide": true
