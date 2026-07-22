@@ -65,7 +65,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev --turbopack",
-    "i18n:check": "i18n-check -s en-US --locales ./messages",
+    "i18n:check": "i18n-check -s en-US --locales ./i18n",
     "lint": "eslint .",
     "start": "next start"
   },
