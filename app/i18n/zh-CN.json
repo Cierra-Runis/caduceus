@@ -88,6 +88,12 @@
     "welcome": "你好呀，{username}！"
   },
   "Project": {
+    "asset": {
+      "upload": "上传",
+      "uploadFailed": "上传 {path} 失败",
+      "uploaded": "已上传 {path}"
+    },
+    "files": "文件",
     "presence": {
       "online": "{count} 人在线"
     },

@@ -1,18 +1,23 @@
 'use client';
 
 import { GripVerticalIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Group,
     Separator,
     usePanelRef,
 } from 'react-resizable-panels';
+import { toast } from 'sonner';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
+import { fetchBinaryAssets, uploadAsset } from '@/lib/api/asset';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
+import { TypstBinaryFile } from '@/lib/typst';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
 
 import { EditorPanel } from './EditorPanel';
@@ -22,6 +27,8 @@ import { Sidebar } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
+  const t = useTranslations('Project');
+  const router = useRouter();
   const sidebarPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
   const previewPanelRef = usePanelRef();
@@ -52,8 +59,58 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         .map((file) => file.path),
     [project],
   );
+  // The full tree for the sidebar: text files are editable, binary assets are
+  // shown for reference (so users can `#image(...)` them) but not opened.
+  const fileList = useMemo(
+    () =>
+      project.files.map((file) => ({
+        kind: file.content.kind,
+        path: file.path,
+      })),
+    [project],
+  );
   const entry = useMemo(() => entryPath(project), [project]);
   const [focus, setFocus] = useState(() => entry ?? textPaths[0] ?? '');
+
+  // Binary assets live outside the CRDT doc (they're referenced by storage key,
+  // not synced text), so fetch their bytes and map them into the compiler VFS
+  // for `#image(...)`. Refetched whenever the file tree changes — e.g. after an
+  // upload triggers a server refresh.
+  const [assets, setAssets] = useState<TypstBinaryFile[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchBinaryAssets(project)
+      .then((fetched) => {
+        if (!cancelled) setAssets(fetched);
+      })
+      .catch(() => {
+        if (!cancelled) setAssets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project]);
+
+  const [uploading, setUploading] = useState(false);
+  const onUpload = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      try {
+        await uploadAsset(project.id, file.name, file);
+        // Re-run the server component so the new file appears in the tree and
+        // its bytes are refetched for the preview.
+        router.refresh();
+        toast.success(t('asset.uploaded', { path: file.name }));
+      } catch (error) {
+        toast.error(t('asset.uploadFailed', { path: file.name }), {
+          description: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        setUploading(false);
+      }
+    },
+    [project.id, router, t],
+  );
 
   useEffect(() => {
     const ws = new WebsocketProvider(
@@ -104,10 +161,12 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <Group orientation='horizontal'>
         <SidebarPanel
           entry={entry}
+          files={fileList}
           focus={focus}
           onSelect={setFocus}
-          paths={textPaths}
+          onUpload={onUpload}
           sidebarPanelRef={sidebarPanelRef}
+          uploading={uploading}
         />
         <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
@@ -122,6 +181,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           <GripVerticalIcon className='w-4' />
         </Separator>
         <PreviewPanel
+          assets={assets}
           entryPath={entry}
           files={files}
           previewPanelRef={previewPanelRef}

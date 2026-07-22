@@ -13,30 +13,35 @@ const TYPST_VERSION = '0.7.0';
 
 let initialized = false;
 
+export interface TypstBinaryFile {
+  /// Raw bytes of the asset, mapped into the compiler VFS so `#image(...)` and
+  /// custom fonts resolve.
+  bytes: Uint8Array;
+  /// Virtual-FS path, e.g. `logo.png` or `images/figure.svg`.
+  path: string;
+}
+
 export interface TypstSourceFile {
   /// Virtual-FS path, e.g. `main.typ` or `chapters/intro.typ`.
   path: string;
   text: string;
 }
 
-/// Compile a project's text files to an SVG string, starting from `entryPath`.
+/// Compile a project to an SVG string, starting from `entryPath`.
 ///
-/// The whole text tree is fed to the compiler (not just the focused file)
-/// because Typst resolves `#import`/`#image` across every file. Paths are
-/// normalised to an absolute VFS root so relative imports resolve the same way
-/// regardless of which file is the entry. Binary assets are not wired yet (M3).
+/// The whole file tree is fed to the compiler (not just the focused file)
+/// because Typst resolves `#import`/`#image` across every file.
 export async function compileProject(
   entryPath: string,
   files: TypstSourceFile[],
+  assets: TypstBinaryFile[] = [],
 ): Promise<string> {
   ensureInit();
-  for (const file of files) {
-    await $typst.addSource(abs(file.path), file.text);
-  }
+  await loadVfs(files, assets);
   return $typst.svg({ mainFilePath: abs(entryPath) });
 }
 
-/// Compile a project's text files to PDF bytes, starting from `entryPath`.
+/// Compile a project to PDF bytes, starting from `entryPath`.
 ///
 /// Mirrors `compileProject`, swapping the renderer's `.svg()` for the
 /// compiler's `.pdf()`. `$typst.pdf()` types its result as possibly
@@ -45,11 +50,10 @@ export async function compileProject(
 export async function compileProjectToPdf(
   entryPath: string,
   files: TypstSourceFile[],
+  assets: TypstBinaryFile[] = [],
 ): Promise<Uint8Array> {
   ensureInit();
-  for (const file of files) {
-    await $typst.addSource(abs(file.path), file.text);
-  }
+  await loadVfs(files, assets);
   const pdf = await $typst.pdf({ mainFilePath: abs(entryPath) });
   if (!pdf) throw new Error('Typst compiler produced no PDF output.');
   return pdf;
@@ -70,4 +74,24 @@ function ensureInit() {
     getModule: () =>
       `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-renderer@${TYPST_VERSION}/pkg/typst_ts_renderer_bg.wasm`,
   });
+}
+
+/// Seed the compiler's virtual file system from the project's whole file tree.
+///
+/// The shadow map is reset first so each compile is hermetic: a renamed or
+/// deleted file never lingers from a previous run. Text goes in as sources,
+/// binaries (`assets`) as raw shadow files. Paths are normalised to an absolute
+/// VFS root so relative `#import`/`#image` resolve the same way regardless of
+/// which file is the entry.
+async function loadVfs(
+  files: TypstSourceFile[],
+  assets: TypstBinaryFile[],
+): Promise<void> {
+  await $typst.resetShadow();
+  for (const file of files) {
+    await $typst.addSource(abs(file.path), file.text);
+  }
+  for (const asset of assets) {
+    await $typst.mapShadow(abs(asset.path), asset.bytes);
+  }
 }

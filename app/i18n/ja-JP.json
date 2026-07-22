@@ -88,6 +88,12 @@
     "welcome": "ようこそ、{username}！"
   },
   "Project": {
+    "asset": {
+      "upload": "アップロード",
+      "uploadFailed": "{path} のアップロードに失敗しました",
+      "uploaded": "{path} をアップロードしました"
+    },
+    "files": "ファイル",
     "presence": {
       "online": "{count} 人がオンライン"
     },

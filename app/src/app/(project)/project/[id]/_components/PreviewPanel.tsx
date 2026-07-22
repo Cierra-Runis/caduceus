@@ -3,9 +3,10 @@
 import { RefObject, useEffect, useRef, useState } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { compileProject } from '@/lib/typst';
+import { compileProject, TypstBinaryFile } from '@/lib/typst';
 
 export interface PreviewPanelProps {
+  assets: TypstBinaryFile[];
   entryPath: null | string;
   files: Record<string, string>;
   previewPanelRef: RefObject<null | PanelImperativeHandle>;
@@ -17,6 +18,7 @@ export interface PreviewPanelProps {
 const DEBOUNCE_MS = 200;
 
 export function PreviewPanel({
+  assets,
   entryPath,
   files,
   previewPanelRef,
@@ -38,7 +40,7 @@ export function PreviewPanel({
     const timer = setTimeout(async () => {
       const mySeq = ++seq.current;
       try {
-        const out = await compileProject(entryPath, sources);
+        const out = await compileProject(entryPath, sources, assets);
         if (mySeq === seq.current) {
           setSvg(out);
           setError(null);
@@ -50,7 +52,7 @@ export function PreviewPanel({
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [entryPath, files]);
+  }, [assets, entryPath, files]);
 
   return (
     <Panel

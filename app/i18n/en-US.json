@@ -88,6 +88,12 @@
     "welcome": "Welcome, {username}!"
   },
   "Project": {
+    "asset": {
+      "upload": "Upload",
+      "uploadFailed": "Failed to upload {path}",
+      "uploaded": "Uploaded {path}"
+    },
+    "files": "Files",
     "presence": {
       "online": "{count} online"
     },

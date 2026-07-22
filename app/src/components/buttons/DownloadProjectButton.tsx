@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useProjectDetail } from '@/hooks/api/project';
+import { fetchBinaryAssets } from '@/lib/api/asset';
 import { Project, ProjectDetail } from '@/lib/types/project';
 import { compileProjectToPdf, TypstSourceFile } from '@/lib/typst';
 
@@ -29,9 +30,11 @@ export function DownloadProjectButton({
     setIsDownloading(true);
     try {
       const { payload } = await trigger(project.id);
+      const assets = await fetchBinaryAssets(payload);
       const pdf = await compileProjectToPdf(
         entryPath(payload),
         textSources(payload),
+        assets,
       );
       saveBytes(pdf, `${project.name}.pdf`);
     } catch (error) {
@@ -72,8 +75,7 @@ function entryPath(project: ProjectDetail): string {
   return entry.path;
 }
 
-// Binary assets aren't wired into the compiler yet (M3, see lib/typst.ts), so
-// a download only ever needs to push bytes through a throwaway <a> element.
+// Push the compiled PDF bytes to the user through a throwaway <a> element.
 function saveBytes(bytes: Uint8Array, filename: string) {
   const url = URL.createObjectURL(
     new Blob([Uint8Array.from(bytes)], { type: 'application/pdf' }),
