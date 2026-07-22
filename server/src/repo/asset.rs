@@ -351,4 +351,96 @@ pub mod tests {
         assert_eq!(sanitize_key_segment("a\\b\\c.png"), "c.png");
         assert_eq!(sanitize_key_segment(""), "asset");
     }
+
+    /// Build an [`S3Config`](crate::config::S3Config) from `S3_TEST_*` env vars,
+    /// falling back to a local MinIO with the conventional `minioadmin`
+    /// credentials. The same defaults let the ignored tests below run unchanged
+    /// in CI (which provisions MinIO) and against a locally started MinIO.
+    fn s3_test_config() -> crate::config::S3Config {
+        fn env_or(key: &str, default: &str) -> String {
+            std::env::var(key).unwrap_or_else(|_| default.to_string())
+        }
+        crate::config::S3Config {
+            endpoint: env_or("S3_TEST_ENDPOINT", "http://localhost:9000"),
+            bucket: env_or("S3_TEST_BUCKET", "caduceus-test"),
+            region: env_or("S3_TEST_REGION", "us-east-1"),
+            access_key: env_or("S3_TEST_ACCESS_KEY", "minioadmin"),
+            secret_key: env_or("S3_TEST_SECRET_KEY", "minioadmin"),
+            // MinIO requires path-style addressing.
+            path_style: true,
+        }
+    }
+
+    /// Create the target bucket if it is not already there, so the tests are
+    /// self-contained regardless of whether CI pre-created it. Creating a bucket
+    /// that already exists returns a non-2xx status (or errors) on MinIO, which
+    /// is deliberately ignored — the tests only require that the bucket exists
+    /// afterwards, and the subsequent upload/download would surface any real
+    /// connectivity problem.
+    async fn ensure_test_bucket(cfg: &crate::config::S3Config) {
+        let region = s3::Region::Custom {
+            region: cfg.region.clone(),
+            endpoint: cfg.endpoint.clone(),
+        };
+        let credentials = s3::creds::Credentials::new(
+            Some(&cfg.access_key),
+            Some(&cfg.secret_key),
+            None,
+            None,
+            None,
+        )
+        .expect("valid MinIO credentials");
+        let _ = s3::Bucket::create_with_path_style(
+            &cfg.bucket,
+            region,
+            credentials,
+            s3::BucketConfiguration::default(),
+        )
+        .await;
+    }
+
+    /// Construct an [`S3AssetStore`] pointed at the test MinIO, ensuring its
+    /// bucket exists first.
+    async fn s3_test_store() -> S3AssetStore {
+        let cfg = s3_test_config();
+        ensure_test_bucket(&cfg).await;
+        S3AssetStore::new(&cfg).expect("build S3AssetStore from test config")
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a live MinIO / S3 (CI provisions one; set S3_TEST_* env vars to run locally)"]
+    async fn test_s3_store_roundtrip() {
+        let store = s3_test_store().await;
+        let bytes = vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x2A, 0xFF];
+
+        let key = store
+            .upload("diagram.png", Some("image/png"), bytes.clone())
+            .await
+            .expect("upload to MinIO");
+
+        let asset = store
+            .download(&key)
+            .await
+            .expect("download from MinIO")
+            .expect("asset present after upload");
+
+        assert_eq!(asset.bytes, bytes, "downloaded bytes match uploaded bytes");
+        assert_eq!(asset.content_type.as_deref(), Some("image/png"));
+        assert_eq!(asset.filename, "diagram.png");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a live MinIO / S3 (CI provisions one; set S3_TEST_* env vars to run locally)"]
+    async fn test_s3_store_missing_key() {
+        let store = s3_test_store().await;
+        // A well-formed but never-uploaded key must read back as absent, not error.
+        let missing = format!("{}/never-uploaded.png", ObjectId::new().to_hex());
+        assert!(
+            store
+                .download(&missing)
+                .await
+                .expect("download of missing key is Ok")
+                .is_none()
+        );
+    }
 }

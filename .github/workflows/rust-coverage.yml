@@ -47,14 +47,51 @@ jobs:
       - name: MongoDB in GitHub Action
         uses: supercharge/mongodb-github-action@1.12.0
 
+      # MinIO backs the `#[ignore]`d S3AssetStore integration tests. It is run as
+      # a plain container (rather than a `services:` block) so we can poll its
+      # health endpoint and pre-create the bucket with `mc` before the tests run.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data --console-address ":9001"
+
+      - name: Wait for MinIO and create bucket
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/ready >/dev/null; then
+              echo "MinIO is ready"
+              break
+            fi
+            echo "Waiting for MinIO... ($i)"
+            sleep 2
+          done
+          curl -sf http://localhost:9000/minio/health/ready >/dev/null \
+            || { echo "MinIO did not become ready"; docker logs minio; exit 1; }
+          # Create the bucket the tests target using the MinIO client (`mc`).
+          docker run --rm --network host --entrypoint /bin/sh minio/mc -c '
+            mc alias set local http://localhost:9000 minioadmin minioadmin &&
+            mc mb --ignore-existing local/caduceus-test'
+
       # https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#github-actions-and-codecov
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
         working-directory: ./server
-        # `--include-ignored` runs the MongoDB-backed repo/database integration
-        # tests, which are `#[ignore]`d so a local `cargo test` (no MongoDB)
-        # stays green. CI provisions MongoDB above, so it runs the full suite.
+        # `--include-ignored` runs the MongoDB- and MinIO-backed integration
+        # tests, which are `#[ignore]`d so a local `cargo test` (no MongoDB/MinIO)
+        # stays green. CI provisions both services above, so it runs the full
+        # suite. The S3_TEST_* vars point the S3AssetStore tests at the MinIO
+        # started above (they also default to these values, but setting them
+        # explicitly documents the wiring).
+        env:
+          S3_TEST_ENDPOINT: http://localhost:9000
+          S3_TEST_BUCKET: caduceus-test
+          S3_TEST_REGION: us-east-1
+          S3_TEST_ACCESS_KEY: minioadmin
+          S3_TEST_SECRET_KEY: minioadmin
         run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info -- --include-ignored
 
       # https://github.com/codecov/codecov-action
