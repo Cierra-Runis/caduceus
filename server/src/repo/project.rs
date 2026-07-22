@@ -25,6 +25,15 @@ pub trait ProjectRepo {
         content: FileContent,
         size: i64,
     ) -> Result<Option<Project>>;
+    /// Update a project's metadata (name + ownership), bump `updated_at`, and
+    /// return the updated project. `None` if the project does not exist.
+    async fn update_metadata(
+        &self,
+        project_id: ObjectId,
+        name: String,
+        owner_id: ObjectId,
+        owner_type: OwnerType,
+    ) -> Result<Option<Project>>;
 }
 
 #[derive(Clone)]
@@ -98,6 +107,28 @@ impl ProjectRepo for MongoProjectRepo {
         // same as a nonexistent project, per this method's contract.
         Ok(updated.filter(|project| project.files.iter().any(|f| f.id == file_id)))
     }
+
+    async fn update_metadata(
+        &self,
+        project_id: ObjectId,
+        name: String,
+        owner_id: ObjectId,
+        owner_type: OwnerType,
+    ) -> Result<Option<Project>> {
+        let update = bson::doc! {
+            "$set": {
+                "name": name,
+                "owner_id": owner_id,
+                "owner_type": bson::to_bson(&owner_type)?,
+                "updated_at": bson::DateTime::now(),
+            },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .return_document(ReturnDocument::After)
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -158,6 +189,24 @@ pub mod tests {
             file.size = size;
             file.version += 1;
             file.updated_at = OffsetDateTime::now_utc();
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
+        }
+
+        async fn update_metadata(
+            &self,
+            project_id: ObjectId,
+            name: String,
+            owner_id: ObjectId,
+            owner_type: OwnerType,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            project.name = name;
+            project.owner_id = owner_id;
+            project.owner_type = owner_type;
             project.updated_at = OffsetDateTime::now_utc();
             Ok(Some(project.clone()))
         }
@@ -314,6 +363,50 @@ pub mod tests {
                     text: "x".to_string(),
                 },
                 1,
+            )
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_metadata_updates_fields_and_timestamp() {
+        let repo = test_repo().await;
+        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
+        repo.create(project.clone()).await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let new_owner_id = ObjectId::new();
+        let updated = repo
+            .update_metadata(
+                project.id,
+                "renamed".to_string(),
+                new_owner_id,
+                OwnerType::Team,
+            )
+            .await
+            .unwrap();
+
+        assert!(updated.is_some());
+        let updated = updated.unwrap();
+        assert_eq!(updated.name, "renamed");
+        assert_eq!(updated.owner_id, new_owner_id);
+        assert_eq!(updated.owner_type, OwnerType::Team);
+        assert!(updated.updated_at > project.updated_at);
+
+        cleanup(&repo, project.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_update_metadata_returns_none_for_missing_project() {
+        let repo = test_repo().await;
+        let result = repo
+            .update_metadata(
+                ObjectId::new(),
+                "x".to_string(),
+                ObjectId::new(),
+                OwnerType::User,
             )
             .await
             .unwrap();

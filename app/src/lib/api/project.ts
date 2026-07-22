@@ -44,6 +44,14 @@ export const UpdateProjectRequestSchema = z.object({
   owner_type: z.enum(['team', 'user']),
 });
 
+// Response for updating a project's metadata (PUT /project/{id}): the project
+// with its new name/owner applied.
+export type UpdateProjectResponse = z.infer<typeof UpdateProjectResponseSchema>;
+export const UpdateProjectResponseSchema = z.object({
+  message: z.string().trim(),
+  payload: ProjectSchema,
+});
+
 // Persist a single file's text content (whole-buffer save). Returns the file's
 // freshly bumped version/timestamp.
 export type UpdateFileResponse = z.infer<typeof UpdateFileResponseSchema>;

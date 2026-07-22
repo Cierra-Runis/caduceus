@@ -104,6 +104,44 @@ pub async fn duplicate(
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct UpdateProjectRequest {
+    #[serde(serialize_with = "serialize_object_id_as_hex_string")]
+    pub owner_id: ObjectId,
+    pub owner_type: OwnerType,
+    pub name: String,
+}
+
+/// Update a project's metadata (rename / move between owners). Access and
+/// target-owner validation live in `ProjectService::update`.
+pub async fn update(
+    id: actix_web::web::Path<String>,
+    req: actix_web::web::Json<UpdateProjectRequest>,
+    data: actix_web::web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    match data
+        .project_service
+        .update(
+            project_id,
+            user.sub,
+            req.name.clone(),
+            req.owner_id,
+            req.owner_type.clone(),
+        )
+        .await
+    {
+        Ok(project) => {
+            let response = ApiResponse::success("Project updated successfully", project);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct UpdateFileRequest {
     pub text: String,
 }

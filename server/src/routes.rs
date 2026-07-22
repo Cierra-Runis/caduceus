@@ -20,6 +20,7 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                 .service(
                     web::scope("/project/{id}")
                         .route("", web::get().to(handler::project::find_by_id))
+                        .route("", web::put().to(handler::project::update))
                         .route(
                             "/file/{file_id}",
                             web::put().to(handler::project::update_file),
