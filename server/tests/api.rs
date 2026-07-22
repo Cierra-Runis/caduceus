@@ -306,7 +306,7 @@ async fn test_team_flow() {
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/team/projects?id={team_id}"))
-        .cookie(cookie)
+        .cookie(cookie.clone())
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200);
@@ -318,4 +318,25 @@ async fn test_team_flow() {
             .iter()
             .any(|p| p["name"] == "it team project")
     );
+
+    // A logged-in user who is not a member of the team must not be able to
+    // list its projects — knowing the team id is not enough.
+    let (other_cookie, _, _) = register_user(&app).await;
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/team/projects?id={team_id}"))
+        .cookie(other_cookie)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403);
+
+    // Nonexistent team → 404, even for an authenticated caller.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/team/projects?id={}",
+            ObjectId::new().to_hex()
+        ))
+        .cookie(cookie)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 404);
 }
