@@ -235,11 +235,40 @@ async fn test_project_crud_flow() {
     assert_ne!(body["payload"]["id"], project_id.as_str());
     assert_eq!(body["payload"]["name"], "it project copy");
 
+    // Rename via PUT: name changes, ownership stays.
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/project/{project_id}"))
+        .cookie(cookie.clone())
+        .set_json(serde_json::json!({
+            "owner_id": user_id,
+            "owner_type": "user",
+            "name": "it project renamed",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["payload"]["name"], "it project renamed");
+    assert_eq!(body["payload"]["owner_id"], user_id.as_str());
+
     // A stranger cannot read the project.
-    let (other_cookie, _, _) = register_user(&app).await;
+    let (other_cookie, other_user_id, _) = register_user(&app).await;
     let req = test::TestRequest::get()
         .uri(&format!("/api/project/{project_id}"))
+        .cookie(other_cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403);
+
+    // Nor update it — even to claim it for themselves.
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/project/{project_id}"))
         .cookie(other_cookie)
+        .set_json(serde_json::json!({
+            "owner_id": other_user_id,
+            "owner_type": "user",
+            "name": "stolen",
+        }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 403);
