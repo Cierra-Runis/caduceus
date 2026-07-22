@@ -1,3 +1,11 @@
+overrides:
+  '@hono/node-server': '>=2.0.5'
+  dompurify: '>=3.4.12'
+  fast-uri: '>=3.1.4'
+  postcss: '>=8.5.10'
+  sharp: '>=0.35.0'
+  ws: '>=8.21.0'
+
 allowBuilds:
   "@heroui/shared-utils": true
   "@tailwindcss/oxide": true
