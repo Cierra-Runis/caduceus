@@ -1,4 +1,5 @@
 import { $typst } from '@myriaddreamin/typst.ts';
+import { TypstSnippet } from '@myriaddreamin/typst.ts/contrib/snippet';
 
 // Client-side Typst compiler (reflexo WASM). This is the single place that
 // initialises the compiler/renderer and turns the project's files into preview
@@ -11,7 +12,22 @@ import { $typst } from '@myriaddreamin/typst.ts';
 // Latin core.
 const TYPST_VERSION = '0.7.0';
 
+// Font-file extensions we register with the compiler's font book (see
+// `registerFonts`). Lower-cased before comparison so `LOGO.TTF` still matches.
+const FONT_EXTENSIONS = ['.ttf', '.otf', '.ttc', '.otc'];
+
 let initialized = false;
+
+// Paths of font assets already handed to the compiler's font book. A font only
+// needs registering once; the preview recompiles on every keystroke (200ms
+// debounce) with the same asset set, and re-registering per keystroke would be
+// wasteful — and, once the compiler is built, impossible (see `registerFonts`).
+const registeredFontPaths = new Set<string>();
+
+// Flips true once the compiler has actually been built. Font providers are
+// baked into the compiler at init time and the global compiler instance is
+// initialised exactly once, so fonts must be registered before this point.
+let compilerBuilt = false;
 
 export interface TypstBinaryFile {
   /// Raw bytes of the asset, mapped into the compiler VFS so `#image(...)` and
@@ -76,6 +92,11 @@ function ensureInit() {
   });
 }
 
+function isFontAsset(path: string): boolean {
+  const lower = path.toLowerCase();
+  return FONT_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 /// Seed the compiler's virtual file system from the project's whole file tree.
 ///
 /// The shadow map is reset first so each compile is hermetic: a renamed or
@@ -83,15 +104,55 @@ function ensureInit() {
 /// binaries (`assets`) as raw shadow files. Paths are normalised to an absolute
 /// VFS root so relative `#import`/`#image` resolve the same way regardless of
 /// which file is the entry.
+///
+/// Fonts are registered with the compiler's font book *before* the first VFS
+/// call, because `resetShadow` below is what lazily builds the compiler and
+/// font providers only take effect at build time.
 async function loadVfs(
   files: TypstSourceFile[],
   assets: TypstBinaryFile[],
 ): Promise<void> {
+  registerFonts(assets);
   await $typst.resetShadow();
+  compilerBuilt = true;
   for (const file of files) {
     await $typst.addSource(abs(file.path), file.text);
   }
   for (const asset of assets) {
     await $typst.mapShadow(abs(asset.path), asset.bytes);
+  }
+}
+
+/// Register uploaded font assets with the compiler's font book so
+/// `#text(font: "Family Name")` resolves.
+///
+/// `mapShadow` (in `loadVfs`) only makes an asset readable *by path*; it does
+/// not teach the compiler which font family the bytes provide. Typst builds its
+/// font book from data handed in at compiler-init time, via `$typst.use(...)`
+/// font providers, so we feed each font's raw bytes through
+/// `TypstSnippet.preloadFontData`. Fonts are still `mapShadow`-ed alongside every
+/// other asset, so one referenced by path keeps working too.
+///
+/// Registration is idempotent: each font path is remembered so recompiles don't
+/// re-add it. Providers can only be attached before the (single, global)
+/// compiler is built; a font that first appears afterwards — e.g. uploaded
+/// mid-session — cannot be injected into the already-initialised compiler, so we
+/// warn instead of throwing, and a reload picks it up.
+function registerFonts(assets: TypstBinaryFile[]): void {
+  const pending = assets.filter(
+    (asset) => isFontAsset(asset.path) && !registeredFontPaths.has(asset.path),
+  );
+  if (pending.length === 0) return;
+  if (compilerBuilt) {
+    console.warn(
+      `[typst] Font asset(s) added after the compiler was initialised; reload the preview to use them: ${pending
+        .map((asset) => asset.path)
+        .join(', ')}`,
+    );
+    return;
+  }
+  for (const font of pending) {
+    $typst.use(TypstSnippet.preloadFontData(font.bytes));
+    registeredFontPaths.add(font.path);
   }
 }
