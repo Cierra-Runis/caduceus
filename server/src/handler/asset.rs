@@ -19,7 +19,9 @@ impl ResponseError for AssetServiceError {
                 StatusCode::NOT_FOUND
             }
             AssetServiceError::AccessDenied => StatusCode::FORBIDDEN,
-            AssetServiceError::NotBinary => StatusCode::BAD_REQUEST,
+            AssetServiceError::NotBinary | AssetServiceError::InvalidPath => {
+                StatusCode::BAD_REQUEST
+            }
             AssetServiceError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

@@ -26,10 +26,14 @@ pub trait ProjectRepo {
         size: i64,
     ) -> Result<Option<Project>>;
     /// Append a new file to a project's `files` array, bump the project's
-    /// `updated_at`, and return the updated project. `None` if the project does
-    /// not exist. Used by asset upload to attach a freshly stored binary; the
-    /// caller has already persisted the bytes and holds the storage key on
-    /// `file.content`.
+    /// `updated_at`, and return the updated project. Used by asset upload to
+    /// attach a freshly stored binary; the caller has already persisted the
+    /// bytes and holds the storage key on `file.content`.
+    ///
+    /// `path` is a unique key within a project, so the write is refused (atomically)
+    /// if a file with `file.path` already exists. Returns `None` in that case
+    /// **and** when the project does not exist — the caller disambiguates (it
+    /// knows the project exists) and, on a path clash, retries with a fresh path.
     async fn add_file(&self, project_id: ObjectId, file: ProjectFile) -> Result<Option<Project>>;
     /// Update a project's metadata (name + ownership), bump `updated_at`, and
     /// return the updated project. `None` if the project does not exist.
@@ -121,8 +125,15 @@ impl ProjectRepo for MongoProjectRepo {
             "$set": { "updated_at": bson::DateTime::now() },
         };
 
+        // The `files.path $ne` guard makes the uniqueness check and the push a
+        // single atomic operation: a concurrent upload of the same path can't
+        // slip a duplicate in between a read and the write. A path clash matches
+        // no document, so `find_one_and_update` returns `None`.
         self.collection
-            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .find_one_and_update(
+                bson::doc! { "_id": project_id, "files.path": { "$ne": &file.path } },
+                update,
+            )
             .return_document(ReturnDocument::After)
             .await
     }
@@ -221,6 +232,10 @@ pub mod tests {
             let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
                 return Ok(None);
             };
+            // Mirror the Mongo `files.path $ne` guard: refuse a duplicate path.
+            if project.files.iter().any(|f| f.path == file.path) {
+                return Ok(None);
+            }
             project.files.push(file);
             project.updated_at = OffsetDateTime::now_utc();
             Ok(Some(project.clone()))

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bson::oid::ObjectId;
 use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use derive_more::Display;
@@ -119,6 +121,63 @@ impl FileContent {
 pub enum FileKind {
     Text,
     Binary,
+}
+
+/// Canonicalize a client-supplied virtual-FS path, or `None` if it is not a
+/// usable path within a project.
+///
+/// `path` is the primary key of a [`ProjectFile`] and the name the compiler
+/// resolves (`#import`/`#image`), so it must be normalized before storage:
+/// otherwise `logo.png`, `/logo.png`, and `./logo.png` are distinct rows that
+/// alias to the same file in the compiler VFS. This trims and collapses
+/// separators, drops `.` segments, and rejects anything that could escape the
+/// project root (`..`), alias via backslashes, or smuggle control characters.
+/// The result never has a leading/trailing slash (e.g. `chapters/intro.typ`).
+pub fn normalize_vfs_path(raw: &str) -> Option<String> {
+    if raw.contains('\\') || raw.chars().any(char::is_control) {
+        return None;
+    }
+    let mut segments = Vec::new();
+    for segment in raw.split('/') {
+        match segment.trim() {
+            "" | "." => continue,
+            ".." => return None,
+            segment => segments.push(segment),
+        }
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    Some(segments.join("/"))
+}
+
+/// Pick a path that does not collide with `existing`, VS Code / browser style:
+/// `logo.png` → `logo (1).png` → `logo (2).png`. Only the basename is suffixed;
+/// any folder prefix and the file extension are preserved. Returns `path`
+/// unchanged when it is already free. `path` is assumed already normalized (see
+/// [`normalize_vfs_path`]).
+pub fn dedupe_vfs_path(path: &str, existing: &HashSet<String>) -> String {
+    if !existing.contains(path) {
+        return path.to_string();
+    }
+
+    // Keep any folder prefix (with its trailing slash) untouched.
+    let (dir, base) = match path.rfind('/') {
+        Some(slash) => (&path[..=slash], &path[slash + 1..]),
+        None => ("", path),
+    };
+    // Split off a real extension: a dot that is not the leading char of the
+    // basename (so `.gitignore` stays whole, `archive.tar.gz` keeps `.gz`).
+    let (stem, ext) = match base.rfind('.') {
+        Some(dot) if dot > 0 => (&base[..dot], &base[dot..]),
+        _ => (base, ""),
+    };
+
+    (1..)
+        .map(|n| format!("{dir}{stem} ({n}){ext}"))
+        .find(|candidate| !existing.contains(candidate))
+        // `1..` is unbounded, so `find` always yields a free candidate.
+        .expect("an unused suffix always exists")
 }
 
 #[derive(Serialize)]
@@ -296,5 +355,80 @@ impl From<Project> for ProjectDetailPayload {
             entry: project.entry.map(|id| id.to_hex()),
             pinned_version: project.pinned_version,
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_vfs_path_canonicalizes() {
+        assert_eq!(normalize_vfs_path("logo.png").as_deref(), Some("logo.png"));
+        assert_eq!(normalize_vfs_path("/logo.png").as_deref(), Some("logo.png"));
+        assert_eq!(normalize_vfs_path("./logo.png").as_deref(), Some("logo.png"));
+        assert_eq!(
+            normalize_vfs_path("images//figure.svg").as_deref(),
+            Some("images/figure.svg")
+        );
+        assert_eq!(
+            normalize_vfs_path("  chapters/intro.typ  ").as_deref(),
+            Some("chapters/intro.typ")
+        );
+        assert_eq!(
+            normalize_vfs_path("a/b/../c.typ").as_deref(),
+            None,
+            "parent traversal is rejected outright"
+        );
+    }
+
+    #[test]
+    fn test_normalize_vfs_path_rejects_unusable() {
+        assert_eq!(normalize_vfs_path(""), None);
+        assert_eq!(normalize_vfs_path("/"), None);
+        assert_eq!(normalize_vfs_path("   "), None);
+        assert_eq!(normalize_vfs_path(".."), None);
+        assert_eq!(normalize_vfs_path("a\\b.png"), None);
+        assert_eq!(normalize_vfs_path("bad\u{0}name"), None);
+    }
+
+    #[test]
+    fn test_dedupe_vfs_path_suffixes_basename() {
+        let mut existing = HashSet::new();
+        existing.insert("logo.png".to_string());
+
+        // First collision gets " (1)" before the extension.
+        assert_eq!(dedupe_vfs_path("logo.png", &existing), "logo (1).png");
+
+        // Walks up until a free slot.
+        existing.insert("logo (1).png".to_string());
+        assert_eq!(dedupe_vfs_path("logo.png", &existing), "logo (2).png");
+
+        // A free name is returned unchanged.
+        assert_eq!(dedupe_vfs_path("fresh.png", &existing), "fresh.png");
+    }
+
+    #[test]
+    fn test_dedupe_vfs_path_preserves_dir_and_extension() {
+        let mut existing = HashSet::new();
+        existing.insert("images/logo.png".to_string());
+        assert_eq!(
+            dedupe_vfs_path("images/logo.png", &existing),
+            "images/logo (1).png"
+        );
+
+        // Multi-dot names keep only the final extension segment.
+        existing.insert("archive.tar.gz".to_string());
+        assert_eq!(
+            dedupe_vfs_path("archive.tar.gz", &existing),
+            "archive.tar (1).gz"
+        );
+
+        // Extensionless and dotfile names suffix at the end.
+        existing.insert("Makefile".to_string());
+        assert_eq!(dedupe_vfs_path("Makefile", &existing), "Makefile (1)");
+        existing.insert(".gitignore".to_string());
+        assert_eq!(dedupe_vfs_path(".gitignore", &existing), ".gitignore (1)");
     }
 }

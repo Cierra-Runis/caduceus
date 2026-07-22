@@ -1,11 +1,20 @@
+use std::collections::HashSet;
+
 use bson::oid::ObjectId;
 use derive_more::Display;
 use time::OffsetDateTime;
 
-use crate::models::project::{FileContent, ProjectFile, ProjectFileDetailPayload};
+use crate::models::project::{
+    FileContent, ProjectFile, ProjectFileDetailPayload, dedupe_vfs_path, normalize_vfs_path,
+};
 use crate::repo::asset::{AssetStore, StoredAsset};
 use crate::repo::{project::ProjectRepo, team::TeamRepo};
 use crate::services::project::{ProjectServiceError, load_accessible};
+
+/// Bound on the atomic add-file retry loop. Each iteration resolves one lost
+/// race with a concurrent upload of the same name; in practice one or two
+/// suffices, so exhausting this many means the project has gone away.
+const MAX_ADD_FILE_TRIES: usize = 64;
 
 /// Errors from the asset service. Access errors are shared with the project
 /// service (same access rule via [`load_accessible`]); the rest are specific to
@@ -20,6 +29,8 @@ pub enum AssetServiceError {
     FileNotFound,
     #[display("File is not a binary asset")]
     NotBinary,
+    #[display("Invalid file path")]
+    InvalidPath,
     #[display("Storage error: {_0}")]
     Storage(String),
 }
@@ -55,30 +66,53 @@ impl<P: ProjectRepo, T: TeamRepo, S: AssetStore> AssetService<P, T, S> {
         content_type: Option<String>,
         bytes: Vec<u8>,
     ) -> Result<ProjectFileDetailPayload, AssetServiceError> {
-        load_accessible(&self.project_repo, &self.team_repo, project_id, user_id).await?;
+        let project =
+            load_accessible(&self.project_repo, &self.team_repo, project_id, user_id).await?;
+
+        // Canonicalize the requested path; a name that can't be a VFS path (empty,
+        // `..`, backslashes, …) is rejected rather than stored.
+        let normalized = normalize_vfs_path(&path).ok_or(AssetServiceError::InvalidPath)?;
+        // Names already taken in this project, so a duplicate upload lands as
+        // `logo (1).png` instead of shadowing the existing file in the VFS.
+        let mut taken: HashSet<String> =
+            project.files.into_iter().map(|file| file.path).collect();
 
         let size = bytes.len() as i64;
         let storage_key = self
             .asset_store
-            .upload(&path, content_type.as_deref(), bytes)
+            .upload(&normalized, content_type.as_deref(), bytes)
             .await
             .map_err(|e| AssetServiceError::Storage(e.to_string()))?;
 
-        let file = ProjectFile {
-            id: ObjectId::new(),
-            path,
-            content: FileContent::Binary { storage_key },
-            size,
-            version: 0,
-            updated_at: OffsetDateTime::now_utc(),
-        };
+        // Resolve the final path against what's taken, then commit atomically.
+        // `add_file` refuses a path a concurrent upload grabbed first; on that
+        // race, record it and try the next free suffix.
+        for _ in 0..MAX_ADD_FILE_TRIES {
+            let candidate = dedupe_vfs_path(&normalized, &taken);
+            let file = ProjectFile {
+                id: ObjectId::new(),
+                path: candidate.clone(),
+                content: FileContent::Binary {
+                    storage_key: storage_key.clone(),
+                },
+                size,
+                version: 0,
+                updated_at: OffsetDateTime::now_utc(),
+            };
 
-        match self.project_repo.add_file(project_id, file.clone()).await {
-            Ok(Some(_)) => Ok(file.into()),
-            // The project vanished between the access check and the write.
-            Ok(None) => Err(AssetServiceError::ProjectNotFound),
-            Err(e) => Err(AssetServiceError::Storage(e.to_string())),
+            match self.project_repo.add_file(project_id, file.clone()).await {
+                Ok(Some(_)) => return Ok(file.into()),
+                Ok(None) => {
+                    taken.insert(candidate);
+                    continue;
+                }
+                Err(e) => return Err(AssetServiceError::Storage(e.to_string())),
+            }
         }
+
+        // Only reachable if the project disappeared mid-upload (every `add_file`
+        // returned `None` without a real path clash making progress).
+        Err(AssetServiceError::ProjectNotFound)
     }
 
     /// Fetch a binary asset's bytes (plus content type / filename for serving).
@@ -200,6 +234,54 @@ mod tests {
         assert_eq!(asset.bytes, vec![9, 8, 7]);
         assert_eq!(asset.content_type.as_deref(), Some("image/png"));
         assert_eq!(asset.filename, "logo.png");
+    }
+
+    #[tokio::test]
+    async fn test_upload_duplicate_path_is_suffixed() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, file_id));
+
+        for expected in ["logo.png", "logo (1).png", "logo (2).png"] {
+            let payload = service
+                .upload_asset(
+                    project_id,
+                    owner_id,
+                    // Un-normalized on purpose: the leading `./` must not dodge
+                    // the collision check.
+                    "./logo.png".to_string(),
+                    Some("image/png".to_string()),
+                    vec![1],
+                )
+                .await
+                .unwrap();
+            assert_eq!(payload.path, expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_invalid_path() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, file_id));
+
+        for bad in ["", "..", "../secret.png", "a\\b.png"] {
+            let res = service
+                .upload_asset(
+                    project_id,
+                    owner_id,
+                    bad.to_string(),
+                    None,
+                    vec![1],
+                )
+                .await;
+            assert!(
+                matches!(res, Err(AssetServiceError::InvalidPath)),
+                "path {bad:?} should be rejected"
+            );
+        }
     }
 
     #[tokio::test]

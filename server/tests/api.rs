@@ -338,6 +338,29 @@ async fn test_asset_upload_download_flow() {
     assert_eq!(body["payload"]["size"].as_i64().unwrap(), bytes.len() as i64);
     let file_id = body["payload"]["id"].as_str().unwrap().to_string();
 
+    // Uploading the same name again does not shadow the first file: the path is
+    // auto-suffixed, VS Code / browser style.
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/project/{project_id}/asset?path=logo.png"))
+        .cookie(cookie.clone())
+        .insert_header((actix_web::http::header::CONTENT_TYPE, "image/png"))
+        .set_payload(bytes.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["payload"]["path"], "logo (1).png");
+
+    // A path that cannot be a VFS path is rejected with 400.
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/project/{project_id}/asset?path=../escape.png"))
+        .cookie(cookie.clone())
+        .insert_header((actix_web::http::header::CONTENT_TYPE, "image/png"))
+        .set_payload(bytes.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+
     // The detail payload now lists the binary file as a storage-key reference.
     let req = test::TestRequest::get()
         .uri(&format!("/api/project/{project_id}"))
