@@ -12,6 +12,16 @@ export const UploadAssetResponseSchema = z.object({
   payload: ProjectFileSchema,
 });
 
+// Delete a project file (DELETE /project/{id}/asset/{fileId}). Removes the file
+// row and, for a binary asset, its stored bytes. The server refuses to delete
+// the project's compile entry file.
+export async function deleteAsset(
+  projectId: string,
+  fileId: string,
+): Promise<void> {
+  await api.delete(`project/${projectId}/asset/${fileId}`);
+}
+
 // Fetch a single asset's raw bytes (GET /project/{id}/asset/{fileId}).
 export async function fetchAssetBytes(
   projectId: string,

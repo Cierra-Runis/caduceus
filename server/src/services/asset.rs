@@ -20,6 +20,8 @@ pub enum AssetServiceError {
     FileNotFound,
     #[display("File is not a binary asset")]
     NotBinary,
+    #[display("Cannot delete the project's compile entry file")]
+    EntryFile,
     #[display("Storage error: {_0}")]
     Storage(String),
 }
@@ -108,6 +110,53 @@ impl<P: ProjectRepo, T: TeamRepo, S: AssetStore> AssetService<P, T, S> {
             Ok(Some(asset)) => Ok(asset),
             // The file row references a key the store no longer has.
             Ok(None) => Err(AssetServiceError::FileNotFound),
+            Err(e) => Err(AssetServiceError::Storage(e.to_string())),
+        }
+    }
+
+    /// Delete a project file. The caller must have access. Works for both text
+    /// files (just drops the row) and binary assets (also deletes the stored
+    /// bytes), so a mistaken upload or an orphaned source file can be removed.
+    ///
+    /// The compile [`entry`](crate::models::project::Project::entry) file is
+    /// protected: deleting it would leave the project with no root for the Typst
+    /// compiler, so it is rejected as [`AssetServiceError::EntryFile`] (4xx).
+    /// The bytes are deleted before the row so a failure there aborts the whole
+    /// operation, never orphaning the file's reference to a key that is gone.
+    pub async fn delete_asset(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        file_id: ObjectId,
+    ) -> Result<(), AssetServiceError> {
+        let project =
+            load_accessible(&self.project_repo, &self.team_repo, project_id, user_id).await?;
+
+        let file = project
+            .files
+            .iter()
+            .find(|f| f.id == file_id)
+            .ok_or(AssetServiceError::FileNotFound)?;
+
+        // Guard the compile root so the project stays compilable.
+        if project.entry == Some(file_id) {
+            return Err(AssetServiceError::EntryFile);
+        }
+
+        // Free the external bytes first; a store failure aborts before the row
+        // is removed, so we never leave a dangling reference. `delete` is
+        // idempotent, so a retry after a partial failure is safe.
+        if let FileContent::Binary { storage_key } = &file.content {
+            self.asset_store
+                .delete(storage_key)
+                .await
+                .map_err(|e| AssetServiceError::Storage(e.to_string()))?;
+        }
+
+        match self.project_repo.remove_file(project_id, file_id).await {
+            Ok(Some(_)) => Ok(()),
+            // The project vanished between the access check and the write.
+            Ok(None) => Err(AssetServiceError::ProjectNotFound),
             Err(e) => Err(AssetServiceError::Storage(e.to_string())),
         }
     }
@@ -275,6 +324,129 @@ mod tests {
         let service = service(project_with_text_file(project_id, owner_id, file_id));
 
         let res = service.read_asset(project_id, stranger, file_id).await;
+        assert!(matches!(res, Err(AssetServiceError::AccessDenied)));
+    }
+
+    /// Fetch the current file ids of the single seeded project, for assertions
+    /// about what a delete left behind.
+    fn file_ids(
+        service: &AssetService<MockProjectRepo, MockTeamRepo, MockAssetStore>,
+    ) -> Vec<ObjectId> {
+        service.project_repo.projects.lock().unwrap()[0]
+            .files
+            .iter()
+            .map(|f| f.id)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_delete_binary_asset_removes_row_and_bytes() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, file_id));
+
+        // Upload a binary asset, then delete it.
+        let payload = service
+            .upload_asset(
+                project_id,
+                owner_id,
+                "logo.png".to_string(),
+                Some("image/png".to_string()),
+                vec![9, 8, 7],
+            )
+            .await
+            .unwrap();
+        let asset_id = ObjectId::parse_str(&payload.id).unwrap();
+        let storage_key = match payload.content {
+            FileContentPayload::Binary { storage_key } => storage_key,
+            FileContentPayload::Text { .. } => panic!("expected binary content"),
+        };
+
+        service
+            .delete_asset(project_id, owner_id, asset_id)
+            .await
+            .unwrap();
+
+        // Row gone from the project, bytes gone from the store.
+        assert!(!file_ids(&service).contains(&asset_id));
+        assert!(
+            service
+                .asset_store
+                .assets
+                .lock()
+                .unwrap()
+                .get(&storage_key)
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delete_text_file_removes_row() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let entry_id = ObjectId::new();
+        let mut project = project_with_text_file(project_id, owner_id, entry_id);
+        // Add a second text file that is NOT the entry, so it can be deleted.
+        let extra_id = ObjectId::new();
+        project.files.push(ProjectFile {
+            id: extra_id,
+            path: "notes.typ".to_string(),
+            content: FileContent::Text {
+                text: "notes".to_string(),
+            },
+            size: 5,
+            version: 0,
+            updated_at: OffsetDateTime::now_utc(),
+        });
+        let service = service(project);
+
+        service
+            .delete_asset(project_id, owner_id, extra_id)
+            .await
+            .unwrap();
+
+        let remaining = file_ids(&service);
+        assert!(!remaining.contains(&extra_id));
+        assert!(remaining.contains(&entry_id));
+    }
+
+    #[tokio::test]
+    async fn test_delete_entry_file_rejected() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let entry_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, entry_id));
+
+        // The seeded text file is the project's entry.
+        let res = service.delete_asset(project_id, owner_id, entry_id).await;
+        assert!(matches!(res, Err(AssetServiceError::EntryFile)));
+        // Still present — the guard aborted before any removal.
+        assert!(file_ids(&service).contains(&entry_id));
+    }
+
+    #[tokio::test]
+    async fn test_delete_missing_file() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, file_id));
+
+        let res = service
+            .delete_asset(project_id, owner_id, ObjectId::new())
+            .await;
+        assert!(matches!(res, Err(AssetServiceError::FileNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_delete_access_denied() {
+        let owner_id = ObjectId::new();
+        let stranger = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = service(project_with_text_file(project_id, owner_id, file_id));
+
+        let res = service.delete_asset(project_id, stranger, file_id).await;
         assert!(matches!(res, Err(AssetServiceError::AccessDenied)));
     }
 }

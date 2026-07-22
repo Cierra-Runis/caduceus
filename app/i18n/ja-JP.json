@@ -89,6 +89,10 @@
   },
   "Project": {
     "asset": {
+      "delete": "{path} を削除",
+      "deleteConfirm": "{path} を削除しますか？この操作は取り消せません。",
+      "deleteFailed": "{path} の削除に失敗しました",
+      "deleted": "{path} を削除しました",
       "upload": "アップロード",
       "uploadFailed": "{path} のアップロードに失敗しました",
       "uploaded": "{path} をアップロードしました"

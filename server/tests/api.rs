@@ -387,7 +387,7 @@ async fn test_asset_upload_download_flow() {
     // Nor upload into it.
     let req = test::TestRequest::post()
         .uri(&format!("/api/project/{project_id}/asset?path=evil.png"))
-        .cookie(other_cookie)
+        .cookie(other_cookie.clone())
         .insert_header((actix_web::http::header::CONTENT_TYPE, "image/png"))
         .set_payload(vec![1u8, 2, 3])
         .to_request();
@@ -409,6 +409,63 @@ async fn test_asset_upload_download_flow() {
             "/api/project/{project_id}/asset/{}",
             ObjectId::new().to_hex()
         ))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 404);
+
+    // A stranger cannot delete the asset.
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
+        .cookie(other_cookie)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403);
+
+    // Deleting the compile entry is refused (400) so the project stays
+    // compilable.
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/project/{project_id}/asset/{entry}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+
+    // The owner deletes the uploaded asset.
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    // It is gone from the detail payload…
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(
+        body["payload"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["id"] != file_id.as_str())
+    );
+
+    // …and fetching its bytes now 404s.
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
+        .cookie(cookie.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 404);
+
+    // Deleting an already-gone asset is a 404 (no such file row).
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/project/{project_id}/asset/{file_id}"))
         .cookie(cookie)
         .to_request();
     let resp = test::call_service(&app, req).await;

@@ -89,6 +89,10 @@
   },
   "Project": {
     "asset": {
+      "delete": "Delete {path}",
+      "deleteConfirm": "Delete {path}? This can't be undone.",
+      "deleteFailed": "Failed to delete {path}",
+      "deleted": "Deleted {path}",
       "upload": "Upload",
       "uploadFailed": "Failed to upload {path}",
       "uploaded": "Uploaded {path}"

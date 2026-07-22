@@ -19,7 +19,9 @@ impl ResponseError for AssetServiceError {
                 StatusCode::NOT_FOUND
             }
             AssetServiceError::AccessDenied => StatusCode::FORBIDDEN,
-            AssetServiceError::NotBinary => StatusCode::BAD_REQUEST,
+            AssetServiceError::NotBinary | AssetServiceError::EntryFile => {
+                StatusCode::BAD_REQUEST
+            }
             AssetServiceError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -91,4 +93,25 @@ pub async fn get_asset(
         builder.insert_header((header::CONTENT_TYPE, content_type));
     }
     Ok(builder.body(asset.bytes))
+}
+
+/// `DELETE /api/project/{id}/asset/{file_id}` — remove a project file. For a
+/// binary asset the stored bytes are deleted too; a text file just drops its
+/// row. The project's compile entry file is protected (`400`). Access is
+/// enforced against the owning project.
+pub async fn delete_asset(
+    path: web::Path<(String, String)>,
+    data: web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, AssetServiceError> {
+    let (id, file_id) = path.into_inner();
+    let project_id = ObjectId::parse_str(id).map_err(|_| AssetServiceError::ProjectNotFound)?;
+    let file_id = ObjectId::parse_str(file_id).map_err(|_| AssetServiceError::FileNotFound)?;
+
+    data.asset_service
+        .delete_asset(project_id, user.sub, file_id)
+        .await?;
+
+    let response = ApiResponse::<()>::success_no_payload("Asset deleted successfully");
+    Ok(HttpResponse::Ok().json(response))
 }

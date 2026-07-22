@@ -14,7 +14,7 @@ import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
-import { fetchBinaryAssets, uploadAsset } from '@/lib/api/asset';
+import { deleteAsset, fetchBinaryAssets, uploadAsset } from '@/lib/api/asset';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { TypstBinaryFile } from '@/lib/typst';
@@ -24,7 +24,7 @@ import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
 import { PreviewPanel } from './PreviewPanel';
 import { Sidebar } from './Sidebar';
-import { SidebarPanel } from './SidebarPanel';
+import { SidebarFile, SidebarPanel } from './SidebarPanel';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
   const t = useTranslations('Project');
@@ -61,9 +61,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   );
   // The full tree for the sidebar: text files are editable, binary assets are
   // shown for reference (so users can `#image(...)` them) but not opened.
-  const fileList = useMemo(
+  const fileList = useMemo<SidebarFile[]>(
     () =>
       project.files.map((file) => ({
+        id: file.id,
         kind: file.content.kind,
         path: file.path,
       })),
@@ -107,6 +108,28 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         });
       } finally {
         setUploading(false);
+      }
+    },
+    [project.id, router, t],
+  );
+
+  const [deletingId, setDeletingId] = useState<null | string>(null);
+  const onDelete = useCallback(
+    async (file: SidebarFile) => {
+      if (!window.confirm(t('asset.deleteConfirm', { path: file.path }))) return;
+      setDeletingId(file.id);
+      try {
+        await deleteAsset(project.id, file.id);
+        // Reload the server component so the tree drops the file and the
+        // preview's binary assets are refetched.
+        router.refresh();
+        toast.success(t('asset.deleted', { path: file.path }));
+      } catch (error) {
+        toast.error(t('asset.deleteFailed', { path: file.path }), {
+          description: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        setDeletingId(null);
       }
     },
     [project.id, router, t],
@@ -160,9 +183,11 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <Group orientation='horizontal'>
         <SidebarPanel
+          deletingId={deletingId}
           entry={entry}
           files={fileList}
           focus={focus}
+          onDelete={onDelete}
           onSelect={setFocus}
           onUpload={onUpload}
           sidebarPanelRef={sidebarPanelRef}

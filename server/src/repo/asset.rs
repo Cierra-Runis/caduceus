@@ -57,6 +57,12 @@ pub trait AssetStore: Send + Sync {
     /// Fetch a previously stored asset by its key, or `None` if no asset has
     /// that key.
     async fn download(&self, key: &str) -> Result<Option<StoredAsset>>;
+
+    /// Remove the asset addressed by `key`. Deleting a key that is not present
+    /// (already gone, or never existed) is not an error: the post-condition
+    /// "no asset lives at `key`" already holds, so callers can delete without a
+    /// prior existence check and cleanup is idempotent.
+    async fn delete(&self, key: &str) -> Result<()>;
 }
 
 /// The configured asset backend, resolved once at startup from
@@ -86,6 +92,13 @@ impl AssetStore for AssetStoreKind {
         match self {
             AssetStoreKind::GridFs(store) => store.download(key).await,
             AssetStoreKind::S3(store) => store.download(key).await,
+        }
+    }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        match self {
+            AssetStoreKind::GridFs(store) => store.delete(key).await,
+            AssetStoreKind::S3(store) => store.delete(key).await,
         }
     }
 }
@@ -183,6 +196,32 @@ impl AssetStore for GridFsAssetStore {
             filename: file.filename.unwrap_or_default(),
         }))
     }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        // A key that is not a valid ObjectId cannot address a GridFS file — it is
+        // already "not present", so deletion is trivially satisfied.
+        let Ok(id) = ObjectId::parse_str(key) else {
+            return Ok(());
+        };
+
+        // `GridFsBucket::delete` errors when the id is unknown; guard with a
+        // lookup so deleting an already-gone asset stays a no-op success rather
+        // than surfacing a spurious failure.
+        if self
+            .bucket
+            .find_one(bson::doc! { "_id": bson::Bson::ObjectId(id) })
+            .await
+            .map_err(AssetStoreError::new)?
+            .is_none()
+        {
+            return Ok(());
+        }
+
+        self.bucket
+            .delete(bson::Bson::ObjectId(id))
+            .await
+            .map_err(AssetStoreError::new)
+    }
 }
 
 /// S3/MinIO-backed [`AssetStore`], selected via config for deployments that
@@ -267,6 +306,22 @@ impl AssetStore for S3AssetStore {
             ))),
         }
     }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        let response = self
+            .bucket
+            .delete_object(key)
+            .await
+            .map_err(AssetStoreError::new)?;
+        match response.status_code() {
+            // S3 returns 204 for a successful delete and, being idempotent,
+            // also 2xx/404 when the object was already absent — all "gone".
+            200..=299 | 404 => Ok(()),
+            code => Err(AssetStoreError::new(format!(
+                "s3 delete returned status {code}"
+            ))),
+        }
+    }
 }
 
 /// Make a filename safe to embed in an object key: drop path separators so a
@@ -316,6 +371,12 @@ pub mod tests {
         async fn download(&self, key: &str) -> Result<Option<StoredAsset>> {
             Ok(self.assets.lock().unwrap().get(key).cloned())
         }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            // Idempotent: removing an absent key is a no-op success.
+            self.assets.lock().unwrap().remove(key);
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -342,6 +403,20 @@ pub mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn test_mock_store_delete_removes_and_is_idempotent() {
+        let store = MockAssetStore::default();
+        let key = store
+            .upload("logo.png", Some("image/png"), vec![1, 2, 3])
+            .await
+            .unwrap();
+
+        store.delete(&key).await.unwrap();
+        assert!(store.download(&key).await.unwrap().is_none());
+        // Deleting an already-gone key is a no-op success, not an error.
+        store.delete(&key).await.unwrap();
     }
 
     #[test]

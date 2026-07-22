@@ -31,6 +31,17 @@ pub trait ProjectRepo {
     /// caller has already persisted the bytes and holds the storage key on
     /// `file.content`.
     async fn add_file(&self, project_id: ObjectId, file: ProjectFile) -> Result<Option<Project>>;
+    /// Remove the file with `file_id` from a project's `files` array, bump the
+    /// project's `updated_at`, and return the updated project. `None` if the
+    /// project does not exist. Removing a file id the project does not have is
+    /// not an error — the post-condition (no such file) already holds and the
+    /// project is returned unchanged. The caller (asset delete) has already
+    /// resolved the file and any external bytes it referenced.
+    async fn remove_file(
+        &self,
+        project_id: ObjectId,
+        file_id: ObjectId,
+    ) -> Result<Option<Project>>;
     /// Update a project's metadata (name + ownership), bump `updated_at`, and
     /// return the updated project. `None` if the project does not exist.
     async fn update_metadata(
@@ -118,6 +129,22 @@ impl ProjectRepo for MongoProjectRepo {
         let file_bson = bson::to_bson(&file)?;
         let update = bson::doc! {
             "$push": { "files": file_bson },
+            "$set": { "updated_at": bson::DateTime::now() },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .return_document(ReturnDocument::After)
+            .await
+    }
+
+    async fn remove_file(
+        &self,
+        project_id: ObjectId,
+        file_id: ObjectId,
+    ) -> Result<Option<Project>> {
+        let update = bson::doc! {
+            "$pull": { "files": { "_id": file_id } },
             "$set": { "updated_at": bson::DateTime::now() },
         };
 
@@ -222,6 +249,20 @@ pub mod tests {
                 return Ok(None);
             };
             project.files.push(file);
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
+        }
+
+        async fn remove_file(
+            &self,
+            project_id: ObjectId,
+            file_id: ObjectId,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            project.files.retain(|f| f.id != file_id);
             project.updated_at = OffsetDateTime::now_utc();
             Ok(Some(project.clone()))
         }
@@ -449,6 +490,60 @@ pub mod tests {
                 ObjectId::new(),
                 OwnerType::User,
             )
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
+    async fn test_remove_file_pulls_file_and_bumps_timestamp() {
+        let repo = test_repo().await;
+        let keep = ProjectFile {
+            id: ObjectId::new(),
+            path: "main.typ".to_string(),
+            content: FileContent::Text {
+                text: "keep".to_string(),
+            },
+            size: 4,
+            version: 0,
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        let drop = ProjectFile {
+            id: ObjectId::new(),
+            path: "logo.png".to_string(),
+            content: FileContent::Binary {
+                storage_key: "k".to_string(),
+            },
+            size: 3,
+            version: 0,
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        let project = new_project(
+            ObjectId::new(),
+            OwnerType::User,
+            vec![keep.clone(), drop.clone()],
+        );
+        repo.create(project.clone()).await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let updated = repo.remove_file(project.id, drop.id).await.unwrap();
+        assert!(updated.is_some());
+        let updated = updated.unwrap();
+        assert!(updated.updated_at > project.updated_at);
+        assert_eq!(updated.files.len(), 1);
+        assert_eq!(updated.files[0].id, keep.id);
+
+        cleanup(&repo, project.id).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
+    async fn test_remove_file_returns_none_for_missing_project() {
+        let repo = test_repo().await;
+        let result = repo
+            .remove_file(ObjectId::new(), ObjectId::new())
             .await
             .unwrap();
         assert!(result.is_none());

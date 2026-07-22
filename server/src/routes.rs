@@ -42,6 +42,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                             "/asset/{file_id}",
                             web::get().to(handler::asset::get_asset),
                         )
+                        .route(
+                            "/asset/{file_id}",
+                            web::delete().to(handler::asset::delete_asset),
+                        )
                         .route("/duplicate", web::post().to(handler::project::duplicate)),
                 )
                 .service(
