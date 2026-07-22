@@ -258,6 +258,85 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_jwt_middleware_expired_token() {
+        async fn protected_handler() -> HttpResponse {
+            HttpResponse::Ok().finish()
+        }
+
+        let secret = "test_secret";
+        let claims = UserClaims::new(
+            ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
+            OffsetDateTime::now_utc() - Duration::hours(48),
+            Duration::hours(24),
+        );
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS512),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_ref()),
+        )
+        .unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new(secret.to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, format!("Bearer {}", token)))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"message": "Invalid JWT token"}))
+                .unwrap()
+                .as_bytes()
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_jwt_middleware_wrong_secret_token() {
+        async fn protected_handler() -> HttpResponse {
+            HttpResponse::Ok().finish()
+        }
+
+        let claims = UserClaims::new(
+            ObjectId::parse_str("64b64c4f2f9b256e1c8e4d3a").unwrap(),
+            OffsetDateTime::now_utc(),
+            Duration::hours(24),
+        );
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS512),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret("wrong_secret".as_ref()),
+        )
+        .unwrap();
+
+        let app = test::init_service(
+            App::new()
+                .wrap(JwtMiddleware::new("test_secret".to_string()))
+                .route("/protected", web::get().to(protected_handler)),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/protected")
+            .insert_header((header::AUTHORIZATION, format!("Bearer {}", token)))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+        assert_eq!(
+            test::read_body(resp).await,
+            serde_json::to_string(&serde_json::json!({"message": "Invalid JWT token"}))
+                .unwrap()
+                .as_bytes()
+        );
+    }
+
+    #[actix_web::test]
     async fn test_jwt_middleware_cookie_invalid_token() {
         async fn protected_handler() -> HttpResponse {
             HttpResponse::Ok().finish()
