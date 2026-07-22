@@ -27,6 +27,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { useUpdateProject } from '@/hooks/api/project';
+import { teamProjectKey } from '@/hooks/api/team';
 import { useUserMe } from '@/hooks/api/user/me';
 import { useUserTeams } from '@/hooks/api/user/team';
 import { UpdateProjectRequestSchema } from '@/lib/api/project';
@@ -70,9 +71,15 @@ export function UpdateProjectButton({
                 });
                 setOpen(false);
                 // The project may have been renamed or moved between owners,
-                // so refresh both the personal and the team project lists.
-                mutate('user/projects');
-                mutate('team/projects');
+                // so refresh the lists of both the previous owner (`project`)
+                // and the newly selected one (`data`).
+                for (const owner of [project, data]) {
+                  mutate(
+                    owner.owner_type === 'team'
+                      ? teamProjectKey(owner.owner_id)
+                      : 'user/projects',
+                  );
+                }
               },
             })
           }
