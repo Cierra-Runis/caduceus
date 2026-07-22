@@ -152,6 +152,60 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         }
     }
 
+    /// Update a project's metadata: rename it and/or move it between owners
+    /// (personal space ↔ team). The caller must have access to the project,
+    /// and the *target* owner is validated with the same rules as `create` —
+    /// a user owner must be the requester themselves, a team owner must be a
+    /// team the requester belongs to — so a project can never be pushed into
+    /// someone else's space.
+    pub async fn update(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        name: String,
+        owner_id: ObjectId,
+        owner_type: OwnerType,
+    ) -> Result<ProjectPayload, ProjectServiceError> {
+        match self.accessible(project_id, user_id).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ProjectServiceError::AccessDenied),
+            Err(e) => return Err(e),
+        };
+
+        let owner_id = match owner_type {
+            OwnerType::User => match self.user_repo.find_by_id(owner_id).await {
+                Ok(Some(owner)) => {
+                    if owner.id != user_id {
+                        return Err(ProjectServiceError::CreatorNotMatchOwner);
+                    }
+                    owner.id
+                }
+                Ok(None) => return Err(ProjectServiceError::OwnerNotFound(OwnerType::User)),
+                Err(e) => return Err(ProjectServiceError::Database(e)),
+            },
+            OwnerType::Team => match self.team_repo.find_by_id(owner_id).await {
+                Ok(Some(team)) => {
+                    if !team.member_ids.contains(&user_id) {
+                        return Err(ProjectServiceError::CreatorNotMemberOfTeam);
+                    }
+                    team.id
+                }
+                Ok(None) => return Err(ProjectServiceError::OwnerNotFound(OwnerType::Team)),
+                Err(e) => return Err(ProjectServiceError::Database(e)),
+            },
+        };
+
+        match self
+            .project_repo
+            .update_metadata(project_id, name, owner_id, owner_type)
+            .await
+        {
+            Ok(Some(project)) => Ok(project.into()),
+            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => Err(ProjectServiceError::Database(e)),
+        }
+    }
+
     /// Clone a project the caller can access into a brand-new, independent
     /// project owned the same way (same `owner_id`/`owner_type`), with the
     /// requester recorded as the new project's `creator_id`. Every file gets a
@@ -680,6 +734,210 @@ mod tests {
             .update_file(project_id, owner_id, ObjectId::new(), "x".to_string())
             .await;
         assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_project_rename_success() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![dummy_user(owner_id)]),
+            },
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let payload = service
+            .update(
+                project_id,
+                owner_id,
+                "renamed".to_string(),
+                owner_id,
+                OwnerType::User,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(payload.name, "renamed");
+        assert_eq!(payload.owner_id, owner_id.to_hex());
+        assert_eq!(payload.owner_type, OwnerType::User);
+    }
+
+    #[tokio::test]
+    async fn test_update_project_move_to_team() {
+        let owner_id = ObjectId::new();
+        let team_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![dummy_user(owner_id)]),
+            },
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![dummy_team(team_id, vec![owner_id])]),
+            },
+        };
+
+        let payload = service
+            .update(
+                project_id,
+                owner_id,
+                "moved".to_string(),
+                team_id,
+                OwnerType::Team,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(payload.owner_id, team_id.to_hex());
+        assert_eq!(payload.owner_type, OwnerType::Team);
+    }
+
+    #[tokio::test]
+    async fn test_update_project_access_denied() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service
+            .update(
+                project_id,
+                other_user_id,
+                "x".to_string(),
+                other_user_id,
+                OwnerType::User,
+            )
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
+    }
+
+    #[tokio::test]
+    async fn test_update_project_not_found() {
+        let service = ProjectService {
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let user_id = ObjectId::new();
+        let res = service
+            .update(
+                ObjectId::new(),
+                user_id,
+                "x".to_string(),
+                user_id,
+                OwnerType::User,
+            )
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_project_target_user_not_self() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![dummy_user(owner_id), dummy_user(other_user_id)]),
+            },
+            team_repo: MockTeamRepo::default(),
+        };
+
+        // The owner tries to hand the project to another user directly.
+        let res = service
+            .update(
+                project_id,
+                owner_id,
+                "x".to_string(),
+                other_user_id,
+                OwnerType::User,
+            )
+            .await;
+        assert!(matches!(
+            res,
+            Err(ProjectServiceError::CreatorNotMatchOwner)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_project_target_team_not_member() {
+        let owner_id = ObjectId::new();
+        let team_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo {
+                users: Mutex::new(vec![dummy_user(owner_id)]),
+            },
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![dummy_team(team_id, vec![ObjectId::new()])]),
+            },
+        };
+
+        let res = service
+            .update(
+                project_id,
+                owner_id,
+                "x".to_string(),
+                team_id,
+                OwnerType::Team,
+            )
+            .await;
+        assert!(matches!(
+            res,
+            Err(ProjectServiceError::CreatorNotMemberOfTeam)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_project_target_owner_not_found() {
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service
+            .update(
+                project_id,
+                owner_id,
+                "x".to_string(),
+                ObjectId::new(),
+                OwnerType::Team,
+            )
+            .await;
+        assert!(matches!(
+            res,
+            Err(ProjectServiceError::OwnerNotFound(OwnerType::Team))
+        ));
     }
 
     #[tokio::test]

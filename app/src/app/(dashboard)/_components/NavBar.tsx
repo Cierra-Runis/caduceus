@@ -11,13 +11,15 @@ import {
   MenubarTrigger,
 } from '@/components/ui/menubar';
 
+import { Header } from './Header';
+
 export const NavBar = () => {
   const t = useTranslations();
   return (
     <header
       className={`sticky top-0 z-40 h-auto flex-none border-b bg-background`}
     >
-      <div className='mx-auto flex h-11 items-center gap-4 px-0.5'>
+      <div className='relative mx-auto flex h-11 items-center gap-4 px-0.5'>
         <Menubar className='w-full gap-4 border-none'>
           <MenubarMenu>
             <MenubarTrigger className='font-bold'>
@@ -53,6 +55,15 @@ export const NavBar = () => {
             </MenubarContent>
           </MenubarMenu>
         </Menubar>
+        {/* Centered over the menubar; non-interactive, so let clicks pass
+            through to whatever sits underneath. */}
+        <div
+          className={`
+            pointer-events-none absolute left-1/2 -translate-x-1/2
+          `}
+        >
+          <Header />
+        </div>
       </div>
     </header>
   );

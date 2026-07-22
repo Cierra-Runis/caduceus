@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Controller } from 'react-hook-form';
 import { toast } from 'sonner';
+import { mutate } from 'swr';
 
 import { Input } from '@/components/forms/Input';
 import { ZodForm } from '@/components/forms/ZodForm';
@@ -24,6 +25,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
+import { useUpdateProject } from '@/hooks/api/project';
 import { useUserMe } from '@/hooks/api/user/me';
 import { useUserTeams } from '@/hooks/api/user/team';
 import { UpdateProjectRequestSchema } from '@/lib/api/project';
@@ -38,8 +41,9 @@ export function UpdateProjectButton({
 } & React.ComponentProps<typeof Button>) {
   const t = useTranslations('UpdateProject');
   const [open, setOpen] = useState(false);
-  const { data: user, error } = useUserMe();
+  const { data: user } = useUserMe();
   const { data: teams } = useUserTeams();
+  const { isMutating, trigger } = useUpdateProject(project.id);
 
   return (
     <Dialog onOpenChange={setOpen} open={open}>
@@ -53,13 +57,25 @@ export function UpdateProjectButton({
         <ZodForm
           defaultValues={project}
           id='update-project-form'
-          onValid={(data) => {
-            if (!user?.payload.id)
-              return toast.error(error?.message ?? t('title'));
-            // TODO: wire up update mutation once the API hook exists
-            console.log(data);
-            setOpen(false);
-          }}
+          onValid={(data) =>
+            trigger(data, {
+              onError: (error) => {
+                toast.error(t('updateFailed'), {
+                  description: error.message,
+                });
+              },
+              onSuccess: () => {
+                toast.success(t('updateSucceeded'), {
+                  description: t('updated'),
+                });
+                setOpen(false);
+                // The project may have been renamed or moved between owners,
+                // so refresh both the personal and the team project lists.
+                mutate('user/projects');
+                mutate('team/projects');
+              },
+            })
+          }
           schema={UpdateProjectRequestSchema}
         >
           {(control, setValue) => (
@@ -147,7 +163,12 @@ export function UpdateProjectButton({
           <Button onClick={() => setOpen(false)} variant='destructive'>
             {t('delete')}
           </Button>
-          <Button form='update-project-form' type='submit'>
+          <Button
+            disabled={isMutating}
+            form='update-project-form'
+            type='submit'
+          >
+            {isMutating && <Spinner data-icon='inline-start' />}
             {t('save')}
           </Button>
         </DialogFooter>

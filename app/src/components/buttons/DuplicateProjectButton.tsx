@@ -34,9 +34,11 @@ export function DuplicateProjectButton({
             toast.success(t('duplicationSucceeded'), {
               description: t('duplicated'),
             });
-            // Revalidate the dashboard's project list so the new copy shows
-            // up without a manual reload.
+            // Revalidate the project lists so the new copy shows up without
+            // a manual reload. The duplicate keeps the source's owner, which
+            // can be the user (dashboard) or a team (team page).
             mutate('user/projects');
+            mutate('team/projects');
           },
         })
       }

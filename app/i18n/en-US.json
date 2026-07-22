@@ -174,6 +174,9 @@
       "name": "Enter your project name"
     },
     "save": "Save",
-    "title": "Update Project"
+    "title": "Update Project",
+    "updated": "Project updated successfully!",
+    "updateFailed": "Update Failed",
+    "updateSucceeded": "Update Successful"
   }
 }

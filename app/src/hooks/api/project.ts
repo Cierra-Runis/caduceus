@@ -10,6 +10,9 @@ import {
   DuplicateProjectResponseSchema,
   ProjectDetailResponse,
   ProjectDetailResponseSchema,
+  UpdateProjectRequest,
+  UpdateProjectResponse,
+  UpdateProjectResponseSchema,
 } from '@/lib/api/project';
 import { api } from '@/lib/request';
 
@@ -36,4 +39,13 @@ export const useDuplicateProject = (id: string) =>
     `project/${id}/duplicate`,
     async (key) =>
       DuplicateProjectResponseSchema.parse(await api.post(key).json()),
+  );
+
+export const useUpdateProject = (id: string) =>
+  useSWRMutation<UpdateProjectResponse, Error, string, UpdateProjectRequest>(
+    `project/${id}`,
+    async (key, { arg }) =>
+      UpdateProjectResponseSchema.parse(
+        await api.put(key, { json: arg }).json(),
+      ),
   );
