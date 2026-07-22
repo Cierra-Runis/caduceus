@@ -17,6 +17,7 @@ impl ResponseError for TeamServiceError {
         match *self {
             TeamServiceError::UserNotFound => StatusCode::NOT_FOUND,
             TeamServiceError::TeamNotFound => StatusCode::NOT_FOUND,
+            TeamServiceError::AccessDenied => StatusCode::FORBIDDEN,
             TeamServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -49,8 +50,9 @@ pub struct TeamProjectsQuery {
 pub async fn projects(
     req: web::Query<TeamProjectsQuery>,
     data: web::Data<crate::AppState>,
+    user: UserClaims,
 ) -> Result<HttpResponse, TeamServiceError> {
-    match data.team_service.list_projects(req.id).await {
+    match data.team_service.list_projects(req.id, user.sub).await {
         Ok(projects) => {
             let response = ApiResponse::success("Projects fetched successfully", projects);
             Ok(HttpResponse::Ok().json(response))
@@ -74,6 +76,10 @@ mod tests {
         assert_eq!(
             TeamServiceError::TeamNotFound.status_code(),
             StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            TeamServiceError::AccessDenied.status_code(),
+            StatusCode::FORBIDDEN
         );
         assert_eq!(
             TeamServiceError::Database(mongodb::error::Error::custom("boom")).status_code(),
