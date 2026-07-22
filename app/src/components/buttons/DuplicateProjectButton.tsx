@@ -34,9 +34,16 @@ export function DuplicateProjectButton({
             toast.success(t('duplicationSucceeded'), {
               description: t('duplicated'),
             });
-            // Revalidate the dashboard's project list so the new copy shows
-            // up without a manual reload.
+            // Revalidate the project lists so the new copy shows up without
+            // a manual reload. The duplicate keeps the source's owner, which
+            // can be the user (dashboard) or a team (team page). Team keys are
+            // matched by prefix so this works with both the current
+            // 'team/projects' SWR key and per-team keys like
+            // 'team/projects?id=...'.
             mutate('user/projects');
+            mutate(
+              (key) => typeof key === 'string' && key.startsWith('team/projects'),
+            );
           },
         })
       }

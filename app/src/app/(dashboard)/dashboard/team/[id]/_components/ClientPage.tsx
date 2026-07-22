@@ -1,10 +1,12 @@
 'use client';
 
-import { CopyIcon, DownloadIcon, PlayIcon, SettingsIcon } from 'lucide-react';
+import { CopyIcon, PlayIcon, SettingsIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import NextLink from 'next/link';
 
 import { CreateProjectButton } from '@/components/buttons/CreateProjectButton';
+import { DownloadProjectButton } from '@/components/buttons/DownloadProjectButton';
+import { DuplicateProjectButton } from '@/components/buttons/DuplicateProjectButton';
 import { UpdateProjectButton } from '@/components/buttons/UpdateProjectButton';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -90,19 +92,23 @@ export function ClientPage({ id }: { id: string }) {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        {/* TODO: Implement download */}
-                        <Button size='icon-sm' variant='outline'>
-                          <DownloadIcon />
-                        </Button>
+                        <DownloadProjectButton
+                          project={item}
+                          size='icon-sm'
+                          variant='outline'
+                        />
                       </TooltipTrigger>
                       <TooltipContent>{t('Table.download')}</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        {/* TODO: Implement duplicate */}
-                        <Button size='icon-sm' variant='outline'>
+                        <DuplicateProjectButton
+                          project={item}
+                          size='icon-sm'
+                          variant='outline'
+                        >
                           <CopyIcon />
-                        </Button>
+                        </DuplicateProjectButton>
                       </TooltipTrigger>
                       <TooltipContent>{t('Table.duplicate')}</TooltipContent>
                     </Tooltip>
