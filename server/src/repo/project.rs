@@ -246,6 +246,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_create_and_find_by_id() {
         let repo = test_repo().await;
         let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
@@ -267,6 +268,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_find_by_id_not_found() {
         let repo = test_repo().await;
         let found = repo.find_by_id(ObjectId::new()).await.unwrap();
@@ -274,6 +276,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_find_by_owner_matches_owner_id_and_owner_type() {
         let repo = test_repo().await;
         let owner_id = ObjectId::new();
@@ -301,6 +304,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_find_by_owner_empty_when_no_match() {
         let repo = test_repo().await;
         let found = repo
@@ -311,6 +315,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_file_content_bumps_version_and_timestamps() {
         let repo = test_repo().await;
         let file = ProjectFile {
@@ -353,6 +358,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_file_content_returns_none_for_missing_project() {
         let repo = test_repo().await;
         let result = repo
@@ -370,6 +376,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_metadata_updates_fields_and_timestamp() {
         let repo = test_repo().await;
         let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
@@ -399,6 +406,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_metadata_returns_none_for_missing_project() {
         let repo = test_repo().await;
         let result = repo
@@ -414,6 +422,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_file_content_returns_none_for_missing_file() {
         let repo = test_repo().await;
         let project = new_project(ObjectId::new(), OwnerType::User, vec![]);

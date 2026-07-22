@@ -52,7 +52,10 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
         working-directory: ./server
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info
+        # `--include-ignored` runs the MongoDB-backed repo/database integration
+        # tests, which are `#[ignore]`d so a local `cargo test` (no MongoDB)
+        # stays green. CI provisions MongoDB above, so it runs the full suite.
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info -- --include-ignored
 
       # https://github.com/codecov/codecov-action
       - name: Upload coverage reports to Codecov
