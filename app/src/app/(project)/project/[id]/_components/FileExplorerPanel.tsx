@@ -439,7 +439,11 @@ function TreeList(props: TreeListProps) {
   return (
     <ul>
       {nodes.map((node) => (
-        <TreeRow key={node.type + ':' + node.path} node={node} {...props} />
+        // `node` MUST come after the spread: `props` carries a leaked `node`
+        // (a parent TreeRow spreads its own props, including its node, into the
+        // nested TreeList). If the spread won, every child would resolve back to
+        // its parent folder — infinite recursion that freezes the page.
+        <TreeRow key={node.type + ':' + node.path} {...props} node={node} />
       ))}
     </ul>
   );
