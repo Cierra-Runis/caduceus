@@ -17,6 +17,15 @@ const compilerModule = () =>
 
 let initialized = false;
 
+/// A rendered preview plus the compiler's diagnostics. `svg` is empty when the
+/// document failed to compile (a hard error); `diagnostics` carries *both*
+/// warnings and errors — e.g. `main.typ:2:9-…: warning: unknown font family:
+/// nw` — as one formatted line each.
+export interface CompileOutput {
+  diagnostics: string[];
+  svg: string;
+}
+
 /// A non-source file the document may load as *bytes* — an image for
 /// `#image(...)`, a dataset for `#read(...)`/`#csv(...)`, a `.bib`, etc. These
 /// are registered as shadow files so the sandboxed compiler can read them;
@@ -34,18 +43,22 @@ export interface TypstSourceFile {
   text: string;
 }
 
-/// Compile a project to an SVG string, starting from `entryPath`.
+/// Compile a project to an SVG plus diagnostics, starting from `entryPath`.
 ///
 /// The whole tree is fed to the compiler (not just the focused file) because
 /// Typst resolves `#import`/`#image`/`#read` across every file: `.typ` sources
 /// go in as editable source text, everything else as shadowed bytes. Paths are
 /// normalised to an absolute VFS root so relative loads resolve the same way
 /// regardless of which file is the entry.
+///
+/// The convenience `$typst.svg()` compiles with `diagnostics: 'none'`, silently
+/// dropping every warning (an unknown font, a deprecated call, …). So we run
+/// the compiler directly with diagnostics on to surface them, then render.
 export async function compileProject(
   entryPath: string,
   sources: TypstSourceFile[],
   assets: TypstAssetFile[] = [],
-): Promise<string> {
+): Promise<CompileOutput> {
   ensureInit();
   for (const file of sources) {
     await $typst.addSource(abs(file.path), file.text);
@@ -53,7 +66,20 @@ export async function compileProject(
   for (const asset of assets) {
     await $typst.mapShadow(abs(asset.path), asset.bytes);
   }
-  return $typst.svg({ mainFilePath: abs(entryPath) });
+  const mainFilePath = abs(entryPath);
+  const compiler = await $typst.getCompiler();
+  const result = await compiler.compile({ diagnostics: 'unix', mainFilePath });
+  const diagnostics = (result.diagnostics ?? []) as string[];
+
+  let svg = '';
+  try {
+    // Render via the snippet's known-good path. On a hard error this throws;
+    // the error is already captured in `diagnostics`, so we keep those.
+    svg = await $typst.svg({ mainFilePath });
+  } catch {
+    /* keep diagnostics; leave svg empty */
+  }
+  return { diagnostics, svg };
 }
 
 /// Compile a project's text files to PDF bytes, starting from `entryPath`.

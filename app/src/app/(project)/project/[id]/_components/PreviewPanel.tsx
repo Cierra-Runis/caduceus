@@ -9,6 +9,7 @@ import {
     TypstAssetFile,
     TypstSourceFile,
 } from '@/lib/typst';
+import { cn } from '@/lib/utils';
 
 export interface PreviewPanelProps {
   /// Non-font binary assets (images, data, …) the document may load, as bytes.
@@ -36,13 +37,17 @@ export function PreviewPanel({
   previewPanelRef,
 }: PreviewPanelProps) {
   const [svg, setSvg] = useState('');
-  const [error, setError] = useState<null | string>(null);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  // A thrown, non-Typst failure (WASM/setup) distinct from compile diagnostics.
+  const [fatal, setFatal] = useState<null | string>(null);
   // Monotonic counter so a slow compile can't overwrite a newer one's result.
   const seq = useRef(0);
 
   useEffect(() => {
     if (!entryPath) {
-      setError('This project has no entry file to compile.');
+      setFatal('This project has no entry file to compile.');
+      setSvg('');
+      setDiagnostics([]);
       return;
     }
     // `.typ` files go in as editable source; every other text file is a data
@@ -63,12 +68,13 @@ export function PreviewPanel({
         await registerFonts(fonts, fontKey);
         const out = await compileProject(entryPath, sources, allAssets);
         if (mySeq === seq.current) {
-          setSvg(out);
-          setError(null);
+          setSvg(out.svg);
+          setDiagnostics(out.diagnostics);
+          setFatal(null);
         }
       } catch (e) {
         if (mySeq === seq.current) {
-          setError(e instanceof Error ? e.message : String(e));
+          setFatal(e instanceof Error ? e.message : String(e));
         }
       }
     }, DEBOUNCE_MS);
@@ -83,13 +89,45 @@ export function PreviewPanel({
       minSize={20}
       panelRef={previewPanelRef}
     >
-      <div className='h-full overflow-auto p-4'>
-        {error ? (
-          <pre className='text-sm whitespace-pre-wrap text-red-500'>{error}</pre>
-        ) : (
-          <div dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className='flex h-full flex-col'>
+        <div className='flex-1 overflow-auto p-4'>
+          {fatal ? (
+            <pre className='text-sm whitespace-pre-wrap text-red-500'>
+              {fatal}
+            </pre>
+          ) : (
+            <div dangerouslySetInnerHTML={{ __html: svg }} />
+          )}
+        </div>
+        {diagnostics.length > 0 && (
+          <DiagnosticsList diagnostics={diagnostics} />
         )}
       </div>
     </Panel>
+  );
+}
+
+// Compile diagnostics (warnings + errors), each a `unix`-formatted line such as
+// `main.typ:2:9-3:15: warning: unknown font family: nw`. Errors are colored red,
+// everything else amber.
+function DiagnosticsList({ diagnostics }: { diagnostics: string[] }) {
+  return (
+    <ul
+      className={`
+        max-h-40 shrink-0 overflow-auto border-t bg-muted/30 font-mono text-xs
+      `}
+    >
+      {diagnostics.map((line, index) => (
+        <li
+          className={cn(
+            'border-b px-3 py-1 whitespace-pre-wrap last:border-b-0',
+            / error:/.test(line) ? 'text-red-500' : 'text-amber-600',
+          )}
+          key={`${index}-${line}`}
+        >
+          {line}
+        </li>
+      ))}
+    </ul>
   );
 }
