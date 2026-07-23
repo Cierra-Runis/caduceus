@@ -63,6 +63,9 @@
       "fileName": "文件名",
       "folderName": "文件夹名"
     },
+    "preview": {
+      "unsupported": "暂不支持预览此类型的文件"
+    },
     "title": "文件",
     "upload": {
       "conflictDuplicate": "本次上传中存在重复路径",

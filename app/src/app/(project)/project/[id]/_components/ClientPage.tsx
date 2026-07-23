@@ -66,6 +66,13 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
   const entry = useMemo(() => entryPath(project), [project]);
   const [focus, setFocus] = useState(() => entry ?? textPaths[0] ?? '');
 
+  // The focused file's id + kind, so the center panel can render the editor
+  // (text) or a read-only preview (binary).
+  const focusFile = useMemo(() => {
+    const file = project.files.find((f) => f.path === focus);
+    return file ? { fileId: file.id, kind: file.content.kind } : null;
+  }, [project.files, focus]);
+
   useEffect(() => {
     const ws = new WebsocketProvider(
       `${env.NEXT_PUBLIC_WS_URL}/project`,
@@ -125,7 +132,9 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
         </Separator>
         <EditorPanel
           editorPanelRef={editorPanelRef}
+          focusFile={focusFile}
           path={focus}
+          projectId={project.id}
           provider={provider}
           ydoc={ydoc}
         />

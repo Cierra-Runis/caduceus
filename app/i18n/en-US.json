@@ -63,6 +63,9 @@
       "fileName": "File name",
       "folderName": "Folder name"
     },
+    "preview": {
+      "unsupported": "Preview isn't available for this file type yet"
+    },
     "title": "Files",
     "upload": {
       "conflictDuplicate": "Duplicated within this upload",

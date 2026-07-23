@@ -401,9 +401,9 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
   const handleActivate = () => {
     if (node.type === 'folder') {
       onToggle(node.path);
-    } else if (node.kind === 'binary') {
-      onDownload(node);
     } else {
+      // Text opens the editor; binary opens the preview panel. Both are just
+      // "focus this path"; the center panel decides how to render it.
       onSelect(node.path);
     }
   };

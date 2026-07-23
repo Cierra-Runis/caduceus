@@ -63,6 +63,9 @@
       "fileName": "ファイル名",
       "folderName": "フォルダー名"
     },
+    "preview": {
+      "unsupported": "この種類のファイルはまだプレビューできません"
+    },
     "title": "ファイル",
     "upload": {
       "conflictDuplicate": "このアップロード内で重複しています",
