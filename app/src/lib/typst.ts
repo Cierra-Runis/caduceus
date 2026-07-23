@@ -1,8 +1,4 @@
-import {
-    $typst,
-    createTypstFontBuilder,
-    initOptions,
-} from '@myriaddreamin/typst.ts';
+import { $typst, initOptions } from '@myriaddreamin/typst.ts';
 
 // Client-side Typst compiler (reflexo WASM). This is the single place that
 // initialises the compiler/renderer and turns the project's files into preview
@@ -112,13 +108,18 @@ export async function registerFonts(
   if (fonts.length === 0) return;
   ensureInit();
 
-  const [compiler, defaults] = await Promise.all([
+  // Use the snippet's own resolver — NOT a freshly created one. A fresh
+  // `createTypstFontBuilder().init()` re-initializes the shared WASM module,
+  // which wipes the compiler's auto-loaded default fonts and its diagnostic
+  // state (an unknown font like "Nw" then stops warning). `getFontResolver`
+  // reuses the already-initialized module.
+  const [compiler, resolver, defaults] = await Promise.all([
     $typst.getCompiler(),
+    $typst.getFontResolver(),
     loadDefaultFontBytes(),
   ]);
-  // A fresh builder each time so registrations don't accumulate duplicates.
-  const resolver = createTypstFontBuilder();
-  await resolver.init({ getModule: compilerModule });
+  // setFonts REPLACES the book, so re-add the defaults alongside the uploaded
+  // fonts (otherwise built-ins like New Computer Modern would be dropped).
   for (const bytes of defaults) await resolver.addFontData(bytes);
   for (const bytes of fonts) await resolver.addFontData(bytes);
   await resolver.build(async (built) => compiler.setFonts(built));
