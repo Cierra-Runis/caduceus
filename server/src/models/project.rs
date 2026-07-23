@@ -66,8 +66,22 @@ pub struct ProjectFile {
     /// it is derivable from the content and kept for cheap listing/quotas.
     pub size: i64,
     pub version: i32,
+    /// Present when this file is a usable font, carrying the family names it
+    /// provides (see [`crate::font`]). Detected from the bytes at upload time
+    /// so the client can register it into the Typst font book by family;
+    /// `None` for every non-font file. Defaulted for documents written before
+    /// this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<FontInfo>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub updated_at: OffsetDateTime,
+}
+
+/// Font metadata attached to a font file: the family names it provides, keyed
+/// on at font selection (`#set text(font: "…")`).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FontInfo {
+    pub families: Vec<String>,
 }
 
 const DEFAULT_MAIN_TYP: &str = "= Untitled\n\nStart writing Typst here.\n";
@@ -81,6 +95,7 @@ impl Default for ProjectFile {
             },
             size: DEFAULT_MAIN_TYP.len() as i64,
             version: 0,
+            font: None,
             updated_at: OffsetDateTime::now_utc(),
         }
     }
@@ -149,6 +164,8 @@ pub struct ProjectFilePayload {
     pub kind: FileKind,
     pub size: i64,
     pub version: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font: Option<FontInfo>,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
 }
@@ -183,6 +200,7 @@ impl From<ProjectFile> for ProjectFilePayload {
             kind: file.content.kind(),
             size: file.size,
             version: file.version,
+            font: file.font,
             updated_at: file.updated_at,
         }
     }
@@ -220,6 +238,8 @@ pub struct ProjectFileDetailPayload {
     pub content: FileContentPayload,
     pub size: i64,
     pub version: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font: Option<FontInfo>,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
 }
@@ -258,6 +278,7 @@ impl From<ProjectFile> for ProjectFileDetailPayload {
             content: file.content.into(),
             size: file.size,
             version: file.version,
+            font: file.font,
             updated_at: file.updated_at,
         }
     }

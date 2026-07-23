@@ -8,8 +8,8 @@ use crate::{
     models::{
         path::{self, PathError},
         project::{
-            FileContent, OwnerType, Project, ProjectDetailPayload, ProjectFile, ProjectFilePayload,
-            ProjectPayload, UpdateFilePayload,
+            FileContent, FontInfo, OwnerType, Project, ProjectDetailPayload, ProjectFile,
+            ProjectFilePayload, ProjectPayload, UpdateFilePayload,
         },
     },
     repo::{project::ProjectRepo, team::TeamRepo, user::UserRepo},
@@ -338,6 +338,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             },
             size: 0,
             version: 0,
+            font: None,
             updated_at: OffsetDateTime::now_utc(),
         };
         let file_id = file.id;
@@ -579,6 +580,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                         content: u.content,
                         size: u.size,
                         version: 0,
+                        font: u.font,
                         updated_at: OffsetDateTime::now_utc(),
                     }
                 })
@@ -637,6 +639,9 @@ pub struct UploadedFile {
     pub path: String,
     pub content: FileContent,
     pub size: i64,
+    /// Font metadata when the upload is a font (see [`crate::font`]); `None`
+    /// otherwise. Resolved by the handler, which has the raw bytes.
+    pub font: Option<FontInfo>,
 }
 
 /// The set of file paths, and the set of directory paths (explicit ones plus
@@ -1082,6 +1087,7 @@ mod tests {
                 },
                 size: 3,
                 version: 1,
+                font: None,
                 updated_at: OffsetDateTime::now_utc(),
             }],
             directories: vec![],
@@ -1480,6 +1486,7 @@ mod tests {
             content: FileContent::Binary { storage_key },
             size: 10,
             version: 0,
+            font: None,
             updated_at: OffsetDateTime::now_utc(),
         }
     }
@@ -1699,6 +1706,7 @@ mod tests {
                     storage_key: ObjectId::new(),
                 },
                 size: 5,
+                font: None,
             },
             UploadedFile {
                 path: "notes/readme.md".to_string(),
@@ -1706,6 +1714,7 @@ mod tests {
                     text: "# hi".to_string(),
                 },
                 size: 4,
+                font: None,
             },
         ];
         let payloads = service
@@ -1724,6 +1733,7 @@ mod tests {
                 storage_key: ObjectId::new(),
             },
             size: 1,
+            font: None,
         }];
         let res = service.add_uploaded_files(pid, owner, conflict).await;
         assert!(matches!(res, Err(ProjectServiceError::PathConflict(_))));

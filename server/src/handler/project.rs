@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     models::{
-        project::{FileContent, OwnerType},
+        project::{FileContent, FontInfo, OwnerType},
         response::ApiResponse,
         user::UserClaims,
     },
@@ -481,9 +481,12 @@ pub async fn upload_files(
     let mut written: Vec<ObjectId> = Vec::new();
     for (path, bytes, content_type) in staged {
         let size = bytes.len() as i64;
-        let content = if let Some(text) = as_inline_text(&bytes) {
-            FileContent::Text { text }
+        let (content, font) = if let Some(text) = as_inline_text(&bytes) {
+            (FileContent::Text { text }, None)
         } else {
+            // Identify fonts from their bytes (not their extension) so the
+            // client can register them into the Typst font book by family.
+            let font = crate::font::detect(&bytes).map(|families| FontInfo { families });
             let storage_key = ObjectId::new();
             let key = object_key(project_id, storage_key);
             if let Err(e) = data.object_store.put(&key, &bytes, &content_type).await {
@@ -493,9 +496,14 @@ pub async fn upload_files(
                 return Err(FileError::Storage(e));
             }
             written.push(storage_key);
-            FileContent::Binary { storage_key }
+            (FileContent::Binary { storage_key }, font)
         };
-        uploads.push(UploadedFile { path, content, size });
+        uploads.push(UploadedFile {
+            path,
+            content,
+            size,
+            font,
+        });
     }
 
     match data

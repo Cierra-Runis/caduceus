@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod database;
+pub mod font;
 pub mod handler;
 pub mod middleware;
 pub mod models;

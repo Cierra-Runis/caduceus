@@ -582,6 +582,7 @@ pub mod tests {
             },
             size: 8,
             version: 0,
+            font: None,
             updated_at: OffsetDateTime::now_utc(),
         };
         let project = new_project(ObjectId::new(), OwnerType::User, vec![file.clone()]);
@@ -709,6 +710,7 @@ pub mod tests {
             },
             size: 0,
             version: 0,
+            font: None,
             updated_at: OffsetDateTime::now_utc(),
         }
     }
