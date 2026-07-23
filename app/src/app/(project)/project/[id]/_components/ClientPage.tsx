@@ -149,28 +149,36 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
   const [fonts, setFonts] = useState<Uint8Array[]>([]);
   useEffect(() => {
     let cancelled = false;
+    // Fetch each file independently: one failure must not drop the whole batch
+    // (which would silently leave both images and fonts missing). A failed file
+    // is warned about and skipped.
     Promise.all(
       binaryFiles.map(async (file) => {
-        const res = await fetch(fileRawUrl(project.id, file.id), {
-          credentials: 'include',
-        });
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        return { bytes, isFont: Boolean(file.font), path: file.path };
+        try {
+          const res = await fetch(fileRawUrl(project.id, file.id), {
+            credentials: 'include',
+          });
+          if (!res.ok) {
+            console.warn(`asset fetch ${file.path} failed: ${res.status}`);
+            return null;
+          }
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          return { bytes, isFont: Boolean(file.font), path: file.path };
+        } catch (error) {
+          console.warn(`asset fetch ${file.path} failed`, error);
+          return null;
+        }
       }),
-    )
-      .then((loaded) => {
-        if (cancelled) return;
-        setAssets(
-          loaded
-            .filter((item) => !item.isFont)
-            .map((item) => ({ bytes: item.bytes, path: item.path })),
-        );
-        setFonts(loaded.filter((item) => item.isFont).map((item) => item.bytes));
-      })
-      .catch(() => {
-        // A failed asset fetch just means the preview can't load that file;
-        // the compiler surfaces its own "cannot read file" error.
-      });
+    ).then((results) => {
+      if (cancelled) return;
+      const loaded = results.filter((item) => item !== null);
+      setAssets(
+        loaded
+          .filter((item) => !item.isFont)
+          .map((item) => ({ bytes: item.bytes, path: item.path })),
+      );
+      setFonts(loaded.filter((item) => item.isFont).map((item) => item.bytes));
+    });
     return () => {
       cancelled = true;
     };

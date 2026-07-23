@@ -89,15 +89,18 @@ export async function registerFonts(
   key: string,
 ): Promise<void> {
   if (key === registeredFontKey) return;
+  // Do NOT claim the key until the bytes are actually here. `key` is derived
+  // from font *metadata* (available immediately), but the bytes arrive from a
+  // later fetch — so the first, empty call must be a no-op that leaves the key
+  // unclaimed, or the real registration is skipped as "already done".
+  if (fonts.length === 0) return;
   ensureInit();
-  if (fonts.length > 0) {
-    const [compiler, resolver] = await Promise.all([
-      $typst.getCompiler(),
-      $typst.getFontResolver(),
-    ]);
-    for (const bytes of fonts) await resolver.addFontData(bytes);
-    await resolver.build(async (built) => compiler.setFonts(built));
-  }
+  const [compiler, resolver] = await Promise.all([
+    $typst.getCompiler(),
+    $typst.getFontResolver(),
+  ]);
+  for (const bytes of fonts) await resolver.addFontData(bytes);
+  await resolver.build(async (built) => compiler.setFonts(built));
   registeredFontKey = key;
 }
 
