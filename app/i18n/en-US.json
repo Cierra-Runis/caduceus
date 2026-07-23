@@ -83,6 +83,11 @@
       "title": "Upload files",
       "upload": "Upload",
       "uploadedCount": "{count} file(s) uploaded"
+    },
+    "validation": {
+      "exists": "This name is already taken",
+      "invalid": "Invalid name",
+      "parentIsFile": "A parent segment is already a file"
     }
   },
   "Home": {

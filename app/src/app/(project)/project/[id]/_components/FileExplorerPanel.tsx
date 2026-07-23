@@ -45,6 +45,7 @@ import {
     parentDir,
     TreeNode,
 } from '@/lib/fileTree';
+import { ancestorDirectories, isValidPath } from '@/lib/path';
 import { ProjectDetail } from '@/lib/types/project';
 import { cn } from '@/lib/utils';
 
@@ -66,6 +67,20 @@ type Draft =
   | { kind: 'create-file' | 'create-folder'; parent: string }
   | { kind: 'rename'; node: TreeNode };
 
+interface NameErrorMessages {
+  exists: string;
+  invalid: string;
+  parentIsFile: string;
+}
+
+/// The paths already occupied in a project: file paths, and every directory
+/// (explicit or implied by a file). Used to flag a name collision *as the user
+/// types*, mirroring the server's rule.
+interface Occupied {
+  dirs: Set<string>;
+  files: Set<string>;
+}
+
 interface TreeListProps {
   collapsed: Set<string>;
   depth: number;
@@ -73,6 +88,7 @@ interface TreeListProps {
   entryFileId: null | string;
   focus: string;
   nodes: TreeNode[];
+  occupied: Occupied;
   onCancelDraft: () => void;
   onCommitDraft: (name: string) => void;
   onDelete: (node: TreeNode) => void;
@@ -93,11 +109,26 @@ export function FileExplorerPanel({
   sidebarPanelRef,
 }: FileExplorerPanelProps) {
   const t = useTranslations('FileExplorer');
+  const messages = validationMessages(t);
 
   const tree = useMemo(
     () => buildFileTree(project.files, project.directories),
     [project.files, project.directories],
   );
+
+  const occupied = useMemo<Occupied>(() => {
+    const files = new Set<string>();
+    const dirs = new Set<string>();
+    for (const file of project.files) {
+      files.add(file.path);
+      for (const dir of ancestorDirectories(file.path)) dirs.add(dir);
+    }
+    for (const dir of project.directories) {
+      dirs.add(dir);
+      for (const parent of ancestorDirectories(dir)) dirs.add(parent);
+    }
+    return { dirs, files };
+  }, [project.files, project.directories]);
 
   // Everything expanded by default, VS Code-like, but the user can collapse.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -239,6 +270,7 @@ export function FileExplorerPanel({
                   entryFileId={entryFileId}
                   focus={focus}
                   nodes={tree}
+                  occupied={occupied}
                   onCancelDraft={() => setDraft(null)}
                   onCommitDraft={commitDraft}
                   onDelete={(node) =>
@@ -288,6 +320,9 @@ export function FileExplorerPanel({
                         ? t('placeholders.folderName')
                         : t('placeholders.fileName')
                     }
+                    validate={(name) =>
+                      nameError(occupied, joinPath('', name), undefined, messages)
+                    }
                   />
                 )}
               </div>
@@ -316,6 +351,7 @@ function DraftRow({
   onCancel,
   onCommit,
   placeholder,
+  validate,
 }: {
   defaultValue?: string;
   depth: number;
@@ -323,7 +359,16 @@ function DraftRow({
   onCancel: () => void;
   onCommit: (name: string) => void;
   placeholder: string;
+  /// Returns a translated error for the typed name, or null if it is free.
+  /// Drives the red highlight and blocks committing an invalid name — so a
+  /// duplicate is caught while typing, not as a 409 after Enter.
+  validate?: (name: string) => null | string;
 }) {
+  const [value, setValue] = useState(defaultValue ?? '');
+  const trimmed = value.trim();
+  const error = validate ? validate(trimmed) : null;
+  const canCommit = trimmed.length > 0 && !error;
+
   return (
     <div
       className='flex w-full items-center gap-1.5 py-1 pr-2'
@@ -333,20 +378,59 @@ function DraftRow({
       {icon}
       <input
         autoFocus
-        className={`
-          w-full rounded-sm border bg-background px-1 text-sm outline-none
-          focus:ring-1 focus:ring-ring
-        `}
-        defaultValue={defaultValue}
-        onBlur={(e) => onCommit(e.currentTarget.value)}
+        className={cn(
+          `min-w-0 flex-1 rounded-sm border bg-background px-1 text-sm
+          outline-none focus:ring-1 focus:ring-ring`,
+          error && trimmed
+            ? 'border-destructive focus:ring-destructive'
+            : '',
+        )}
+        // Commit on blur only when valid; otherwise abandon the draft rather
+        // than firing a request the server would reject.
+        onBlur={() => (canCommit ? onCommit(trimmed) : onCancel())}
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') onCommit(e.currentTarget.value);
-          else if (e.key === 'Escape') onCancel();
+          if (e.key === 'Enter') {
+            if (canCommit) onCommit(trimmed);
+          } else if (e.key === 'Escape') {
+            onCancel();
+          }
         }}
         placeholder={placeholder}
+        value={value}
       />
+      {error && trimmed && (
+        <span
+          className='max-w-[45%] shrink-0 truncate text-xs text-destructive'
+          title={error}
+        >
+          {error}
+        </span>
+      )}
     </div>
   );
+}
+
+/// The translated reason a proposed `target` path can't be used, or null if it
+/// is free. `excludePath` is the path of the node being renamed, so it never
+/// collides with itself. Takes resolved messages (rather than the `t`
+/// translator) so it stays a plain, testable function.
+function nameError(
+  occupied: Occupied,
+  target: string,
+  excludePath: string | undefined,
+  messages: NameErrorMessages,
+): null | string {
+  if (!isValidPath(target)) return messages.invalid;
+  if (
+    target !== excludePath &&
+    (occupied.files.has(target) || occupied.dirs.has(target))
+  )
+    return messages.exists;
+  if (ancestorDirectories(target).some((a) => occupied.files.has(a)))
+    return messages.parentIsFile;
+  return null;
 }
 
 function TreeList(props: TreeListProps) {
@@ -368,6 +452,7 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
     entryFileId,
     focus,
     node,
+    occupied,
     onCancelDraft,
     onCommitDraft,
     onDelete,
@@ -380,6 +465,7 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
     onToggle,
   } = props;
   const t = useTranslations('FileExplorer');
+  const messages = validationMessages(t);
 
   const isRenaming = draft?.kind === 'rename' && draft.node.path === node.path;
   const isEntry = node.type === 'file' && node.fileId === entryFileId;
@@ -420,6 +506,14 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
               onCancel={onCancelDraft}
               onCommit={onCommitDraft}
               placeholder={node.name}
+              validate={(name) =>
+                nameError(
+                  occupied,
+                  joinPath(parentDir(node.path), name),
+                  node.path,
+                  messages,
+                )
+              }
             />
           ) : (
             <button
@@ -508,10 +602,24 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
                     ? t('placeholders.folderName')
                     : t('placeholders.fileName')
                 }
+                validate={(name) =>
+                  nameError(occupied, joinPath(node.path, name), undefined, messages)
+                }
               />
             )}
         </>
       )}
     </li>
   );
+}
+
+/// Resolve the three name-validation messages from a `FileExplorer` translator.
+function validationMessages(
+  t: ReturnType<typeof useTranslations<'FileExplorer'>>,
+): NameErrorMessages {
+  return {
+    exists: t('validation.exists'),
+    invalid: t('validation.invalid'),
+    parentIsFile: t('validation.parentIsFile'),
+  };
 }

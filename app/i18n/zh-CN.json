@@ -83,6 +83,11 @@
       "title": "上传文件",
       "upload": "上传",
       "uploadedCount": "已上传 {count} 个文件"
+    },
+    "validation": {
+      "exists": "该名称已被占用",
+      "invalid": "名称非法",
+      "parentIsFile": "上级路径已是一个文件"
     }
   },
   "Home": {

@@ -83,6 +83,11 @@
       "title": "ファイルをアップロード",
       "upload": "アップロード",
       "uploadedCount": "{count} 個のファイルをアップロードしました"
+    },
+    "validation": {
+      "exists": "この名前は既に使用されています",
+      "invalid": "無効な名前です",
+      "parentIsFile": "親のパスが既にファイルです"
     }
   },
   "Home": {
