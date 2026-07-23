@@ -1,9 +1,10 @@
 'use client';
 
 import { GripVerticalIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Group,
+    Panel,
     Separator,
     usePanelRef,
 } from 'react-resizable-panels';
@@ -22,12 +23,33 @@ import { EditorPanel } from './EditorPanel';
 import { FileExplorerPanel } from './FileExplorerPanel';
 import { PresenceBar } from './PresenceBar';
 import { PreviewPanel } from './PreviewPanel';
-import { Sidebar } from './Sidebar';
+import { SearchReplacePanel } from './SearchReplacePanel';
+import { Sidebar, SidebarView } from './Sidebar';
 
 export function ClientPage({ project: initialProject }: { project: ProjectDetail }) {
   const sidebarPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
   const previewPanelRef = usePanelRef();
+
+  // Which activity-bar view is open, and whether the sidebar panel is collapsed
+  // (kept in sync with drag-collapse via the Panel's onResize). Clicking the
+  // active view collapses; clicking another switches; clicking while collapsed
+  // expands — VS Code's activity-bar behavior.
+  const [activeView, setActiveView] = useState<SidebarView>('files');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const selectView = useCallback(
+    (view: SidebarView) => {
+      const panel = sidebarPanelRef.current;
+      if (!panel) return;
+      if (!sidebarCollapsed && activeView === view) {
+        panel.collapse();
+      } else {
+        setActiveView(view);
+        if (sidebarCollapsed) panel.expand();
+      }
+    },
+    [activeView, sidebarCollapsed, sidebarPanelRef],
+  );
 
   // The file tree is server-authoritative: seed from the server-rendered detail
   // and revalidate after any structural change so paths / ids / entry stay in
@@ -191,15 +213,39 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
       <div className='absolute top-2 right-2 z-10'>
         <PresenceBar me={localUser} provider={provider} />
       </div>
-      <Sidebar sidebarPanelRef={sidebarPanelRef} />
+      <Sidebar
+        activeView={sidebarCollapsed ? null : activeView}
+        onSelectView={selectView}
+      />
       <Group orientation='horizontal'>
-        <FileExplorerPanel
-          focus={focus}
-          onSelect={setFocus}
-          project={project}
-          refresh={refresh}
-          sidebarPanelRef={sidebarPanelRef}
-        />
+        <Panel
+          collapsedSize={0}
+          collapsible
+          defaultSize={0}
+          id='sidebar'
+          minSize='16rem'
+          onResize={() =>
+            setSidebarCollapsed(
+              Boolean(sidebarPanelRef.current?.isCollapsed()),
+            )
+          }
+          panelRef={sidebarPanelRef}
+        >
+          {activeView === 'files' ? (
+            <FileExplorerPanel
+              focus={focus}
+              onSelect={setFocus}
+              project={project}
+              refresh={refresh}
+            />
+          ) : (
+            <SearchReplacePanel
+              onOpen={setFocus}
+              paths={textPaths}
+              ydoc={ydoc}
+            />
+          )}
+        </Panel>
         <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
         </Separator>

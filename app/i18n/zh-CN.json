@@ -94,6 +94,18 @@
       "parentIsFile": "上级路径已是一个文件"
     }
   },
+  "Search": {
+    "invalidRegex": "正则表达式无效",
+    "matchCase": "区分大小写",
+    "matchWholeWord": "全字匹配",
+    "noResults": "未找到结果",
+    "replaceAll": "全部替换",
+    "replacePlaceholder": "替换",
+    "searchPlaceholder": "搜索",
+    "summary": "在 {files} 个文件中找到 {matches} 处结果",
+    "toggleReplace": "切换替换",
+    "useRegex": "使用正则表达式"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品",

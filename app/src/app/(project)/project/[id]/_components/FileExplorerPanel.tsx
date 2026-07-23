@@ -18,8 +18,7 @@ import {
     TypeIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { RefObject, useMemo, useState } from 'react';
-import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -60,7 +59,6 @@ export interface FileExplorerPanelProps {
   /// Revalidate the project detail after a structural change so the tree
   /// reflects the server's authoritative view.
   refresh: () => Promise<unknown>;
-  sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
 /// What is currently being typed into an inline input: a brand-new file/folder
@@ -108,7 +106,6 @@ export function FileExplorerPanel({
   onSelect,
   project,
   refresh,
-  sidebarPanelRef,
 }: FileExplorerPanelProps) {
   const t = useTranslations('FileExplorer');
   const messages = validationMessages(t);
@@ -211,19 +208,12 @@ export function FileExplorerPanel({
   }
 
   return (
-    <Panel
-      collapsible
-      defaultSize={0}
-      id='sidebar'
-      minSize={10}
-      panelRef={sidebarPanelRef}
-    >
-      <div className='flex h-full flex-col'>
-        <div
-          className={`
+    <div className='flex h-full flex-col'>
+      <div
+        className={`
             flex items-center justify-between gap-1 border-b px-3 py-2
           `}
-        >
+      >
           <span
             className={`
               text-xs font-semibold tracking-wide uppercase opacity-70
@@ -342,7 +332,6 @@ export function FileExplorerPanel({
           </ContextMenu>
         </ScrollArea>
       </div>
-    </Panel>
   );
 }
 

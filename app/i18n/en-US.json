@@ -94,6 +94,18 @@
       "parentIsFile": "A parent segment is already a file"
     }
   },
+  "Search": {
+    "invalidRegex": "Invalid regular expression",
+    "matchCase": "Match Case",
+    "matchWholeWord": "Match Whole Word",
+    "noResults": "No results found",
+    "replaceAll": "Replace All",
+    "replacePlaceholder": "Replace",
+    "searchPlaceholder": "Search",
+    "summary": "{matches} results in {files} files",
+    "toggleReplace": "Toggle Replace",
+    "useRegex": "Use Regular Expression"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "An open-source alternative to <typstApp>Typst App</typstApp>",

@@ -94,6 +94,18 @@
       "parentIsFile": "親のパスが既にファイルです"
     }
   },
+  "Search": {
+    "invalidRegex": "正規表現が無効です",
+    "matchCase": "大文字と小文字を区別",
+    "matchWholeWord": "単語単位で一致",
+    "noResults": "結果が見つかりません",
+    "replaceAll": "すべて置換",
+    "replacePlaceholder": "置換",
+    "searchPlaceholder": "検索",
+    "summary": "{files} 個のファイルで {matches} 件の結果",
+    "toggleReplace": "置換の切り替え",
+    "useRegex": "正規表現を使用"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "オープンソースの <typstApp>Typst App</typstApp> の代替です",

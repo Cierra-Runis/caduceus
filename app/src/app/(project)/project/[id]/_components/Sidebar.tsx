@@ -1,71 +1,51 @@
 'use client';
 
 import {
-    ArchiveIcon,
-    EditIcon,
+    FilesIcon,
     HomeIcon,
-    MapIcon,
     SearchIcon,
     SettingsIcon,
 } from 'lucide-react';
 import NextLink from 'next/link';
-import { RefObject, useCallback } from 'react';
-import { PanelImperativeHandle } from 'react-resizable-panels';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 export interface SidebarProps {
-  sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
+  /// The open view, or null when the panel is collapsed (nothing highlighted).
+  activeView: null | SidebarView;
+  onSelectView: (view: SidebarView) => void;
 }
 
-export function Sidebar({ sidebarPanelRef }: SidebarProps) {
-  const toggleSidebarPanel = useCallback(() => {
-    const current = sidebarPanelRef?.current;
-    if (!current) return;
-    return current.isCollapsed() ? current.expand() : current.collapse();
-  }, [sidebarPanelRef]);
+export type SidebarView = 'files' | 'search';
 
+// VS Code-style activity bar. Each view button toggles / switches the sidebar
+// panel; the active one is highlighted (a filled variant plus a left accent
+// bar, like VS Code).
+export function Sidebar({ activeView, onSelectView }: SidebarProps) {
   return (
     <ScrollArea
       className={`
-        relative flex h-full min-w-18 flex-col items-center overflow-auto pt-11
+        relative flex h-full min-w-12 flex-col items-center overflow-auto pt-11
         transition-all
       `}
     >
       <ScrollArea className='flex w-full flex-1 flex-col'>
-        <Button
-          className='aspect-square h-auto w-full shrink-0'
-          onClick={toggleSidebarPanel}
-          size='icon'
-          variant='ghost'
+        <ActivityButton
+          active={activeView === 'files'}
+          label='Files'
+          onClick={() => onSelectView('files')}
         >
-          <ArchiveIcon />
-        </Button>
-        <Button
-          className='aspect-square h-auto w-full shrink-0'
-          onClick={toggleSidebarPanel}
-          size='icon'
-          variant='ghost'
+          <FilesIcon />
+        </ActivityButton>
+        <ActivityButton
+          active={activeView === 'search'}
+          label='Search'
+          onClick={() => onSelectView('search')}
         >
           <SearchIcon />
-        </Button>
-        <Button
-          className='aspect-square h-auto w-full shrink-0'
-          onClick={toggleSidebarPanel}
-          size='icon'
-          variant='ghost'
-        >
-          <MapIcon />
-        </Button>
-        <Button
-          className='aspect-square h-auto w-full shrink-0'
-          onClick={toggleSidebarPanel}
-          size='icon'
-          variant='ghost'
-        >
-          <EditIcon />
-        </Button>
+        </ActivityButton>
       </ScrollArea>
       <div className='flex w-full shrink-0 flex-col items-center'>
         <div
@@ -74,7 +54,7 @@ export function Sidebar({ sidebarPanelRef }: SidebarProps) {
             justify-center
           `}
         >
-          <Button onClick={toggleSidebarPanel} size='icon' variant='ghost'>
+          <Button disabled size='icon' variant='ghost'>
             <SettingsIcon />
           </Button>
         </div>
@@ -92,5 +72,38 @@ export function Sidebar({ sidebarPanelRef }: SidebarProps) {
         </div>
       </div>
     </ScrollArea>
+  );
+}
+
+function ActivityButton({
+  active,
+  children,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className='relative'>
+      {active && (
+        <span className='absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary' />
+      )}
+      <Button
+        aria-label={label}
+        aria-pressed={active}
+        className='aspect-square h-auto w-full shrink-0'
+        onClick={onClick}
+        size='icon'
+        title={label}
+        variant={active ? 'secondary' : 'ghost'}
+      >
+        <span className={cn(active ? 'opacity-100' : 'opacity-70')}>
+          {children}
+        </span>
+      </Button>
+    </div>
   );
 }
