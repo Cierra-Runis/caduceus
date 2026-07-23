@@ -7,24 +7,35 @@ import {
     Separator,
     usePanelRef,
 } from 'react-resizable-panels';
+import useSWR from 'swr';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
+import { fetchProjectDetail } from '@/lib/api/project';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
 
 import { EditorPanel } from './EditorPanel';
+import { FileExplorerPanel } from './FileExplorerPanel';
 import { PresenceBar } from './PresenceBar';
 import { PreviewPanel } from './PreviewPanel';
 import { Sidebar } from './Sidebar';
-import { SidebarPanel } from './SidebarPanel';
 
-export function ClientPage({ project }: { project: ProjectDetail }) {
+export function ClientPage({ project: initialProject }: { project: ProjectDetail }) {
   const sidebarPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
   const previewPanelRef = usePanelRef();
+
+  // The file tree is server-authoritative: seed from the server-rendered detail
+  // and revalidate after any structural change so paths / ids / entry stay in
+  // sync. Text *content* still flows through Yjs (below), untouched by this.
+  const { data: project, mutate: refresh } = useSWR(
+    `project/${initialProject.id}/detail`,
+    () => fetchProjectDetail(initialProject.id).then((res) => res.payload),
+    { fallbackData: initialProject },
+  );
 
   const { data: me } = useUserMe();
   const localUser = useMemo<null | PresenceUser>(() => {
@@ -102,11 +113,11 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       </div>
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <Group orientation='horizontal'>
-        <SidebarPanel
-          entry={entry}
+        <FileExplorerPanel
           focus={focus}
           onSelect={setFocus}
-          paths={textPaths}
+          project={project}
+          refresh={refresh}
           sidebarPanelRef={sidebarPanelRef}
         />
         <Separator className='flex w-4 items-center justify-center'>

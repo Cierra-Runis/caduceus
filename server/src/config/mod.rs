@@ -3,6 +3,8 @@ use serde::Deserialize;
 mod cors;
 use cors::CorsConfig;
 
+use crate::storage::StorageConfig;
+
 #[derive(Debug)]
 pub enum Error {
     MissingField(String),
@@ -56,6 +58,8 @@ pub struct Config {
     pub jwt_secret: String,
     #[serde(default)]
     pub ws: WsConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 impl Config {
@@ -137,6 +141,7 @@ mod tests {
             address: vec!["localhost:8080".to_string()],
             jwt_secret: "secret".to_string(),
             ws: WsConfig::default(),
+            storage: StorageConfig::default(),
         };
 
         let app = test::init_service(

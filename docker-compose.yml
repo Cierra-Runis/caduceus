@@ -1,0 +1,53 @@
+# Local development stack for the Caduceus server: MongoDB (project/user/team
+# documents) and MinIO (binary file assets — images, fonts, …). The Rust server
+# and Next.js app run on the host; this brings up just their backing services.
+#
+#   docker compose up -d
+#
+# MinIO console: http://localhost:9001  (minioadmin / minioadmin)
+# These defaults match `server/src/storage/mod.rs::StorageConfig` so a fresh
+# checkout works with no extra configuration. Override them in production.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # Web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: create the bucket the server expects, then exit.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/caduceus &&
+      echo 'bucket ready';
+      "
+
+volumes:
+  mongo-data:
+  minio-data:

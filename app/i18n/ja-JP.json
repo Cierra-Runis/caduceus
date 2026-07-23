@@ -41,6 +41,47 @@
   "DownloadProject": {
     "failed": "ダウンロードに失敗しました"
   },
+  "FileExplorer": {
+    "actions": {
+      "delete": "削除",
+      "download": "ダウンロード",
+      "newFile": "新規ファイル",
+      "newFolder": "新規フォルダー",
+      "rename": "名前を変更",
+      "setAsEntry": "エントリーに設定",
+      "upload": "アップロード"
+    },
+    "entry": "エントリー",
+    "errors": {
+      "createFailed": "作成に失敗しました",
+      "deleteFailed": "削除に失敗しました",
+      "folderRenameUnsupported": "フォルダーの名前変更はまだ対応していません。",
+      "renameFailed": "名前の変更に失敗しました",
+      "setEntryFailed": "エントリーの設定に失敗しました"
+    },
+    "placeholders": {
+      "fileName": "ファイル名",
+      "folderName": "フォルダー名"
+    },
+    "title": "ファイル",
+    "upload": {
+      "conflictDuplicate": "このアップロード内で重複しています",
+      "conflictExists": "このパスには既にファイルまたはフォルダーが存在します",
+      "conflictInvalid": "無効なパス",
+      "conflictParentIsFile": "親のパスが既にファイルです",
+      "description": "ファイルはローカルに一時保存され、「アップロード」を押すまで送信されません。各行にはプロジェクトルートからの相対パスが表示されます。",
+      "dropHint": "ここにファイルまたはフォルダーをドラッグ",
+      "failed": "アップロードに失敗しました",
+      "remove": "削除",
+      "selectFiles": "ファイルを選択",
+      "selectFolder": "フォルダーを選択",
+      "stagedCount": "{count} 件を一時保存中",
+      "succeeded": "アップロード完了",
+      "title": "ファイルをアップロード",
+      "upload": "アップロード",
+      "uploadedCount": "{count} 個のファイルをアップロードしました"
+    }
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "オープンソースの <typstApp>Typst App</typstApp> の代替です",

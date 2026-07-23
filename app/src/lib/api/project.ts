@@ -1,5 +1,7 @@
+import { HTTPError } from 'ky';
 import * as z from 'zod';
 
+import { env } from '@/lib/env';
 import { api } from '@/lib/request';
 import { ProjectDetailSchema, ProjectSchema } from '@/lib/types/project';
 
@@ -64,6 +66,70 @@ export const UpdateFileResponseSchema = z.object({
   }),
 });
 
+/** Best-effort human message from a failed API call, for toasts. */
+export async function apiErrorMessage(error: unknown): Promise<string> {
+  if (error instanceof HTTPError) {
+    try {
+      const body = (await error.response.json()) as { message?: string };
+      if (body?.message) return body.message;
+    } catch {
+      // fall through to the generic message
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+// --- File-tree structural operations ---------------------------------------
+//
+// Each mutation returns nothing useful to the caller: the file explorer holds
+// the project detail in SWR and revalidates it after any successful change, so
+// the tree always reflects the server's authoritative view (paths, ids,
+// entry) rather than a locally-guessed one.
+
+/** Create a new empty text file at `path` (relative to the project root). */
+export async function createFile(projectId: string, path: string): Promise<void> {
+  await api.post(`project/${projectId}/file`, { json: { path } });
+}
+
+/** Create a new empty folder at `path`. */
+export async function createFolder(projectId: string, path: string): Promise<void> {
+  await api.post(`project/${projectId}/folder`, { json: { path } });
+}
+
+/** Delete a single file. */
+export async function deleteFile(projectId: string, fileId: string): Promise<void> {
+  await api.delete(`project/${projectId}/file/${fileId}`);
+}
+
+/** Delete a folder and everything under it. */
+export async function deleteFolder(projectId: string, path: string): Promise<void> {
+  await api.delete(`project/${projectId}/folder`, { json: { path } });
+}
+
+/** Fetch the full project detail (used to revalidate the tree after a change). */
+export async function fetchProjectDetail(projectId: string): Promise<ProjectDetailResponse> {
+  return ProjectDetailResponseSchema.parse(await api.get(`project/${projectId}`).json());
+}
+
+/** Absolute URL for a binary asset's raw bytes (for previews / downloads). */
+export function fileRawUrl(projectId: string, fileId: string): string {
+  return `${env.NEXT_PUBLIC_API_URL}/project/${projectId}/file/${fileId}/raw`;
+}
+
+/** Rename or move a single file to `path`. */
+export async function renameFile(
+  projectId: string,
+  fileId: string,
+  path: string,
+): Promise<void> {
+  await api.patch(`project/${projectId}/file/${fileId}`, { json: { path } });
+}
+
+/** Set the project's compile entry to an existing file. */
+export async function setEntry(projectId: string, fileId: string): Promise<void> {
+  await api.post(`project/${projectId}/entry`, { json: { file_id: fileId } });
+}
+
 export async function updateProjectFile(
   projectId: string,
   fileId: string,
@@ -72,4 +138,13 @@ export async function updateProjectFile(
   return UpdateFileResponseSchema.parse(
     await api.put(`project/${projectId}/file/${fileId}`, { json: { text } }).json(),
   );
+}
+
+/**
+ * Upload one or more binary assets. The multipart body must name each file
+ * part after its target path relative to the project root (see the upload
+ * dialog): `form.append(targetPath, file)`.
+ */
+export async function uploadFiles(projectId: string, form: FormData): Promise<void> {
+  await api.post(`project/${projectId}/upload`, { body: form });
 }

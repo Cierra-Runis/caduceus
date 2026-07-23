@@ -41,6 +41,47 @@
   "DownloadProject": {
     "failed": "Download Failed"
   },
+  "FileExplorer": {
+    "actions": {
+      "delete": "Delete",
+      "download": "Download",
+      "newFile": "New File",
+      "newFolder": "New Folder",
+      "rename": "Rename",
+      "setAsEntry": "Set as Entry",
+      "upload": "Upload"
+    },
+    "entry": "entry",
+    "errors": {
+      "createFailed": "Failed to create",
+      "deleteFailed": "Failed to delete",
+      "folderRenameUnsupported": "Renaming folders is not supported yet.",
+      "renameFailed": "Failed to rename",
+      "setEntryFailed": "Failed to set entry"
+    },
+    "placeholders": {
+      "fileName": "File name",
+      "folderName": "Folder name"
+    },
+    "title": "Files",
+    "upload": {
+      "conflictDuplicate": "Duplicated within this upload",
+      "conflictExists": "A file or folder already exists at this path",
+      "conflictInvalid": "Invalid path",
+      "conflictParentIsFile": "A parent segment is already a file",
+      "description": "Files are staged locally — nothing is uploaded until you press Upload. Each row shows the path it will take relative to the project root.",
+      "dropHint": "Drag files or folders here",
+      "failed": "Upload failed",
+      "remove": "Remove",
+      "selectFiles": "Select Files",
+      "selectFolder": "Select Folder",
+      "stagedCount": "{count} staged",
+      "succeeded": "Upload complete",
+      "title": "Upload files",
+      "upload": "Upload",
+      "uploadedCount": "{count} file(s) uploaded"
+    }
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "An open-source alternative to <typstApp>Typst App</typstApp>",

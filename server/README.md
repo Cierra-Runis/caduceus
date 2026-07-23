@@ -2,9 +2,20 @@
 
 ## Overview
 
-Caduceus server application is built with Rust. It leverages the [Actix-web](https://actix.rs) framework for handling HTTP requests and integrates with MongoDB for data storage.
+Caduceus server application is built with Rust. It leverages the [Actix-web](https://actix.rs) framework for handling HTTP requests, [MongoDB](https://www.mongodb.com) for document storage, and [MinIO](https://min.io) (S3-compatible object storage) for binary file assets. See [File Storage](../docs/File%20Storage.md) for the project file-tree design.
 
 ## Development
+
+### Backing services
+
+MongoDB and MinIO run via Docker Compose from the repository root:
+
+```bash
+docker compose up -d
+```
+
+This also creates the `caduceus` MinIO bucket the server expects. The MinIO
+console is at http://localhost:9001 (`minioadmin` / `minioadmin`).
 
 ### Running the Server
 
@@ -14,7 +25,8 @@ First, copy the `./config/test.yaml` file to `./config/dev.yaml`:
 cp ./config/test.yaml ./config/dev.yaml
 ```
 
-Then, fill in the necessary configuration values in `./config/dev.yaml`.
+Then, fill in the necessary configuration values in `./config/dev.yaml` (the
+`storage` section already points at the local MinIO above).
 
 To start the development server, run the following command:
 

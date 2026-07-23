@@ -8,8 +8,9 @@ use server::{
     handler::ws::ProjectServer,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
+    storage::MinioObjectStore,
 };
-use std::{env, io};
+use std::{env, io, sync::Arc};
 use tracing_subscriber::fmt;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -35,6 +36,10 @@ async fn main() -> io::Result<()> {
         collection: database.db.collection("projects"),
     };
 
+    let object_store = Arc::new(
+        MinioObjectStore::new(&config.storage).expect("Failed to build object storage client"),
+    );
+
     let data = web::Data::new(AppState {
         user_service: UserService {
             user_repo: user_repo.clone(),
@@ -52,6 +57,7 @@ async fn main() -> io::Result<()> {
             user_repo: user_repo.clone(),
             team_repo: team_repo.clone(),
         },
+        object_store,
     });
 
     // Create ProjectServer instance (actor-less implementation). It owns a repo

@@ -17,7 +17,9 @@ use server::{
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     routes,
     services::{project::ProjectService, team::TeamService, user::UserService},
+    storage::InMemoryObjectStore,
 };
+use std::sync::Arc;
 
 async fn test_app() -> (
     impl Service<actix_http::Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
@@ -56,6 +58,7 @@ async fn test_app() -> (
             user_repo,
             team_repo,
         },
+        object_store: Arc::new(InMemoryObjectStore::default()),
     });
 
     let jwt_secret = config.jwt_secret.clone();

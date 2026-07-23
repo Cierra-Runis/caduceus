@@ -163,6 +163,7 @@ mod tests {
             owner_type: OwnerType::Team,
             creator_id,
             files: vec![],
+            directories: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,

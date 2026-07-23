@@ -10,3 +10,13 @@ ws:
   heartbeat_interval_secs: 5
   client_timeout_secs: 10
   persist_interval_secs: 3
+# Object storage for binary file assets (see docker-compose.yml). These are the
+# built-in defaults, shown here for discoverability; override them per env or
+# via APP_STORAGE__* environment variables in production.
+storage:
+  endpoint: http://localhost:9000
+  region: us-east-1
+  bucket: caduceus
+  access_key: minioadmin
+  secret_key: minioadmin
+  path_style: true

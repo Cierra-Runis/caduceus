@@ -35,6 +35,10 @@ export const ProjectFileSchema = z.object({
 // id (resolved to a path against `files`); null for a project with no entry.
 export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
 export const ProjectDetailSchema = ProjectSchema.extend({
+  // Explicitly-created directories (each a normalized path, no trailing slash).
+  // Directories are otherwise implied by the files inside them; this list is
+  // what lets an empty folder show up in the tree and survive a reload.
+  directories: z.array(z.string().trim()),
   entry: z.string().trim().nullable(),
   files: z.array(ProjectFileSchema),
 });

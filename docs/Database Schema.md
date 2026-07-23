@@ -29,8 +29,15 @@ erDiagram
     ObjectId ownerId "USER._id or TEAM._id"
     string ownerType "USER or TEAM"
     ObjectId creatorId "Must be USER._id"
+    ProjectFile[] files "Virtual file tree, keyed by path"
+    string[] directories "Explicitly-created (incl. empty) folders"
+    ObjectId entry "Compile-entry file id (nullable)"
   }
 ```
+
+Binary file bytes are **not** stored in the document — a `ProjectFile` of kind
+`binary` only holds a `storageKey` pointing at object storage (MinIO). See
+[File Storage](./File%20Storage.md).
 
 See: [Entity Relationship Diagram Syntax](https://mermaid.nodejs.cn/syntax/entityRelationshipDiagram.html#relationship-syntax).
 

@@ -41,6 +41,47 @@
   "DownloadProject": {
     "failed": "下载失败"
   },
+  "FileExplorer": {
+    "actions": {
+      "delete": "删除",
+      "download": "下载",
+      "newFile": "新建文件",
+      "newFolder": "新建文件夹",
+      "rename": "重命名",
+      "setAsEntry": "设为入口文件",
+      "upload": "上传"
+    },
+    "entry": "入口",
+    "errors": {
+      "createFailed": "创建失败",
+      "deleteFailed": "删除失败",
+      "folderRenameUnsupported": "暂不支持重命名文件夹。",
+      "renameFailed": "重命名失败",
+      "setEntryFailed": "设置入口文件失败"
+    },
+    "placeholders": {
+      "fileName": "文件名",
+      "folderName": "文件夹名"
+    },
+    "title": "文件",
+    "upload": {
+      "conflictDuplicate": "本次上传中存在重复路径",
+      "conflictExists": "该路径下已存在同名文件或文件夹",
+      "conflictInvalid": "非法路径",
+      "conflictParentIsFile": "上级路径已是一个文件",
+      "description": "文件会先在本地暂存——在点击“上传”之前不会真正上传。每一项都会显示其相对项目根目录的路径。",
+      "dropHint": "将文件或文件夹拖入此处",
+      "failed": "上传失败",
+      "remove": "移除",
+      "selectFiles": "选择文件",
+      "selectFolder": "选择文件夹",
+      "stagedCount": "已暂存 {count} 项",
+      "succeeded": "上传完成",
+      "title": "上传文件",
+      "upload": "上传",
+      "uploadedCount": "已上传 {count} 个文件"
+    }
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品",

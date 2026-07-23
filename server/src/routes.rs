@@ -21,10 +21,29 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                     web::scope("/project/{id}")
                         .route("", web::get().to(handler::project::find_by_id))
                         .route("", web::put().to(handler::project::update))
+                        // Text content save (whole-buffer).
                         .route(
                             "/file/{file_id}",
                             web::put().to(handler::project::update_file),
                         )
+                        // File-tree structural operations.
+                        .route("/file", web::post().to(handler::project::create_file))
+                        .route(
+                            "/file/{file_id}",
+                            web::patch().to(handler::project::rename_file),
+                        )
+                        .route(
+                            "/file/{file_id}",
+                            web::delete().to(handler::project::delete_file),
+                        )
+                        .route(
+                            "/file/{file_id}/raw",
+                            web::get().to(handler::project::download_file),
+                        )
+                        .route("/folder", web::post().to(handler::project::create_folder))
+                        .route("/folder", web::delete().to(handler::project::delete_folder))
+                        .route("/upload", web::post().to(handler::project::upload_files))
+                        .route("/entry", web::post().to(handler::project::set_entry))
                         .route("/duplicate", web::post().to(handler::project::duplicate)),
                 )
                 .service(

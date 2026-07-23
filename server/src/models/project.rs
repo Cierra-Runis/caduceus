@@ -24,6 +24,13 @@ pub struct Project {
     pub owner_type: OwnerType,
     pub creator_id: ObjectId,
     pub files: Vec<ProjectFile>,
+    /// Explicitly-created directories, each a normalized path with no trailing
+    /// slash (e.g. `chapters`, `assets/images`). Directories are otherwise
+    /// *implied* by the files inside them; this list is what lets an **empty**
+    /// folder exist and survive a reload, exactly like a real filesystem.
+    /// Defaulted so documents written before this field existed still load.
+    #[serde(default)]
+    pub directories: Vec<String>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
@@ -123,6 +130,7 @@ pub struct ProjectPayload {
     pub owner_type: OwnerType,
     pub creator_id: String,
     pub files: Vec<ProjectFilePayload>,
+    pub directories: Vec<String>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
@@ -157,6 +165,7 @@ impl From<Project> for ProjectPayload {
                 .into_iter()
                 .map(ProjectFilePayload::from)
                 .collect(),
+            directories: project.directories,
             creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
@@ -192,6 +201,7 @@ pub struct ProjectDetailPayload {
     pub owner_type: OwnerType,
     pub creator_id: String,
     pub files: Vec<ProjectFileDetailPayload>,
+    pub directories: Vec<String>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
@@ -286,6 +296,7 @@ impl From<Project> for ProjectDetailPayload {
                 .into_iter()
                 .map(ProjectFileDetailPayload::from)
                 .collect(),
+            directories: project.directories,
             creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
