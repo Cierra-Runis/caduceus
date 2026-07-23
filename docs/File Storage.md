@@ -128,8 +128,15 @@ it.
   (next open). The file exists and is editable immediately; its edits persist
   after a reload. Wiring dynamic file registration into the live room is a
   separate change to `handler/ws.rs`.
-- Binary and data assets are now fed to the client-side Typst compiler as
-  shadow files (`ObjectStore` bytes for binaries, inline text encoded for data
-  files), so `#image(...)` / `#read(...)` resolve in both the live preview and
-  PDF export. Fonts bundled as assets are not yet registered with the compiler's
-  font book — that is the remaining piece.
+- Binary and data assets are fed to the client-side Typst compiler as shadow
+  files (`ObjectStore` bytes for binaries, inline text encoded for data files),
+  so `#image(...)` / `#read(...)` resolve in both the live preview and PDF
+  export.
+- **Fonts** are detected server-side at upload time by their binary sfnt
+  signature — not their extension — (`.ttf`/`.otf`/`.ttc`/`.otc`; WOFF/WOFF2 are
+  excluded as Typst can't use them), and their family names are parsed from the
+  font's `name` table and stored on the `ProjectFile`. The client registers a
+  font's bytes into the compiler's font book by family (not as a path-addressed
+  shadow file, since Typst selects fonts by family name), so
+  `#set text(font: "…")` resolves against uploaded fonts. Fonts and the font
+  family names are shown in the file tree.

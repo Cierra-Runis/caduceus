@@ -15,6 +15,7 @@ import {
     PencilIcon,
     TargetIcon,
     Trash2Icon,
+    TypeIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { RefObject, useMemo, useState } from 'react';
@@ -487,6 +488,8 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
       ) : (
         <FolderIcon className='size-4 shrink-0 opacity-70' />
       )
+    ) : node.font ? (
+      <TypeIcon className='size-4 shrink-0 opacity-70' />
     ) : node.kind === 'binary' ? (
       <ImageIcon className='size-4 shrink-0 opacity-70' />
     ) : (
@@ -546,6 +549,14 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
               )}
               {rowIcon}
               <span className='truncate'>{node.name}</span>
+              {node.font && node.font.families.length > 0 && (
+                <span
+                  className='ml-auto truncate text-xs opacity-40'
+                  title={node.font.families.join(', ')}
+                >
+                  {node.font.families.join(', ')}
+                </span>
+              )}
             </button>
           )}
         </ContextMenuTrigger>

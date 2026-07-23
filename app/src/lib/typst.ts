@@ -75,6 +75,32 @@ export async function compileProjectToPdf(
   return pdf;
 }
 
+// Which font set is currently registered, so repeated compiles (every
+// keystroke) don't re-register the same fonts.
+let registeredFontKey = '';
+
+/// Register project fonts into the compiler's font book so `#set text(font:
+/// "…")` can select them. Unlike images/data, fonts are not resolved by path —
+/// they are looked up by the family name embedded in the font, so the raw bytes
+/// must be added to the book (not the shadow FS). `key` identifies the current
+/// font set; registration is skipped when it hasn't changed.
+export async function registerFonts(
+  fonts: Uint8Array[],
+  key: string,
+): Promise<void> {
+  if (key === registeredFontKey) return;
+  ensureInit();
+  if (fonts.length > 0) {
+    const [compiler, resolver] = await Promise.all([
+      $typst.getCompiler(),
+      $typst.getFontResolver(),
+    ]);
+    for (const bytes of fonts) await resolver.addFontData(bytes);
+    await resolver.build(async (built) => compiler.setFonts(built));
+  }
+  registeredFontKey = key;
+}
+
 function abs(path: string): string {
   return `/${path.replace(/^\/+/, '')}`;
 }

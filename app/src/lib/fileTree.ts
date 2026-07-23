@@ -7,6 +7,8 @@ import { ProjectFile } from '@/lib/types/project';
 export interface TreeNode {
   children: TreeNode[];
   fileId?: string;
+  /// Present when the file is a font, carrying the families it provides.
+  font?: { families: string[] };
   kind?: 'binary' | 'text';
   name: string;
   path: string;
@@ -71,6 +73,7 @@ export function buildFileTree(
     parent.children.push({
       children: [],
       fileId: file.id,
+      font: file.font,
       kind: file.content.kind,
       name,
       path: file.path,

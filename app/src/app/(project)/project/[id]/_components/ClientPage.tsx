@@ -128,7 +128,19 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
     () => binaryFiles.map((f) => `${f.id}:${f.path}`).join('|'),
     [binaryFiles],
   );
+  // Fonts are registered into the font book by family, not shadowed by path, so
+  // they're kept separate from the mapShadow assets. This key changes only when
+  // the font set changes, so registration doesn't re-run on every edit.
+  const fontKey = useMemo(
+    () =>
+      binaryFiles
+        .filter((f) => f.font)
+        .map((f) => f.id)
+        .join('|'),
+    [binaryFiles],
+  );
   const [assets, setAssets] = useState<TypstAssetFile[]>([]);
+  const [fonts, setFonts] = useState<Uint8Array[]>([]);
   useEffect(() => {
     let cancelled = false;
     Promise.all(
@@ -136,12 +148,18 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
         const res = await fetch(fileRawUrl(project.id, file.id), {
           credentials: 'include',
         });
-        const buffer = await res.arrayBuffer();
-        return { bytes: new Uint8Array(buffer), path: file.path };
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        return { bytes, isFont: Boolean(file.font), path: file.path };
       }),
     )
       .then((loaded) => {
-        if (!cancelled) setAssets(loaded);
+        if (cancelled) return;
+        setAssets(
+          loaded
+            .filter((item) => !item.isFont)
+            .map((item) => ({ bytes: item.bytes, path: item.path })),
+        );
+        setFonts(loaded.filter((item) => item.isFont).map((item) => item.bytes));
       })
       .catch(() => {
         // A failed asset fetch just means the preview can't load that file;
@@ -186,6 +204,8 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
           assets={assets}
           entryPath={entry}
           files={files}
+          fontKey={fontKey}
+          fonts={fonts}
           previewPanelRef={previewPanelRef}
         />
       </Group>

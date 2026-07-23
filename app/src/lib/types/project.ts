@@ -20,9 +20,18 @@ export const FileContentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('binary'), storageKey: z.string().trim() }),
 ]);
 
+// Font metadata, present only when the file is a usable font. `families` are
+// the font family names it provides, which the client registers into the Typst
+// font book (Typst selects fonts by family, not by path). Absent for non-fonts.
+export type FontInfo = z.infer<typeof FontInfoSchema>;
+export const FontInfoSchema = z.object({
+  families: z.array(z.string().trim()),
+});
+
 export type ProjectFile = z.infer<typeof ProjectFileSchema>;
 export const ProjectFileSchema = z.object({
   content: FileContentSchema,
+  font: FontInfoSchema.optional(),
   id: z.string().trim(),
   path: z.string().trim(),
   size: z.number(),

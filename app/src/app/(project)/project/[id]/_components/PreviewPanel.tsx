@@ -3,13 +3,22 @@
 import { RefObject, useEffect, useRef, useState } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { compileProject, TypstAssetFile, TypstSourceFile } from '@/lib/typst';
+import {
+    compileProject,
+    registerFonts,
+    TypstAssetFile,
+    TypstSourceFile,
+} from '@/lib/typst';
 
 export interface PreviewPanelProps {
-  /// Binary assets (images, fonts, …) the document may load, as raw bytes.
+  /// Non-font binary assets (images, data, …) the document may load, as bytes.
   assets: TypstAssetFile[];
   entryPath: null | string;
   files: Record<string, string>;
+  /// Identity of the current font set, so fonts are registered only on change.
+  fontKey: string;
+  /// Raw bytes of the project's font files, registered into the font book.
+  fonts: Uint8Array[];
   previewPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
@@ -22,6 +31,8 @@ export function PreviewPanel({
   assets,
   entryPath,
   files,
+  fontKey,
+  fonts,
   previewPanelRef,
 }: PreviewPanelProps) {
   const [svg, setSvg] = useState('');
@@ -47,6 +58,9 @@ export function PreviewPanel({
     const timer = setTimeout(async () => {
       const mySeq = ++seq.current;
       try {
+        // Fonts must be in the book before the compile that uses them; this
+        // no-ops once the set is registered.
+        await registerFonts(fonts, fontKey);
         const out = await compileProject(entryPath, sources, allAssets);
         if (mySeq === seq.current) {
           setSvg(out);
@@ -59,7 +73,7 @@ export function PreviewPanel({
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [assets, entryPath, files]);
+  }, [assets, entryPath, files, fontKey, fonts]);
 
   return (
     <Panel
