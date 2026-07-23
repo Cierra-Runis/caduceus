@@ -4,6 +4,7 @@ import {
     ChevronDownIcon,
     ChevronRightIcon,
     DownloadIcon,
+    EyeIcon,
     FileIcon,
     FilePlusIcon,
     FileTextIcon,
@@ -470,6 +471,10 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
   const isRenaming = draft?.kind === 'rename' && draft.node.path === node.path;
   const isEntry = node.type === 'file' && node.fileId === entryFileId;
   const isOpen = node.type === 'folder' && !collapsed.has(node.path);
+  // Only a .typ source can be the compile entry, so the pin (👁) affordance is
+  // shown on those files: solid on the current entry, faint-on-hover otherwise.
+  const isTyp =
+    node.type === 'file' && node.kind === 'text' && node.path.endsWith('.typ');
 
   const rowIcon =
     node.type === 'folder' ? (
@@ -495,7 +500,7 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
   };
 
   return (
-    <li>
+    <li className='group relative'>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           {isRenaming ? (
@@ -518,7 +523,8 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
           ) : (
             <button
               className={cn(
-                `flex w-full items-center gap-1.5 py-1 pr-2 text-left text-sm`,
+                `flex w-full items-center gap-1.5 py-1 text-left text-sm`,
+                isTyp ? 'pr-8' : 'pr-2',
                 node.path === focus ? 'bg-accent' : 'hover:bg-accent/50',
               )}
               onClick={handleActivate}
@@ -536,11 +542,6 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
               )}
               {rowIcon}
               <span className='truncate'>{node.name}</span>
-              {isEntry && (
-                <span className='ml-auto text-xs opacity-50'>
-                  {t('entry')}
-                </span>
-              )}
             </button>
           )}
         </ContextMenuTrigger>
@@ -556,7 +557,7 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
               <ContextMenuSeparator />
             </>
           )}
-          {node.type === 'file' && node.kind === 'text' && (
+          {isTyp && (
             <ContextMenuItem onClick={() => onSetEntry(node)}>
               <TargetIcon /> {t('actions.setAsEntry')}
             </ContextMenuItem>
@@ -579,6 +580,27 @@ function TreeRow(props: { node: TreeNode } & TreeListProps) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+
+      {!isRenaming && isTyp && (
+        <button
+          aria-label={isEntry ? t('pin.current') : t('pin.set')}
+          className={cn(
+            `absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2
+            items-center justify-center rounded-sm hover:bg-accent`,
+            isEntry
+              ? 'text-primary'
+              : `text-muted-foreground opacity-0 transition-opacity
+                group-hover:opacity-100`,
+          )}
+          onClick={() => {
+            if (!isEntry) onSetEntry(node);
+          }}
+          title={isEntry ? t('pin.current') : t('pin.set')}
+          type='button'
+        >
+          <EyeIcon className='size-4' />
+        </button>
+      )}
 
       {node.type === 'folder' && isOpen && (
         <>

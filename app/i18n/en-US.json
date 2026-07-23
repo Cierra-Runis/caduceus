@@ -51,7 +51,6 @@
       "setAsEntry": "Set as Entry",
       "upload": "Upload"
     },
-    "entry": "entry",
     "errors": {
       "createFailed": "Failed to create",
       "deleteFailed": "Failed to delete",
@@ -62,6 +61,10 @@
     "placeholders": {
       "fileName": "File name",
       "folderName": "Folder name"
+    },
+    "pin": {
+      "current": "Current preview entry",
+      "set": "Pin as preview entry"
     },
     "preview": {
       "unsupported": "Preview isn't available for this file type yet"

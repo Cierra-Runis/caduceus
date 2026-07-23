@@ -51,7 +51,6 @@
       "setAsEntry": "エントリーに設定",
       "upload": "アップロード"
     },
-    "entry": "エントリー",
     "errors": {
       "createFailed": "作成に失敗しました",
       "deleteFailed": "削除に失敗しました",
@@ -62,6 +61,10 @@
     "placeholders": {
       "fileName": "ファイル名",
       "folderName": "フォルダー名"
+    },
+    "pin": {
+      "current": "現在のプレビュー入口",
+      "set": "プレビュー入口に設定"
     },
     "preview": {
       "unsupported": "この種類のファイルはまだプレビューできません"

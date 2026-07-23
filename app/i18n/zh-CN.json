@@ -51,7 +51,6 @@
       "setAsEntry": "设为入口文件",
       "upload": "上传"
     },
-    "entry": "入口",
     "errors": {
       "createFailed": "创建失败",
       "deleteFailed": "删除失败",
@@ -62,6 +61,10 @@
     "placeholders": {
       "fileName": "文件名",
       "folderName": "文件夹名"
+    },
+    "pin": {
+      "current": "当前预览入口",
+      "set": "设为预览入口"
     },
     "preview": {
       "unsupported": "暂不支持预览此类型的文件"
