@@ -12,9 +12,10 @@ import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
-import { fetchProjectDetail } from '@/lib/api/project';
+import { fetchProjectDetail, fileRawUrl } from '@/lib/api/project';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
+import { TypstAssetFile } from '@/lib/typst';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
 
 import { EditorPanel } from './EditorPanel';
@@ -113,6 +114,46 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
     return () => ydoc.off('update', sync);
   }, [ydoc, textPaths]);
 
+  // Binary assets (images, fonts, …) the document may `#image`/`#read`. Text
+  // files ride the Yjs mirror above; binaries are static bytes, so fetch each
+  // once from the server and hand them to the compiler as shadow files —
+  // without this, `#image("logo.png")` fails with "cannot read file".
+  const binaryFiles = useMemo(
+    () => project.files.filter((file) => file.content.kind === 'binary'),
+    [project.files],
+  );
+  // A stable key so the fetch only re-runs when the set of binaries changes,
+  // not on every text edit (which leaves `project.files` untouched anyway).
+  const binaryKey = useMemo(
+    () => binaryFiles.map((f) => `${f.id}:${f.path}`).join('|'),
+    [binaryFiles],
+  );
+  const [assets, setAssets] = useState<TypstAssetFile[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      binaryFiles.map(async (file) => {
+        const res = await fetch(fileRawUrl(project.id, file.id), {
+          credentials: 'include',
+        });
+        const buffer = await res.arrayBuffer();
+        return { bytes: new Uint8Array(buffer), path: file.path };
+      }),
+    )
+      .then((loaded) => {
+        if (!cancelled) setAssets(loaded);
+      })
+      .catch(() => {
+        // A failed asset fetch just means the preview can't load that file;
+        // the compiler surfaces its own "cannot read file" error.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on `binaryKey` (a digest of the binary files) so the fetch only
+    // re-runs when the binary set changes; `binaryFiles` updates in lockstep.
+  }, [project.id, binaryKey]);
+
   return (
     <div className='relative flex h-screen'>
       <div className='absolute top-2 right-2 z-10'>
@@ -142,6 +183,7 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
           <GripVerticalIcon className='w-4' />
         </Separator>
         <PreviewPanel
+          assets={assets}
           entryPath={entry}
           files={files}
           previewPanelRef={previewPanelRef}

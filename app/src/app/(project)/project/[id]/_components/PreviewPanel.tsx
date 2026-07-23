@@ -3,9 +3,11 @@
 import { RefObject, useEffect, useRef, useState } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { compileProject } from '@/lib/typst';
+import { compileProject, TypstAssetFile, TypstSourceFile } from '@/lib/typst';
 
 export interface PreviewPanelProps {
+  /// Binary assets (images, fonts, …) the document may load, as raw bytes.
+  assets: TypstAssetFile[];
   entryPath: null | string;
   files: Record<string, string>;
   previewPanelRef: RefObject<null | PanelImperativeHandle>;
@@ -17,6 +19,7 @@ export interface PreviewPanelProps {
 const DEBOUNCE_MS = 200;
 
 export function PreviewPanel({
+  assets,
   entryPath,
   files,
   previewPanelRef,
@@ -31,14 +34,20 @@ export function PreviewPanel({
       setError('This project has no entry file to compile.');
       return;
     }
-    const sources = Object.entries(files).map(([path, text]) => ({
-      path,
-      text,
-    }));
+    // `.typ` files go in as editable source; every other text file is a data
+    // asset the document may `#read`/`#image`, so it is shadowed as bytes
+    // alongside the binary assets.
+    const sources: TypstSourceFile[] = [];
+    const textAssets: TypstAssetFile[] = [];
+    for (const [path, text] of Object.entries(files)) {
+      if (path.endsWith('.typ')) sources.push({ path, text });
+      else textAssets.push({ bytes: new TextEncoder().encode(text), path });
+    }
+    const allAssets = [...textAssets, ...assets];
     const timer = setTimeout(async () => {
       const mySeq = ++seq.current;
       try {
-        const out = await compileProject(entryPath, sources);
+        const out = await compileProject(entryPath, sources, allAssets);
         if (mySeq === seq.current) {
           setSvg(out);
           setError(null);
@@ -50,7 +59,7 @@ export function PreviewPanel({
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [entryPath, files]);
+  }, [assets, entryPath, files]);
 
   return (
     <Panel

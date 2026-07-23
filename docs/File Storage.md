@@ -128,6 +128,8 @@ it.
   (next open). The file exists and is editable immediately; its edits persist
   after a reload. Wiring dynamic file registration into the live room is a
   separate change to `handler/ws.rs`.
-- Binary assets are shown, uploaded, downloaded, and deleted, but are **not yet
-  fed to the client-side Typst compiler** for preview (`#image(...)`); that is
-  the remaining half of asset support.
+- Binary and data assets are now fed to the client-side Typst compiler as
+  shadow files (`ObjectStore` bytes for binaries, inline text encoded for data
+  files), so `#image(...)` / `#read(...)` resolve in both the live preview and
+  PDF export. Fonts bundled as assets are not yet registered with the compiler's
+  font book — that is the remaining piece.

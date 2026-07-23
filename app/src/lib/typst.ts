@@ -13,25 +13,41 @@ const TYPST_VERSION = '0.7.0';
 
 let initialized = false;
 
+/// A non-source file the document may load as *bytes* — an image for
+/// `#image(...)`, a dataset for `#read(...)`/`#csv(...)`, a `.bib`, etc. These
+/// are registered as shadow files so the sandboxed compiler can read them;
+/// without this, any such load fails with "failed to load file (access
+/// denied) / cannot read file outside of project root".
+export interface TypstAssetFile {
+  bytes: Uint8Array;
+  /// Virtual-FS path, e.g. `assets/logo.png`.
+  path: string;
+}
+
 export interface TypstSourceFile {
   /// Virtual-FS path, e.g. `main.typ` or `chapters/intro.typ`.
   path: string;
   text: string;
 }
 
-/// Compile a project's text files to an SVG string, starting from `entryPath`.
+/// Compile a project to an SVG string, starting from `entryPath`.
 ///
-/// The whole text tree is fed to the compiler (not just the focused file)
-/// because Typst resolves `#import`/`#image` across every file. Paths are
-/// normalised to an absolute VFS root so relative imports resolve the same way
-/// regardless of which file is the entry. Binary assets are not wired yet (M3).
+/// The whole tree is fed to the compiler (not just the focused file) because
+/// Typst resolves `#import`/`#image`/`#read` across every file: `.typ` sources
+/// go in as editable source text, everything else as shadowed bytes. Paths are
+/// normalised to an absolute VFS root so relative loads resolve the same way
+/// regardless of which file is the entry.
 export async function compileProject(
   entryPath: string,
-  files: TypstSourceFile[],
+  sources: TypstSourceFile[],
+  assets: TypstAssetFile[] = [],
 ): Promise<string> {
   ensureInit();
-  for (const file of files) {
+  for (const file of sources) {
     await $typst.addSource(abs(file.path), file.text);
+  }
+  for (const asset of assets) {
+    await $typst.mapShadow(abs(asset.path), asset.bytes);
   }
   return $typst.svg({ mainFilePath: abs(entryPath) });
 }
@@ -44,11 +60,15 @@ export async function compileProject(
 /// so callers only ever deal with bytes or a caught failure.
 export async function compileProjectToPdf(
   entryPath: string,
-  files: TypstSourceFile[],
+  sources: TypstSourceFile[],
+  assets: TypstAssetFile[] = [],
 ): Promise<Uint8Array> {
   ensureInit();
-  for (const file of files) {
+  for (const file of sources) {
     await $typst.addSource(abs(file.path), file.text);
+  }
+  for (const asset of assets) {
+    await $typst.mapShadow(abs(asset.path), asset.bytes);
   }
   const pdf = await $typst.pdf({ mainFilePath: abs(entryPath) });
   if (!pdf) throw new Error('Typst compiler produced no PDF output.');

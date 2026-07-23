@@ -8,8 +8,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useProjectDetail } from '@/hooks/api/project';
+import { fileRawUrl } from '@/lib/api/project';
 import { Project, ProjectDetail } from '@/lib/types/project';
-import { compileProjectToPdf, TypstSourceFile } from '@/lib/typst';
+import { compileProjectToPdf, TypstAssetFile, TypstSourceFile } from '@/lib/typst';
 
 export function DownloadProjectButton({
   project,
@@ -29,9 +30,11 @@ export function DownloadProjectButton({
     setIsDownloading(true);
     try {
       const { payload } = await trigger(project.id);
+      const { assets, sources } = await compileInputs(payload);
       const pdf = await compileProjectToPdf(
         entryPath(payload),
-        textSources(payload),
+        sources,
+        assets,
       );
       saveBytes(pdf, `${project.name}.pdf`);
     } catch (error) {
@@ -61,6 +64,39 @@ export function DownloadProjectButton({
   );
 }
 
+// Split the project into what the compiler needs: `.typ` files as editable
+// sources, and everything else (data text files + binary assets fetched from
+// object storage) as shadowed bytes, so `#image`/`#read` resolve during export
+// exactly like they do in the live preview.
+async function compileInputs(
+  project: ProjectDetail,
+): Promise<{ assets: TypstAssetFile[]; sources: TypstSourceFile[] }> {
+  const sources: TypstSourceFile[] = [];
+  const assets: TypstAssetFile[] = [];
+  const encoder = new TextEncoder();
+  const binaryFetches: Promise<TypstAssetFile>[] = [];
+
+  for (const file of project.files) {
+    if (file.content.kind === 'text') {
+      if (file.path.endsWith('.typ')) {
+        sources.push({ path: file.path, text: file.content.text });
+      } else {
+        assets.push({ bytes: encoder.encode(file.content.text), path: file.path });
+      }
+    } else {
+      const { id, path } = file;
+      binaryFetches.push(
+        fetch(fileRawUrl(project.id, id), { credentials: 'include' })
+          .then((res) => res.arrayBuffer())
+          .then((buffer) => ({ bytes: new Uint8Array(buffer), path })),
+      );
+    }
+  }
+
+  assets.push(...(await Promise.all(binaryFetches)));
+  return { assets, sources };
+}
+
 // The compile root, resolved from the project's `entry` (a file id) to its
 // path. Thrown as a user-facing error rather than returned as null, since the
 // caller has nothing sensible to compile without it.
@@ -72,8 +108,6 @@ function entryPath(project: ProjectDetail): string {
   return entry.path;
 }
 
-// Binary assets aren't wired into the compiler yet (M3, see lib/typst.ts), so
-// a download only ever needs to push bytes through a throwaway <a> element.
 function saveBytes(bytes: Uint8Array, filename: string) {
   const url = URL.createObjectURL(
     new Blob([Uint8Array.from(bytes)], { type: 'application/pdf' }),
@@ -83,12 +117,4 @@ function saveBytes(bytes: Uint8Array, filename: string) {
   link.href = url;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function textSources(project: ProjectDetail): TypstSourceFile[] {
-  return project.files.flatMap((file) =>
-    file.content.kind === 'text'
-      ? [{ path: file.path, text: file.content.text }]
-      : [],
-  );
 }
