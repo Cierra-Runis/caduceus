@@ -13,6 +13,7 @@ export interface EditorPanelProps {
   /// The focused file, or null when nothing is open. A binary file renders a
   /// read-only preview; a text file renders the collaborative editor.
   focusFile: {
+    families?: string[];
     fileId: string;
     kind: 'binary' | 'text';
   } | null;
@@ -41,6 +42,7 @@ export function EditorPanel({
     >
       {focusFile?.kind === 'binary' ? (
         <FilePreview
+          families={focusFile.families}
           fileId={focusFile.fileId}
           path={path}
           projectId={projectId}

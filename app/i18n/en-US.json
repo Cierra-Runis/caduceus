@@ -67,6 +67,7 @@
       "set": "Pin as preview entry"
     },
     "preview": {
+      "fontError": "Couldn't load this font for preview",
       "unsupported": "Preview isn't available for this file type yet"
     },
     "title": "Files",

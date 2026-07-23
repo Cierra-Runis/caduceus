@@ -67,6 +67,7 @@
       "set": "设为预览入口"
     },
     "preview": {
+      "fontError": "无法加载此字体以预览",
       "unsupported": "暂不支持预览此类型的文件"
     },
     "title": "文件",

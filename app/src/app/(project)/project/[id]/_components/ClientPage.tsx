@@ -71,7 +71,13 @@ export function ClientPage({ project: initialProject }: { project: ProjectDetail
   // (text) or a read-only preview (binary).
   const focusFile = useMemo(() => {
     const file = project.files.find((f) => f.path === focus);
-    return file ? { fileId: file.id, kind: file.content.kind } : null;
+    return file
+      ? {
+          families: file.font?.families,
+          fileId: file.id,
+          kind: file.content.kind,
+        }
+      : null;
   }, [project.files, focus]);
 
   useEffect(() => {
