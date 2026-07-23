@@ -47,6 +47,30 @@ impl Default for WsConfig {
     }
 }
 
+/// Object-storage (MinIO / S3) connection settings. Optional so a checkout can
+/// run without a storage backend configured; wired into an [`ObjectStore`] by
+/// whichever component first needs blob storage.
+///
+/// [`ObjectStore`]: crate::storage::ObjectStore
+#[derive(Debug, Clone, Deserialize)]
+pub struct StorageConfig {
+    /// Full base URL of the endpoint, e.g. `http://localhost:9000`.
+    pub endpoint: String,
+    /// S3 region. Arbitrary for MinIO but part of the request signature.
+    #[serde(default = "StorageConfig::default_region")]
+    pub region: String,
+    /// Bucket that holds `blobs/{sha256}` objects.
+    pub bucket: String,
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+impl StorageConfig {
+    fn default_region() -> String {
+        "us-east-1".to_string()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     cors: Option<CorsConfig>,
@@ -56,6 +80,8 @@ pub struct Config {
     pub jwt_secret: String,
     #[serde(default)]
     pub ws: WsConfig,
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
 }
 
 impl Config {
@@ -137,6 +163,7 @@ mod tests {
             address: vec!["localhost:8080".to_string()],
             jwt_secret: "secret".to_string(),
             ws: WsConfig::default(),
+            storage: None,
         };
 
         let app = test::init_service(

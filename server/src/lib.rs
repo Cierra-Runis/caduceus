@@ -8,6 +8,7 @@ pub mod models;
 pub mod repo;
 pub mod routes;
 pub mod services;
+pub mod storage;
 
 use crate::{
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
