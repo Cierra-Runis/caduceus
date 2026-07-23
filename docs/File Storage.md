@@ -77,6 +77,11 @@ whole into the editor, and an image would bloat every load. Instead:
   rejected batch therefore never orphans a blob, and MinIO needs no bucket-CORS
   setup. The multipart body names each part after its target path
   (`form.append(targetPath, file)`); the server reads the field name.
+- **Text vs. binary is decided by content, not extension.** An uploaded file
+  whose bytes are valid UTF-8 with no NUL byte (and under a 1 MiB inline cap) is
+  stored as inline `Text` — so an uploaded `README.md` or `.typ` is a normal
+  editable, collaborative file, not a dead binary. Everything else (images,
+  fonts, oversized text) becomes a `Binary` in object storage.
 
 Run MinIO locally with `docker-compose.yml`; defaults match
 `StorageConfig` so a fresh checkout works unconfigured.

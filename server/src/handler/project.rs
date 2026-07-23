@@ -7,7 +7,11 @@ use futures_util::StreamExt as _;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    models::{project::OwnerType, response::ApiResponse, user::UserClaims},
+    models::{
+        project::{FileContent, OwnerType},
+        response::ApiResponse,
+        user::UserClaims,
+    },
     services::project::{ProjectServiceError, UploadedFile},
     storage::StorageError,
 };
@@ -308,7 +312,7 @@ pub async fn delete_file(
         .delete_file(project_id, user.sub, file_id)
         .await?;
 
-    if let crate::models::project::FileContent::Binary { storage_key } = removed.content {
+    if let FileContent::Binary { storage_key } = removed.content {
         // Best-effort: the metadata row is already gone, so a storage hiccup
         // just leaves an orphan blob rather than a dangling reference.
         let _ = data
@@ -396,10 +400,26 @@ pub async fn download_file(
         .body(bytes))
 }
 
-/// Upload one or more binary assets (proxied through the server, which
-/// authenticates and validates every target path before a single byte reaches
-/// object storage). Each multipart part's *field name* carries the target path
-/// relative to the project root.
+/// Uploaded bytes are stored inline as editable text when they are a UTF-8
+/// source file (`.md`, `.typ`, `.bib`, …) rather than a binary asset. Cap kept
+/// well under MongoDB's 16 MB document limit, since inline text lives in the
+/// project document; larger "text" files fall back to object storage.
+const INLINE_TEXT_MAX_BYTES: usize = 1024 * 1024;
+
+/// Whether uploaded bytes should be stored inline as a text source: valid
+/// UTF-8, no NUL byte (the strongest binary tell), and small enough to inline.
+fn as_inline_text(bytes: &[u8]) -> Option<String> {
+    if bytes.len() > INLINE_TEXT_MAX_BYTES || bytes.contains(&0) {
+        return None;
+    }
+    std::str::from_utf8(bytes).ok().map(str::to_string)
+}
+
+/// Upload one or more files (proxied through the server, which authenticates
+/// and validates every target path before a single byte is stored). Text
+/// sources are inlined as editable, collaborative files; only true binaries go
+/// to object storage. Each multipart part's *field name* carries the target
+/// path relative to the project root.
 pub async fn upload_files(
     id: actix_web::web::Path<String>,
     mut payload: Multipart,
@@ -455,24 +475,27 @@ pub async fn upload_files(
         .check_can_add_files(project_id, user.sub, &paths)
         .await?;
 
-    // Write bytes; track keys so we can roll them back if a later put fails.
+    // Classify each file: inline UTF-8 text, or a binary written to object
+    // storage. Track written keys so we can roll them back if a later put fails.
     let mut uploads: Vec<UploadedFile> = Vec::with_capacity(staged.len());
     let mut written: Vec<ObjectId> = Vec::new();
     for (path, bytes, content_type) in staged {
-        let storage_key = ObjectId::new();
-        let key = object_key(project_id, storage_key);
-        if let Err(e) = data.object_store.put(&key, &bytes, &content_type).await {
-            for k in &written {
-                let _ = data.object_store.delete(&object_key(project_id, *k)).await;
+        let size = bytes.len() as i64;
+        let content = if let Some(text) = as_inline_text(&bytes) {
+            FileContent::Text { text }
+        } else {
+            let storage_key = ObjectId::new();
+            let key = object_key(project_id, storage_key);
+            if let Err(e) = data.object_store.put(&key, &bytes, &content_type).await {
+                for k in &written {
+                    let _ = data.object_store.delete(&object_key(project_id, *k)).await;
+                }
+                return Err(FileError::Storage(e));
             }
-            return Err(FileError::Storage(e));
-        }
-        written.push(storage_key);
-        uploads.push(UploadedFile {
-            path,
-            storage_key,
-            size: bytes.len() as i64,
-        });
+            written.push(storage_key);
+            FileContent::Binary { storage_key }
+        };
+        uploads.push(UploadedFile { path, content, size });
     }
 
     match data

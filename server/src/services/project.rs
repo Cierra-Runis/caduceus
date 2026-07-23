@@ -550,9 +550,11 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         Ok(())
     }
 
-    /// Record already-stored uploads as binary files. `uploads` pairs a
-    /// validated, normalized path with the storage key its bytes were written
-    /// under and their size. Re-validates as a last line of defense.
+    /// Record uploaded files in the project tree. Each [`UploadedFile`] carries
+    /// its already-decided content — inline `Text` for a UTF-8 source file
+    /// (editable and collaborative, just like a hand-created file) or `Binary`
+    /// pointing at bytes the handler already wrote to object storage.
+    /// Re-validates paths as a last line of defense.
     pub async fn add_uploaded_files(
         &self,
         project_id: ObjectId,
@@ -574,9 +576,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                     ProjectFile {
                         id,
                         path: u.path,
-                        content: FileContent::Binary {
-                            storage_key: u.storage_key,
-                        },
+                        content: u.content,
                         size: u.size,
                         version: 0,
                         updated_at: OffsetDateTime::now_utc(),
@@ -629,11 +629,13 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
     }
 }
 
-/// A binary asset whose bytes are already in object storage, awaiting a
-/// metadata row in the project tree.
+/// An uploaded file awaiting a metadata row in the project tree. `content` is
+/// already resolved by the handler: inline [`FileContent::Text`] for a UTF-8
+/// source file, or [`FileContent::Binary`] whose bytes are already in object
+/// storage.
 pub struct UploadedFile {
     pub path: String,
-    pub storage_key: ObjectId,
+    pub content: FileContent,
     pub size: i64,
 }
 
@@ -1693,13 +1695,17 @@ mod tests {
         let uploads = vec![
             UploadedFile {
                 path: "assets/a.png".to_string(),
-                storage_key: ObjectId::new(),
+                content: FileContent::Binary {
+                    storage_key: ObjectId::new(),
+                },
                 size: 5,
             },
             UploadedFile {
-                path: "assets/b.png".to_string(),
-                storage_key: ObjectId::new(),
-                size: 7,
+                path: "notes/readme.md".to_string(),
+                content: FileContent::Text {
+                    text: "# hi".to_string(),
+                },
+                size: 4,
             },
         ];
         let payloads = service
@@ -1707,12 +1713,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(payloads.len(), 2);
-        assert!(payloads.iter().all(|p| p.kind == FileKind::Binary));
+        // Binary stays binary; an uploaded text file is stored as editable text.
+        assert!(payloads.iter().any(|p| p.kind == FileKind::Binary));
+        assert!(payloads.iter().any(|p| p.kind == FileKind::Text));
 
         // Uploading onto an existing path conflicts.
         let conflict = vec![UploadedFile {
             path: "main.typ".to_string(),
-            storage_key: ObjectId::new(),
+            content: FileContent::Binary {
+                storage_key: ObjectId::new(),
+            },
             size: 1,
         }];
         let res = service.add_uploaded_files(pid, owner, conflict).await;
