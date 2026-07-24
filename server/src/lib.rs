@@ -1,6 +1,7 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 pub mod config;
+pub mod crdt;
 pub mod database;
 pub mod handler;
 pub mod middleware;
