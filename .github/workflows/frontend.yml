@@ -1,0 +1,56 @@
+name: Frontend
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'app/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'app/**'
+      - '.github/workflows/frontend.yml'
+
+jobs:
+  check:
+    name: Lint, Test, Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Reads the `packageManager` field (pnpm) from package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # `next build` is the real type check (it also generates the framework's
+      # PageProps/LayoutProps types). Dummy env values satisfy the t3-env schema.
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_WS_URL: ws://localhost:8080
+          JWT_SECRET: ci-dummy-secret
