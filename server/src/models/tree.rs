@@ -34,31 +34,71 @@ pub const MAX_NAME_LEN: usize = 255;
 /// parent-chain walk so a cycle can't loop forever.
 pub const MAX_DEPTH: usize = 64;
 
-/// Whether a node holds bytes (a file) or only children (a folder).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// What a node *is*, carrying the data that only that kind has. Making this a
+/// data-bearing enum means a folder simply has no `blob` field — the illegal
+/// "folder with content" state can't be represented, so no runtime rule has to
+/// forbid it.
+///
+/// Serialized flattened onto its node as `{ "kind": "file"|"folder", "blob"? }`
+/// (see [`Node`]), keeping the wire shape flat for the CRDT/clients.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum NodeKind {
-    File,
+    File {
+        /// The file's content-addressed bytes, or `None` for a freshly-created
+        /// file whose bytes haven't been flushed to a blob yet (its text lives
+        /// only in the CRDT overlay until then).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        blob: Option<Blob>,
+    },
     Folder,
 }
 
+impl NodeKind {
+    pub fn is_folder(&self) -> bool {
+        matches!(self, NodeKind::Folder)
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self, NodeKind::File { .. })
+    }
+
+    /// A file's blob reference; always `None` for a folder.
+    pub fn blob(&self) -> Option<&Blob> {
+        match self {
+            NodeKind::File { blob } => blob.as_ref(),
+            NodeKind::Folder => None,
+        }
+    }
+}
+
 /// One node in the tree. Stores its own `name` segment and a `parent` link only
-/// — the full path is derived (see [`ProjectTree::path_of`]).
+/// — the full path is derived (see [`ProjectTree::path_of`]). The kind-specific
+/// data (a file's blob) lives in [`NodeKind`], flattened onto the node so the
+/// JSON stays `{ id, parent, name, kind, blob? }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
     /// The parent folder's id, or `None` for a node directly under the project
     /// root.
+    #[serde(default)]
     pub parent: Option<NodeId>,
     /// A single path segment (e.g. `chapters` or `intro.typ`), never a full
     /// path and never containing `/`.
     pub name: String,
+    #[serde(flatten)]
     pub kind: NodeKind,
-    /// A file's content-addressed bytes. Always `None` for a folder. May also
-    /// be `None` for a freshly-created file whose bytes haven't been flushed to
-    /// a blob yet (its text lives only in the CRDT overlay until then).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob: Option<Blob>,
+}
+
+impl Node {
+    pub fn is_folder(&self) -> bool {
+        self.kind.is_folder()
+    }
+
+    /// This node's blob reference, if it is a file with flushed content.
+    pub fn blob(&self) -> Option<&Blob> {
+        self.kind.blob()
+    }
 }
 
 /// Why a tree (or a proposed change to it) is invalid. The authority rejects an
@@ -78,8 +118,6 @@ pub enum TreeError {
     ParentNotFound(NodeId),
     #[display("parent {_0} is a file, not a folder")]
     ParentNotFolder(NodeId),
-    #[display("folder node {_0} must not carry blob content")]
-    FolderWithBlob(NodeId),
     #[display("cycle detected at node {_0}")]
     Cycle(NodeId),
     #[display("node {_0} exceeds the maximum tree depth")]
@@ -108,15 +146,15 @@ pub fn is_valid_segment(name: &str) -> bool {
 /// access checks don't need to load the Y.Doc; it can be rebuilt from the tree
 /// at any time.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct NodeProjection {
     pub id: NodeId,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<NodeId>,
-    pub kind: NodeKind,
     pub name: String,
     pub path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blob: Option<Blob>,
+    /// The kind (and, for a file, its blob) flattened as `{ kind, blob? }`.
+    #[serde(flatten)]
+    pub kind: NodeKind,
 }
 
 /// An in-memory project file tree: nodes keyed by id. Built by the authority
@@ -210,13 +248,12 @@ impl ProjectTree {
                     name: node.name.clone(),
                 });
             }
-            if node.kind == NodeKind::Folder && node.blob.is_some() {
-                return Err(TreeError::FolderWithBlob(node.id.clone()));
-            }
+            // A folder-with-blob is now unrepresentable (see `NodeKind`), so
+            // there is no runtime check for it here.
             if let Some(pid) = &node.parent {
                 match self.nodes.get(pid) {
                     None => return Err(TreeError::ParentNotFound(pid.clone())),
-                    Some(p) if p.kind != NodeKind::Folder => {
+                    Some(p) if !p.is_folder() => {
                         return Err(TreeError::ParentNotFolder(pid.clone()));
                     }
                     _ => {}
@@ -259,10 +296,9 @@ impl ProjectTree {
             out.push(NodeProjection {
                 id: node.id.clone(),
                 parent: node.parent.clone(),
-                kind: node.kind,
                 name: node.name.clone(),
                 path: self.path_of(&node.id)?,
-                blob: node.blob.clone(),
+                kind: node.kind.clone(),
             });
         }
         Ok(out)
@@ -280,7 +316,6 @@ mod tests {
             parent: parent.map(String::from),
             name: name.to_string(),
             kind: NodeKind::Folder,
-            blob: None,
         }
     }
 
@@ -289,8 +324,7 @@ mod tests {
             id: id.to_string(),
             parent: parent.map(String::from),
             name: name.to_string(),
-            kind: NodeKind::File,
-            blob: None,
+            kind: NodeKind::File { blob: None },
         }
     }
 
@@ -316,6 +350,44 @@ mod tests {
         assert!(tree.is_empty());
         assert!(tree.validate().is_ok());
         assert_eq!(tree.projection().unwrap(), vec![]);
+    }
+
+    #[test]
+    fn test_file_node_serializes_flat_with_kind_and_blob() {
+        let mut f = file("1", Some("d"), "a.typ");
+        f.kind = NodeKind::File {
+            blob: Some(Blob {
+                sha256: "a".repeat(64),
+                size: 3,
+            }),
+        };
+        let json = serde_json::to_value(&f).unwrap();
+        // Flattened: kind + blob sit alongside id/parent/name, no nesting.
+        assert_eq!(json["kind"], "file");
+        assert_eq!(json["blob"]["size"], 3);
+        assert_eq!(json["parent"], "d");
+        // Round-trips back to the same node.
+        assert_eq!(serde_json::from_value::<Node>(json).unwrap(), f);
+    }
+
+    #[test]
+    fn test_folder_node_serializes_without_a_blob_field() {
+        let d = folder("d", None, "chapters");
+        let json = serde_json::to_value(&d).unwrap();
+        assert_eq!(json["kind"], "folder");
+        // A folder has no blob field at all — the illegal state doesn't exist.
+        assert!(json.get("blob").is_none());
+        assert_eq!(serde_json::from_value::<Node>(json).unwrap(), d);
+    }
+
+    #[test]
+    fn test_new_file_omits_blob_until_flushed() {
+        // A freshly-created file (no bytes yet) serializes without `blob`.
+        let f = file("1", None, "new.typ");
+        let json = serde_json::to_value(&f).unwrap();
+        assert_eq!(json["kind"], "file");
+        assert!(json.get("blob").is_none());
+        assert_eq!(serde_json::from_value::<Node>(json).unwrap(), f);
     }
 
     #[test]
@@ -424,19 +496,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_folder_with_blob_rejected() {
-        let mut n = folder("1", None, "d");
-        n.blob = Some(Blob {
-            sha256: "0".repeat(64),
-            size: 0,
-        });
-        let tree = ProjectTree::from_nodes([n]);
-        assert_eq!(
-            tree.validate(),
-            Err(TreeError::FolderWithBlob("1".to_string()))
-        );
-    }
+    // A folder-with-blob is unrepresentable now (`NodeKind::Folder` carries no
+    // blob field), so there is no runtime rule — and no test — for it.
 
     #[test]
     fn test_cycle_detected() {
@@ -480,16 +541,19 @@ mod tests {
             size: 12,
         };
         let mut f = file("f", Some("d"), "intro.typ");
-        f.blob = Some(blob.clone());
+        f.kind = NodeKind::File {
+            blob: Some(blob.clone()),
+        };
         let tree = ProjectTree::from_nodes([folder("d", None, "chapters"), f]);
         tree.validate().unwrap();
 
         let mut proj = tree.projection().unwrap();
         proj.sort_by(|a, b| a.path.cmp(&b.path));
         assert_eq!(proj[0].path, "chapters");
+        assert!(proj[0].kind.is_folder());
         assert_eq!(proj[1].path, "chapters/intro.typ");
-        assert_eq!(proj[1].blob, Some(blob));
-        assert_eq!(proj[1].kind, NodeKind::File);
+        assert_eq!(proj[1].kind.blob(), Some(&blob));
+        assert!(proj[1].kind.is_file());
     }
 
     #[test]
