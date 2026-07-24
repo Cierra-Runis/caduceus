@@ -147,7 +147,7 @@ pub struct NodeProjection {
 
 /// An in-memory project file tree: nodes keyed by id. Built by the authority
 /// from a Y.Doc to validate and to derive paths / the projection.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProjectTree {
     nodes: HashMap<NodeId, Node>,
 }
@@ -164,6 +164,11 @@ impl ProjectTree {
 
     pub fn get(&self, id: &str) -> Option<&Node> {
         self.nodes.get(id)
+    }
+
+    /// Iterate over every node, unordered.
+    pub fn iter(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.values()
     }
 
     pub fn len(&self) -> usize {
