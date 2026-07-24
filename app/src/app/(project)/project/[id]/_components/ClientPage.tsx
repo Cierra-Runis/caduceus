@@ -7,6 +7,7 @@ import {
     Separator,
     usePanelRef,
 } from 'react-resizable-panels';
+import { toast } from 'sonner';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
@@ -15,6 +16,7 @@ import { useFileTree } from '@/hooks/useFileTree';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
+import { createFile, deleteFile, renameNode } from '@/lib/yjs/tree';
 
 import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
@@ -70,6 +72,35 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     if (next) setFocus(next.id);
   }, [textFiles, entryId, focus]);
 
+  // File-tree edits write straight into the CRDT `nodes` map (and text roots);
+  // useFileTree re-renders the list, and the room persists it. Rejected names
+  // surface as a toast and keep the inline input open.
+  const handleCreateFile = (name: string): boolean => {
+    try {
+      setFocus(createFile(ydoc, name, null));
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not create file');
+      return false;
+    }
+  };
+  const handleRename = (id: string, name: string): boolean => {
+    try {
+      renameNode(ydoc, id, name);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not rename file');
+      return false;
+    }
+  };
+  const handleDelete = (id: string) => {
+    try {
+      deleteFile(ydoc, id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete file');
+    }
+  };
+
   useEffect(() => {
     const ws = new WebsocketProvider(
       `${env.NEXT_PUBLIC_WS_URL}/project`,
@@ -124,6 +155,9 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           entry={entryId}
           files={textFiles}
           focus={focus}
+          onCreateFile={handleCreateFile}
+          onDelete={handleDelete}
+          onRename={handleRename}
           onSelect={setFocus}
           sidebarPanelRef={sidebarPanelRef}
         />
