@@ -5,12 +5,14 @@
 //! full paths like `chapters/intro.typ`. This module turns that into explicit
 //! nodes: a file node per file, plus the folder nodes its path implies.
 //!
-//! Folder node ids are the folder's own path (`chapters`, `chapters/part1`) —
-//! deterministic, so re-seeding the same files yields the same tree — while file
-//! nodes keep their real id. The two id spaces don't collide (file ids are
-//! 24-char hex; folder ids contain a segment name).
+//! Every node id is opaque (files keep their real id; folders get a freshly
+//! generated one) — a folder's *path* is derived like everything else, never its
+//! identity. Opaque hex ids are also safe as downstream map keys, where a path
+//! (which can contain `.`) would not be.
 
 use std::collections::HashMap;
+
+use bson::oid::ObjectId;
 
 use crate::models::tree::{Node, NodeContent, NodeId};
 use crate::storage::Blob;
@@ -23,6 +25,9 @@ pub fn nodes_from_files(
     files: impl IntoIterator<Item = (NodeId, String, Blob)>,
 ) -> Vec<Node> {
     let mut nodes: HashMap<NodeId, Node> = HashMap::new();
+    // Folder path -> its generated node id, so files sharing a folder link to
+    // the same node.
+    let mut folder_ids: HashMap<String, NodeId> = HashMap::new();
 
     for (id, path, blob) in files {
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -31,7 +36,7 @@ pub fn nodes_from_files(
         };
 
         // Ensure a folder node for each ancestor directory, linking each to its
-        // own parent. `acc` is the running path, which doubles as the folder id.
+        // own parent. `acc` is the running path used to dedupe folders.
         let mut acc = String::new();
         let mut parent: Option<NodeId> = None;
         for segment in ancestors {
@@ -39,13 +44,17 @@ pub fn nodes_from_files(
                 acc.push('/');
             }
             acc.push_str(segment);
-            nodes.entry(acc.clone()).or_insert_with(|| Node {
-                id: acc.clone(),
+            let folder_id = folder_ids
+                .entry(acc.clone())
+                .or_insert_with(|| ObjectId::new().to_hex())
+                .clone();
+            nodes.entry(folder_id.clone()).or_insert_with(|| Node {
+                id: folder_id.clone(),
                 parent: parent.clone(),
                 name: segment.to_string(),
                 content: NodeContent::Folder,
             });
-            parent = Some(acc.clone());
+            parent = Some(folder_id);
         }
 
         nodes.insert(
@@ -66,7 +75,7 @@ pub fn nodes_from_files(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::models::tree::{NodeContent, ProjectTree};
+    use crate::models::tree::ProjectTree;
 
     fn blob() -> Blob {
         Blob {
@@ -95,20 +104,19 @@ mod tests {
         let tree = ProjectTree::from_nodes(nodes);
         tree.validate().unwrap();
 
-        // The file plus two derived folders.
+        // The file plus two derived folders, and the path derives back.
         assert_eq!(tree.len(), 3);
         assert_eq!(tree.path_of("f").unwrap(), "chapters/part1/intro.typ");
-        // Folder ids are their paths, and they nest correctly.
-        assert!(matches!(
-            tree.get("chapters").unwrap().content,
-            NodeContent::Folder
-        ));
-        assert_eq!(tree.get("chapters").unwrap().parent, None);
-        assert_eq!(
-            tree.get("chapters/part1").unwrap().parent.as_deref(),
-            Some("chapters")
-        );
-        assert_eq!(tree.get("f").unwrap().parent.as_deref(), Some("chapters/part1"));
+
+        // Folders exist as opaque nodes (their ids are not their paths).
+        let chapters = tree.children(None).find(|n| n.is_folder()).unwrap();
+        assert_eq!(chapters.name, "chapters");
+        assert_ne!(chapters.id, "chapters"); // opaque id, not the path
+
+        let part1_id = tree.get("f").unwrap().parent.clone().unwrap();
+        let part1 = tree.get(&part1_id).unwrap();
+        assert_eq!(part1.name, "part1");
+        assert_eq!(part1.parent.as_deref(), Some(chapters.id.as_str()));
     }
 
     #[test]
@@ -120,9 +128,13 @@ mod tests {
         ]);
         let tree = ProjectTree::from_nodes(nodes);
         tree.validate().unwrap();
-        assert_eq!(tree.len(), 3); // chapters + a + b
-        let mut names: Vec<&str> =
-            tree.children(Some("chapters")).map(|n| n.name.as_str()).collect();
+        assert_eq!(tree.len(), 3); // one shared "chapters" + a + b
+
+        let chapters = tree.children(None).find(|n| n.name == "chapters").unwrap();
+        let mut names: Vec<&str> = tree
+            .children(Some(&chapters.id))
+            .map(|n| n.name.as_str())
+            .collect();
         names.sort();
         assert_eq!(names, vec!["a.typ", "b.typ"]);
     }
