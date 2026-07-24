@@ -269,6 +269,7 @@ impl ProjectTree {
 
     /// Derive every node's path. Assumes/validates a well-formed tree.
     pub fn paths(&self) -> Result<HashMap<NodeId, String>, TreeError> {
+        self.validate()?;
         self.nodes
             .keys()
             .map(|id| Ok((id.clone(), self.path_of(id)?)))
@@ -278,6 +279,7 @@ impl ProjectTree {
     /// Build the flattened projection (each node plus its derived path) for the
     /// metadata store / REST. Errors if the tree is malformed.
     pub fn projection(&self) -> Result<Vec<NodeProjection>, TreeError> {
+        self.validate()?;
         let mut out = Vec::with_capacity(self.nodes.len());
         for node in self.nodes.values() {
             out.push(NodeProjection {
@@ -565,5 +567,23 @@ mod tests {
         assert_eq!(json["kind"], "file");
         assert_eq!(json["path"], "main.typ");
         assert!(json["blob"].is_object());
+    }
+
+    #[test]
+    fn test_paths_runs_full_validation() {
+        let tree = ProjectTree::from_nodes([file("1", None, "a.typ"), file("2", None, "a.typ")]);
+        assert!(matches!(
+            tree.paths(),
+            Err(TreeError::DuplicateName { .. })
+        ));
+    }
+
+    #[test]
+    fn test_projection_runs_full_validation() {
+        let tree = ProjectTree::from_nodes([folder("d", None, " bad ")]);
+        assert!(matches!(
+            tree.projection(),
+            Err(TreeError::InvalidName { .. })
+        ));
     }
 }
