@@ -59,8 +59,10 @@ impl ResponseError for WebSocketError {
 /// single lib0 varint byte for values < 128, so the first byte identifies it.
 const MSG_AWARENESS: u8 = 1;
 
-/// A `(file_id, path, text)` triple used to hydrate a room from stored files.
-type FileSeed = (ObjectId, String, String);
+/// A `(file_id, text)` pair used to hydrate a room from stored files. The CRDT
+/// text root is keyed by the file's **id** (stable across renames), not its
+/// path, so renaming a file never detaches its buffer from its edit history.
+type FileSeed = (ObjectId, String);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -99,7 +101,7 @@ pub async fn ws(
         .files
         .into_iter()
         .filter_map(|file| match file.content {
-            FileContent::Text { text } => Some((file.id, file.path, text)),
+            FileContent::Text { text } => Some((file.id, text)),
             FileContent::Binary { .. } => None,
         })
         .collect();
@@ -281,9 +283,10 @@ struct RoomState {
     /// connection's cursor/presence can be retracted when it leaves instead
     /// of lingering as a ghost participant (see `handle_data`/`Leave`).
     client_owner: HashMap<ClientID, ObjectId>,
-    /// path -> file id, for writing text snapshots back to the right file.
+    /// text-root key (file id hex) -> file id, for writing snapshots back to
+    /// the right file.
     files: HashMap<String, ObjectId>,
-    /// Last text persisted per path, to skip unchanged files.
+    /// Last text persisted per text-root key, to skip unchanged files.
     last: HashMap<String, String>,
 }
 
@@ -295,13 +298,15 @@ impl RoomState {
         // parties both inserting the initial text (CRDT would merge those into
         // duplicated content).
         let mut files = HashMap::new();
-        for (id, path, text) in seed {
-            let root = doc.get_or_insert_text(path.as_str());
+        for (id, text) in seed {
+            // Key the text root by the file's id (hex) — stable across renames.
+            let key = id.to_hex();
+            let root = doc.get_or_insert_text(key.as_str());
             if !text.is_empty() {
                 let mut txn = doc.transact_mut();
                 root.insert(&mut txn, 0, &text);
             }
-            files.insert(path, id);
+            files.insert(key, id);
         }
         RoomState {
             awareness: Awareness::new(doc),
@@ -463,18 +468,18 @@ fn persist_room(project_id: ObjectId, room: &mut RoomState, repo: &MongoProjectR
         let txn = room.awareness.doc().transact();
         room.files
             .iter()
-            .filter_map(|(path, id)| {
-                txn.get_text(path.as_str())
-                    .map(|text| (path.clone(), *id, text.get_string(&txn)))
+            .filter_map(|(key, id)| {
+                txn.get_text(key.as_str())
+                    .map(|text| (key.clone(), *id, text.get_string(&txn)))
             })
             .collect()
     };
 
-    for (path, id, text) in snapshot {
-        if room.last.get(&path).is_some_and(|prev| prev == &text) {
+    for (key, id, text) in snapshot {
+        if room.last.get(&key).is_some_and(|prev| prev == &text) {
             continue;
         }
-        room.last.insert(path, text.clone());
+        room.last.insert(key, text.clone());
         let repo = repo.clone();
         // Snapshot is already taken (no document borrow held across the await),
         // so the write can run as its own task on this thread's LocalSet.
@@ -533,19 +538,26 @@ mod tests {
         let id_a = ObjectId::new();
         let id_b = ObjectId::new();
         let room = RoomState::new(vec![
-            (id_a, "a.typ".to_string(), "hello".to_string()),
-            (id_b, "b.typ".to_string(), String::new()),
+            (id_a, "hello".to_string()),
+            (id_b, String::new()),
         ]);
 
+        // Text roots are keyed by the file id (hex), not the path.
         let txn = room.awareness.doc().transact();
-        assert_eq!(txn.get_text("a.typ").unwrap().get_string(&txn), "hello");
+        assert_eq!(
+            txn.get_text(id_a.to_hex().as_str()).unwrap().get_string(&txn),
+            "hello"
+        );
         // Empty seed text still declares the root type, but must not insert
         // any characters into it.
-        assert_eq!(txn.get_text("b.typ").unwrap().get_string(&txn), "");
+        assert_eq!(
+            txn.get_text(id_b.to_hex().as_str()).unwrap().get_string(&txn),
+            ""
+        );
         drop(txn);
 
-        assert_eq!(room.files.get("a.typ"), Some(&id_a));
-        assert_eq!(room.files.get("b.typ"), Some(&id_b));
+        assert_eq!(room.files.get(&id_a.to_hex()), Some(&id_a));
+        assert_eq!(room.files.get(&id_b.to_hex()), Some(&id_b));
     }
 
     #[test]
@@ -570,11 +582,7 @@ mod tests {
 
     #[test]
     fn test_handle_data_sync_reply_goes_to_sender_only() {
-        let mut room = RoomState::new(vec![(
-            ObjectId::new(),
-            "a.typ".to_string(),
-            "hi".to_string(),
-        )]);
+        let mut room = RoomState::new(vec![(ObjectId::new(), "hi".to_string())]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
