@@ -7,14 +7,20 @@
 //!
 //! This module is the replacement domain model: every node — file *or* folder —
 //! has a stable [`NodeId`] and stores only its own `name` segment plus a
-//! `parent` link. A path is *computed* by walking the parent chain, so a rename
-//! is one field write and never touches a key.
+//! `parent` link, so the full path is *derived* by walking the parent chain and
+//! a rename is one field write that never touches a key.
+//!
+//! [`Node`] is a sum type: a file and a folder are different shapes, so the data
+//! only one of them has (a file's blob) lives in that variant and the illegal
+//! "folder with content" state cannot be represented at all. The shared fields
+//! (`id`/`parent`/`name`) are repeated per variant on purpose — one `match`
+//! then yields both the kind and its data.
 //!
 //! It is deliberately CRDT-agnostic: a [`ProjectTree`] is a plain in-memory
-//! structure the server authority builds from a Y.Doc (later) to **validate**
-//! an incoming change and **derive** paths + the REST/Mongo projection. Keeping
-//! the rules here — pure and heavily tested — is what lets the eventual yrs
-//! binding stay a thin serialization layer.
+//! structure the server authority builds from a Y.Doc (later) to **validate** an
+//! incoming change and **derive** paths + the REST/Mongo projection. Keeping the
+//! rules here — pure and heavily tested — is what lets the eventual yrs binding
+//! stay a thin serialization layer.
 
 use std::collections::{HashMap, HashSet};
 
@@ -34,70 +40,71 @@ pub const MAX_NAME_LEN: usize = 255;
 /// parent-chain walk so a cycle can't loop forever.
 pub const MAX_DEPTH: usize = 64;
 
-/// What a node *is*, carrying the data that only that kind has. Making this a
-/// data-bearing enum means a folder simply has no `blob` field — the illegal
-/// "folder with content" state can't be represented, so no runtime rule has to
-/// forbid it.
+/// One node in the tree — a file or a folder. Each variant carries the shared
+/// fields plus its own kind-specific data; there is no separate "kind" tag and
+/// no optional blob that only applies to files, so a folder-with-content is
+/// unrepresentable rather than merely invalid.
 ///
-/// Serialized flattened onto its node as `{ "kind": "file"|"folder", "blob"? }`
-/// (see [`Node`]), keeping the wire shape flat for the CRDT/clients.
+/// Serialized internally-tagged as `{ "kind": "file"|"folder", … }`, which keeps
+/// the wire shape flat for the CRDT/clients.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
-pub enum NodeKind {
+pub enum Node {
     File {
+        id: NodeId,
+        /// Parent folder's id, or `None` for a node directly under the root.
+        #[serde(default)]
+        parent: Option<NodeId>,
+        /// A single path segment (e.g. `intro.typ`), never a full path.
+        name: String,
         /// The file's content-addressed bytes, or `None` for a freshly-created
         /// file whose bytes haven't been flushed to a blob yet (its text lives
         /// only in the CRDT overlay until then).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         blob: Option<Blob>,
     },
-    Folder,
-}
-
-impl NodeKind {
-    pub fn is_folder(&self) -> bool {
-        matches!(self, NodeKind::Folder)
-    }
-
-    pub fn is_file(&self) -> bool {
-        matches!(self, NodeKind::File { .. })
-    }
-
-    /// A file's blob reference; always `None` for a folder.
-    pub fn blob(&self) -> Option<&Blob> {
-        match self {
-            NodeKind::File { blob } => blob.as_ref(),
-            NodeKind::Folder => None,
-        }
-    }
-}
-
-/// One node in the tree. Stores its own `name` segment and a `parent` link only
-/// — the full path is derived (see [`ProjectTree::path_of`]). The kind-specific
-/// data (a file's blob) lives in [`NodeKind`], flattened onto the node so the
-/// JSON stays `{ id, parent, name, kind, blob? }`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Node {
-    pub id: NodeId,
-    /// The parent folder's id, or `None` for a node directly under the project
-    /// root.
-    #[serde(default)]
-    pub parent: Option<NodeId>,
-    /// A single path segment (e.g. `chapters` or `intro.typ`), never a full
-    /// path and never containing `/`.
-    pub name: String,
-    #[serde(flatten)]
-    pub kind: NodeKind,
+    Folder {
+        id: NodeId,
+        #[serde(default)]
+        parent: Option<NodeId>,
+        name: String,
+    },
 }
 
 impl Node {
-    pub fn is_folder(&self) -> bool {
-        self.kind.is_folder()
+    pub fn id(&self) -> &str {
+        match self {
+            Node::File { id, .. } | Node::Folder { id, .. } => id,
+        }
     }
 
-    /// This node's blob reference, if it is a file with flushed content.
+    pub fn parent(&self) -> Option<&str> {
+        match self {
+            Node::File { parent, .. } | Node::Folder { parent, .. } => parent.as_deref(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Node::File { name, .. } | Node::Folder { name, .. } => name,
+        }
+    }
+
+    /// This node's blob reference — always `None` for a folder, and `None` for a
+    /// file whose content hasn't been flushed yet.
     pub fn blob(&self) -> Option<&Blob> {
-        self.kind.blob()
+        match self {
+            Node::File { blob, .. } => blob.as_ref(),
+            Node::Folder { .. } => None,
+        }
+    }
+
+    pub fn is_folder(&self) -> bool {
+        matches!(self, Node::Folder { .. })
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self, Node::File { .. })
     }
 }
 
@@ -141,20 +148,15 @@ pub fn is_valid_segment(name: &str) -> bool {
         && name.trim() == name
 }
 
-/// A flattened, REST/Mongo-facing view of one node, including its derived
-/// `path`. This is the *projection* the metadata store keeps so listings and
-/// access checks don't need to load the Y.Doc; it can be rebuilt from the tree
-/// at any time.
+/// A REST/Mongo-facing view of one node: the node itself plus its derived
+/// `path`, serialized flat (`{ kind, id, parent, name, blob?, path }`). This is
+/// the *projection* the metadata store keeps so listings and access checks
+/// don't need to load the Y.Doc; it can be rebuilt from the tree at any time.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct NodeProjection {
-    pub id: NodeId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent: Option<NodeId>,
-    pub name: String,
-    pub path: String,
-    /// The kind (and, for a file, its blob) flattened as `{ kind, blob? }`.
     #[serde(flatten)]
-    pub kind: NodeKind,
+    pub node: Node,
+    pub path: String,
 }
 
 /// An in-memory project file tree: nodes keyed by id. Built by the authority
@@ -170,7 +172,10 @@ impl ProjectTree {
     /// [`validate`](Self::validate) before trusting the result.
     pub fn from_nodes(nodes: impl IntoIterator<Item = Node>) -> Self {
         Self {
-            nodes: nodes.into_iter().map(|n| (n.id.clone(), n)).collect(),
+            nodes: nodes
+                .into_iter()
+                .map(|n| (n.id().to_string(), n))
+                .collect(),
         }
     }
 
@@ -188,9 +193,7 @@ impl ProjectTree {
 
     /// Direct children of `parent` (`None` = project root), unordered.
     pub fn children(&self, parent: Option<&str>) -> impl Iterator<Item = &Node> {
-        self.nodes
-            .values()
-            .filter(move |n| n.parent.as_deref() == parent)
+        self.nodes.values().filter(move |n| n.parent() == parent)
     }
 
     /// Walk from `id` up to a root-level node, returning the chain
@@ -212,7 +215,7 @@ impl ProjectTree {
                 .get(cid)
                 .ok_or_else(|| TreeError::MissingNode(cid.to_string()))?;
             chain.push(node);
-            cursor = node.parent.as_deref();
+            cursor = node.parent();
         }
         Ok(chain)
     }
@@ -226,7 +229,7 @@ impl ProjectTree {
         let path = chain
             .iter()
             .rev()
-            .map(|n| n.name.as_str())
+            .map(|n| n.name())
             .collect::<Vec<_>>()
             .join("/");
         Ok(path)
@@ -234,27 +237,26 @@ impl ProjectTree {
 
     /// Validate the whole tree. Enforces, for every node:
     /// - a legal `name` segment;
-    /// - folders carry no blob;
     /// - `parent` exists and is a folder;
     /// - names are unique among siblings (which also forbids a file and a
     ///   folder sharing a name under one parent);
     /// - no cycles and no over-deep chains.
+    ///
+    /// (A folder carrying content needs no check — it's unrepresentable.)
     pub fn validate(&self) -> Result<(), TreeError> {
         // Per-node structural checks.
         for node in self.nodes.values() {
-            if !is_valid_segment(&node.name) {
+            if !is_valid_segment(node.name()) {
                 return Err(TreeError::InvalidName {
-                    id: node.id.clone(),
-                    name: node.name.clone(),
+                    id: node.id().to_string(),
+                    name: node.name().to_string(),
                 });
             }
-            // A folder-with-blob is now unrepresentable (see `NodeKind`), so
-            // there is no runtime check for it here.
-            if let Some(pid) = &node.parent {
+            if let Some(pid) = node.parent() {
                 match self.nodes.get(pid) {
-                    None => return Err(TreeError::ParentNotFound(pid.clone())),
+                    None => return Err(TreeError::ParentNotFound(pid.to_string())),
                     Some(p) if !p.is_folder() => {
-                        return Err(TreeError::ParentNotFolder(pid.clone()));
+                        return Err(TreeError::ParentNotFolder(pid.to_string()));
                     }
                     _ => {}
                 }
@@ -264,10 +266,10 @@ impl ProjectTree {
         // Sibling-name uniqueness: no two nodes share (parent, name).
         let mut siblings: HashSet<(Option<&str>, &str)> = HashSet::new();
         for node in self.nodes.values() {
-            if !siblings.insert((node.parent.as_deref(), node.name.as_str())) {
+            if !siblings.insert((node.parent(), node.name())) {
                 return Err(TreeError::DuplicateName {
-                    parent: node.parent.clone(),
-                    name: node.name.clone(),
+                    parent: node.parent().map(String::from),
+                    name: node.name().to_string(),
                 });
             }
         }
@@ -288,17 +290,14 @@ impl ProjectTree {
             .collect()
     }
 
-    /// Build the flattened projection (id, parent, kind, name, derived path,
-    /// blob) for the metadata store / REST. Errors if the tree is malformed.
+    /// Build the flattened projection (each node plus its derived path) for the
+    /// metadata store / REST. Errors if the tree is malformed.
     pub fn projection(&self) -> Result<Vec<NodeProjection>, TreeError> {
         let mut out = Vec::with_capacity(self.nodes.len());
         for node in self.nodes.values() {
             out.push(NodeProjection {
-                id: node.id.clone(),
-                parent: node.parent.clone(),
-                name: node.name.clone(),
-                path: self.path_of(&node.id)?,
-                kind: node.kind.clone(),
+                path: self.path_of(node.id())?,
+                node: node.clone(),
             });
         }
         Ok(out)
@@ -311,20 +310,19 @@ mod tests {
     use super::*;
 
     fn folder(id: &str, parent: Option<&str>, name: &str) -> Node {
-        Node {
+        Node::Folder {
             id: id.to_string(),
             parent: parent.map(String::from),
             name: name.to_string(),
-            kind: NodeKind::Folder,
         }
     }
 
     fn file(id: &str, parent: Option<&str>, name: &str) -> Node {
-        Node {
+        Node::File {
             id: id.to_string(),
             parent: parent.map(String::from),
             name: name.to_string(),
-            kind: NodeKind::File { blob: None },
+            blob: None,
         }
     }
 
@@ -354,15 +352,17 @@ mod tests {
 
     #[test]
     fn test_file_node_serializes_flat_with_kind_and_blob() {
-        let mut f = file("1", Some("d"), "a.typ");
-        f.kind = NodeKind::File {
+        let f = Node::File {
+            id: "1".to_string(),
+            parent: Some("d".to_string()),
+            name: "a.typ".to_string(),
             blob: Some(Blob {
                 sha256: "a".repeat(64),
                 size: 3,
             }),
         };
         let json = serde_json::to_value(&f).unwrap();
-        // Flattened: kind + blob sit alongside id/parent/name, no nesting.
+        // Internally tagged: kind + fields sit flat, no nesting.
         assert_eq!(json["kind"], "file");
         assert_eq!(json["blob"]["size"], 3);
         assert_eq!(json["parent"], "d");
@@ -412,23 +412,20 @@ mod tests {
 
     #[test]
     fn test_rename_is_one_field_and_repaths_descendants() {
-        let mut nodes = vec![
-            folder("d", None, "chapters"),
-            file("f", Some("d"), "intro.typ"),
-        ];
-        // Rename the folder: a single `name` write, ids untouched.
-        nodes[0].name = "sections".to_string();
-        let tree = ProjectTree::from_nodes(nodes);
+        let mut dir = folder("d", None, "chapters");
+        // Rename the folder: mutate its `name`, id untouched.
+        if let Node::Folder { name, .. } = &mut dir {
+            *name = "sections".to_string();
+        }
+        let tree = ProjectTree::from_nodes([dir, file("f", Some("d"), "intro.typ")]);
         tree.validate().unwrap();
         assert_eq!(tree.path_of("f").unwrap(), "sections/intro.typ");
     }
 
     #[test]
     fn test_duplicate_sibling_name_rejected() {
-        let tree = ProjectTree::from_nodes([
-            file("1", None, "a.typ"),
-            file("2", None, "a.typ"),
-        ]);
+        let tree =
+            ProjectTree::from_nodes([file("1", None, "a.typ"), file("2", None, "a.typ")]);
         assert_eq!(
             tree.validate(),
             Err(TreeError::DuplicateName {
@@ -442,10 +439,8 @@ mod tests {
     fn test_file_and_folder_cannot_share_a_name_under_one_parent() {
         // Same (parent, name) for a file and a folder is a duplicate — this is
         // how "a can't be both a file and a directory" falls out for free.
-        let tree = ProjectTree::from_nodes([
-            file("1", None, "assets"),
-            folder("2", None, "assets"),
-        ]);
+        let tree =
+            ProjectTree::from_nodes([file("1", None, "assets"), folder("2", None, "assets")]);
         assert!(matches!(
             tree.validate(),
             Err(TreeError::DuplicateName { .. })
@@ -496,16 +491,14 @@ mod tests {
         );
     }
 
-    // A folder-with-blob is unrepresentable now (`NodeKind::Folder` carries no
-    // blob field), so there is no runtime rule — and no test — for it.
+    // A folder-with-blob is unrepresentable now (`Node::Folder` has no blob
+    // field), so there is no runtime rule — and no test — for it.
 
     #[test]
     fn test_cycle_detected() {
         // a → b → a: a parent chain that never reaches a root.
-        let tree = ProjectTree::from_nodes([
-            folder("a", Some("b"), "a"),
-            folder("b", Some("a"), "b"),
-        ]);
+        let tree =
+            ProjectTree::from_nodes([folder("a", Some("b"), "a"), folder("b", Some("a"), "b")]);
         assert!(matches!(tree.validate(), Err(TreeError::Cycle(_))));
     }
 
@@ -540,8 +533,10 @@ mod tests {
             sha256: "a".repeat(64),
             size: 12,
         };
-        let mut f = file("f", Some("d"), "intro.typ");
-        f.kind = NodeKind::File {
+        let f = Node::File {
+            id: "f".to_string(),
+            parent: Some("d".to_string()),
+            name: "intro.typ".to_string(),
             blob: Some(blob.clone()),
         };
         let tree = ProjectTree::from_nodes([folder("d", None, "chapters"), f]);
@@ -550,10 +545,10 @@ mod tests {
         let mut proj = tree.projection().unwrap();
         proj.sort_by(|a, b| a.path.cmp(&b.path));
         assert_eq!(proj[0].path, "chapters");
-        assert!(proj[0].kind.is_folder());
+        assert!(proj[0].node.is_folder());
         assert_eq!(proj[1].path, "chapters/intro.typ");
-        assert_eq!(proj[1].kind.blob(), Some(&blob));
-        assert!(proj[1].kind.is_file());
+        assert!(proj[1].node.is_file());
+        assert_eq!(proj[1].node.blob(), Some(&blob));
     }
 
     #[test]
@@ -564,12 +559,12 @@ mod tests {
             file("2", Some("d"), "b.typ"),
             file("3", None, "root.typ"),
         ]);
-        let mut names: Vec<&str> = tree.children(Some("d")).map(|n| n.name.as_str()).collect();
+        let mut names: Vec<&str> = tree.children(Some("d")).map(|n| n.name()).collect();
         names.sort();
         assert_eq!(names, vec!["a.typ", "b.typ"]);
 
         // Root level holds both the top folder and the top-level file.
-        let mut root: Vec<&str> = tree.children(None).map(|n| n.name.as_str()).collect();
+        let mut root: Vec<&str> = tree.children(None).map(|n| n.name()).collect();
         root.sort();
         assert_eq!(root, vec!["chapters", "root.typ"]);
     }
