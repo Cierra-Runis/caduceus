@@ -26,9 +26,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # Reads the `packageManager` field (pnpm) from package.json.
+      # Reads the `packageManager` field (pnpm) from app/package.json. The
+      # `working-directory` default only applies to `run:` steps, not actions,
+      # so the manifest path must be given explicitly.
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: app/package.json
 
       - name: Setup Node
         uses: actions/setup-node@v4
