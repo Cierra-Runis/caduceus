@@ -5,16 +5,19 @@
 //! a rename changes a file's identity and a concurrent rename+edit cannot merge
 //! (see `docs/Architecture - Compilation and Project Model.md`).
 //!
-//! This module is the replacement domain model: every node — file *or* folder —
-//! has a stable [`NodeId`] and stores only its own `name` segment plus a
-//! `parent` link, so the full path is *derived* by walking the parent chain and
-//! a rename is one field write that never touches a key.
+//! This module is the replacement domain model: every node has a stable
+//! [`NodeId`] and stores only its own `name` segment plus a `parent` link, so
+//! the full path is *derived* by walking the parent chain and a rename is one
+//! field write that never touches a key.
 //!
-//! [`Node`] is a sum type: a file and a folder are different shapes, so the data
-//! only one of them has (a file's blob) lives in that variant and the illegal
-//! "folder with content" state cannot be represented at all. The shared fields
-//! (`id`/`parent`/`name`) are repeated per variant on purpose — one `match`
-//! then yields both the kind and its data.
+//! A [`Node`] splits into **identity** (the fields every node shares:
+//! `id`/`parent`/`name`) and **content** (what kind it is + the data only that
+//! kind has, in [`NodeContent`]). All the tree rules — path derivation,
+//! sibling-uniqueness, parent-must-be-a-folder, cycle/depth — live on the
+//! identity side and are content-agnostic, so adding a node kind (a symlink,
+//! say) is just another `NodeContent` variant that reuses them for free. And
+//! because a file's blob lives inside `NodeContent::File`, a folder simply has
+//! no blob field: the illegal "folder with content" state can't be represented.
 //!
 //! It is deliberately CRDT-agnostic: a [`ProjectTree`] is a plain in-memory
 //! structure the server authority builds from a Y.Doc (later) to **validate** an
@@ -40,71 +43,54 @@ pub const MAX_NAME_LEN: usize = 255;
 /// parent-chain walk so a cycle can't loop forever.
 pub const MAX_DEPTH: usize = 64;
 
-/// One node in the tree — a file or a folder. Each variant carries the shared
-/// fields plus its own kind-specific data; there is no separate "kind" tag and
-/// no optional blob that only applies to files, so a folder-with-content is
-/// unrepresentable rather than merely invalid.
+/// What a node *is*, carrying the data only that kind has.
 ///
-/// Serialized internally-tagged as `{ "kind": "file"|"folder", … }`, which keeps
-/// the wire shape flat for the CRDT/clients.
+/// A file always references a [`Blob`] — even an empty file, whose bytes hash to
+/// a fixed empty-blob digest — so this is a plain `Blob`, not an `Option`. A
+/// folder carries nothing, so a folder-with-content is unrepresentable.
+///
+/// Extension point: a symlink would be a `Symlink { target: NodeId }` variant
+/// (an id, not a path, so it survives the target's rename/move); every tree rule
+/// on the identity side keeps working unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Node {
-    File {
-        id: NodeId,
-        /// Parent folder's id, or `None` for a node directly under the root.
-        #[serde(default)]
-        parent: Option<NodeId>,
-        /// A single path segment (e.g. `intro.typ`), never a full path.
-        name: String,
-        /// The file's content-addressed bytes, or `None` for a freshly-created
-        /// file whose bytes haven't been flushed to a blob yet (its text lives
-        /// only in the CRDT overlay until then).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        blob: Option<Blob>,
-    },
-    Folder {
-        id: NodeId,
-        #[serde(default)]
-        parent: Option<NodeId>,
-        name: String,
-    },
+pub enum NodeContent {
+    File { blob: Blob },
+    Folder,
+}
+
+/// One node in the tree: shared identity fields plus its [`NodeContent`]. The
+/// content is flattened on the wire, so a node serializes as
+/// `{ id, parent, name, kind, blob? }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub id: NodeId,
+    /// The parent folder's id, or `None` for a node directly under the project
+    /// root.
+    #[serde(default)]
+    pub parent: Option<NodeId>,
+    /// A single path segment (e.g. `chapters` or `intro.typ`), never a full
+    /// path and never containing `/`.
+    pub name: String,
+    #[serde(flatten)]
+    pub content: NodeContent,
 }
 
 impl Node {
-    pub fn id(&self) -> &str {
-        match self {
-            Node::File { id, .. } | Node::Folder { id, .. } => id,
-        }
-    }
-
-    pub fn parent(&self) -> Option<&str> {
-        match self {
-            Node::File { parent, .. } | Node::Folder { parent, .. } => parent.as_deref(),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        match self {
-            Node::File { name, .. } | Node::Folder { name, .. } => name,
-        }
-    }
-
-    /// This node's blob reference — always `None` for a folder, and `None` for a
-    /// file whose content hasn't been flushed yet.
-    pub fn blob(&self) -> Option<&Blob> {
-        match self {
-            Node::File { blob, .. } => blob.as_ref(),
-            Node::Folder { .. } => None,
-        }
-    }
-
     pub fn is_folder(&self) -> bool {
-        matches!(self, Node::Folder { .. })
+        matches!(self.content, NodeContent::Folder)
     }
 
     pub fn is_file(&self) -> bool {
-        matches!(self, Node::File { .. })
+        matches!(self.content, NodeContent::File { .. })
+    }
+
+    /// This node's blob, if it is a file. `None` for a folder.
+    pub fn blob(&self) -> Option<&Blob> {
+        match &self.content {
+            NodeContent::File { blob } => Some(blob),
+            NodeContent::Folder => None,
+        }
     }
 }
 
@@ -149,7 +135,7 @@ pub fn is_valid_segment(name: &str) -> bool {
 }
 
 /// A REST/Mongo-facing view of one node: the node itself plus its derived
-/// `path`, serialized flat (`{ kind, id, parent, name, blob?, path }`). This is
+/// `path`, serialized flat (`{ id, parent, name, kind, blob?, path }`). This is
 /// the *projection* the metadata store keeps so listings and access checks
 /// don't need to load the Y.Doc; it can be rebuilt from the tree at any time.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -172,10 +158,7 @@ impl ProjectTree {
     /// [`validate`](Self::validate) before trusting the result.
     pub fn from_nodes(nodes: impl IntoIterator<Item = Node>) -> Self {
         Self {
-            nodes: nodes
-                .into_iter()
-                .map(|n| (n.id().to_string(), n))
-                .collect(),
+            nodes: nodes.into_iter().map(|n| (n.id.clone(), n)).collect(),
         }
     }
 
@@ -193,7 +176,9 @@ impl ProjectTree {
 
     /// Direct children of `parent` (`None` = project root), unordered.
     pub fn children(&self, parent: Option<&str>) -> impl Iterator<Item = &Node> {
-        self.nodes.values().filter(move |n| n.parent() == parent)
+        self.nodes
+            .values()
+            .filter(move |n| n.parent.as_deref() == parent)
     }
 
     /// Walk from `id` up to a root-level node, returning the chain
@@ -215,7 +200,7 @@ impl ProjectTree {
                 .get(cid)
                 .ok_or_else(|| TreeError::MissingNode(cid.to_string()))?;
             chain.push(node);
-            cursor = node.parent();
+            cursor = node.parent.as_deref();
         }
         Ok(chain)
     }
@@ -229,7 +214,7 @@ impl ProjectTree {
         let path = chain
             .iter()
             .rev()
-            .map(|n| n.name())
+            .map(|n| n.name.as_str())
             .collect::<Vec<_>>()
             .join("/");
         Ok(path)
@@ -246,17 +231,17 @@ impl ProjectTree {
     pub fn validate(&self) -> Result<(), TreeError> {
         // Per-node structural checks.
         for node in self.nodes.values() {
-            if !is_valid_segment(node.name()) {
+            if !is_valid_segment(&node.name) {
                 return Err(TreeError::InvalidName {
-                    id: node.id().to_string(),
-                    name: node.name().to_string(),
+                    id: node.id.clone(),
+                    name: node.name.clone(),
                 });
             }
-            if let Some(pid) = node.parent() {
+            if let Some(pid) = &node.parent {
                 match self.nodes.get(pid) {
-                    None => return Err(TreeError::ParentNotFound(pid.to_string())),
+                    None => return Err(TreeError::ParentNotFound(pid.clone())),
                     Some(p) if !p.is_folder() => {
-                        return Err(TreeError::ParentNotFolder(pid.to_string()));
+                        return Err(TreeError::ParentNotFolder(pid.clone()));
                     }
                     _ => {}
                 }
@@ -266,10 +251,10 @@ impl ProjectTree {
         // Sibling-name uniqueness: no two nodes share (parent, name).
         let mut siblings: HashSet<(Option<&str>, &str)> = HashSet::new();
         for node in self.nodes.values() {
-            if !siblings.insert((node.parent(), node.name())) {
+            if !siblings.insert((node.parent.as_deref(), node.name.as_str())) {
                 return Err(TreeError::DuplicateName {
-                    parent: node.parent().map(String::from),
-                    name: node.name().to_string(),
+                    parent: node.parent.clone(),
+                    name: node.name.clone(),
                 });
             }
         }
@@ -296,7 +281,7 @@ impl ProjectTree {
         let mut out = Vec::with_capacity(self.nodes.len());
         for node in self.nodes.values() {
             out.push(NodeProjection {
-                path: self.path_of(node.id())?,
+                path: self.path_of(&node.id)?,
                 node: node.clone(),
             });
         }
@@ -309,20 +294,29 @@ impl ProjectTree {
 mod tests {
     use super::*;
 
+    /// A throwaway blob for file fixtures whose exact content doesn't matter.
+    fn some_blob() -> Blob {
+        Blob {
+            sha256: "a".repeat(64),
+            size: 3,
+        }
+    }
+
     fn folder(id: &str, parent: Option<&str>, name: &str) -> Node {
-        Node::Folder {
+        Node {
             id: id.to_string(),
             parent: parent.map(String::from),
             name: name.to_string(),
+            content: NodeContent::Folder,
         }
     }
 
     fn file(id: &str, parent: Option<&str>, name: &str) -> Node {
-        Node::File {
+        Node {
             id: id.to_string(),
             parent: parent.map(String::from),
             name: name.to_string(),
-            blob: None,
+            content: NodeContent::File { blob: some_blob() },
         }
     }
 
@@ -351,18 +345,21 @@ mod tests {
     }
 
     #[test]
-    fn test_file_node_serializes_flat_with_kind_and_blob() {
-        let f = Node::File {
+    fn test_file_serializes_flat_with_kind_and_blob() {
+        let f = Node {
             id: "1".to_string(),
             parent: Some("d".to_string()),
             name: "a.typ".to_string(),
-            blob: Some(Blob {
-                sha256: "a".repeat(64),
-                size: 3,
-            }),
+            content: NodeContent::File {
+                blob: Blob {
+                    sha256: "a".repeat(64),
+                    size: 3,
+                },
+            },
         };
         let json = serde_json::to_value(&f).unwrap();
-        // Internally tagged: kind + fields sit flat, no nesting.
+        // Flattened: kind + blob sit alongside id/parent/name, no nesting of the
+        // content variant itself.
         assert_eq!(json["kind"], "file");
         assert_eq!(json["blob"]["size"], 3);
         assert_eq!(json["parent"], "d");
@@ -371,23 +368,13 @@ mod tests {
     }
 
     #[test]
-    fn test_folder_node_serializes_without_a_blob_field() {
+    fn test_folder_serializes_without_a_blob_field() {
         let d = folder("d", None, "chapters");
         let json = serde_json::to_value(&d).unwrap();
         assert_eq!(json["kind"], "folder");
         // A folder has no blob field at all — the illegal state doesn't exist.
         assert!(json.get("blob").is_none());
         assert_eq!(serde_json::from_value::<Node>(json).unwrap(), d);
-    }
-
-    #[test]
-    fn test_new_file_omits_blob_until_flushed() {
-        // A freshly-created file (no bytes yet) serializes without `blob`.
-        let f = file("1", None, "new.typ");
-        let json = serde_json::to_value(&f).unwrap();
-        assert_eq!(json["kind"], "file");
-        assert!(json.get("blob").is_none());
-        assert_eq!(serde_json::from_value::<Node>(json).unwrap(), f);
     }
 
     #[test]
@@ -413,10 +400,8 @@ mod tests {
     #[test]
     fn test_rename_is_one_field_and_repaths_descendants() {
         let mut dir = folder("d", None, "chapters");
-        // Rename the folder: mutate its `name`, id untouched.
-        if let Node::Folder { name, .. } = &mut dir {
-            *name = "sections".to_string();
-        }
+        // Rename the folder: one plain field write, id untouched.
+        dir.name = "sections".to_string();
         let tree = ProjectTree::from_nodes([dir, file("f", Some("d"), "intro.typ")]);
         tree.validate().unwrap();
         assert_eq!(tree.path_of("f").unwrap(), "sections/intro.typ");
@@ -491,8 +476,8 @@ mod tests {
         );
     }
 
-    // A folder-with-blob is unrepresentable now (`Node::Folder` has no blob
-    // field), so there is no runtime rule — and no test — for it.
+    // A folder-with-blob is unrepresentable now (`NodeContent::Folder` has no
+    // blob field), so there is no runtime rule — and no test — for it.
 
     #[test]
     fn test_cycle_detected() {
@@ -530,14 +515,14 @@ mod tests {
     #[test]
     fn test_projection_carries_derived_paths_and_blobs() {
         let blob = Blob {
-            sha256: "a".repeat(64),
+            sha256: "b".repeat(64),
             size: 12,
         };
-        let f = Node::File {
+        let f = Node {
             id: "f".to_string(),
             parent: Some("d".to_string()),
             name: "intro.typ".to_string(),
-            blob: Some(blob.clone()),
+            content: NodeContent::File { blob: blob.clone() },
         };
         let tree = ProjectTree::from_nodes([folder("d", None, "chapters"), f]);
         tree.validate().unwrap();
@@ -559,13 +544,26 @@ mod tests {
             file("2", Some("d"), "b.typ"),
             file("3", None, "root.typ"),
         ]);
-        let mut names: Vec<&str> = tree.children(Some("d")).map(|n| n.name()).collect();
+        let mut names: Vec<&str> = tree.children(Some("d")).map(|n| n.name.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["a.typ", "b.typ"]);
 
         // Root level holds both the top folder and the top-level file.
-        let mut root: Vec<&str> = tree.children(None).map(|n| n.name()).collect();
+        let mut root: Vec<&str> = tree.children(None).map(|n| n.name.as_str()).collect();
         root.sort();
         assert_eq!(root, vec!["chapters", "root.typ"]);
+    }
+
+    #[test]
+    fn test_projection_serializes_flat_with_path() {
+        // The projection nests two `#[serde(flatten)]`s (projection → node →
+        // content); assert the result is a single flat object.
+        let tree = ProjectTree::from_nodes([file("1", None, "main.typ")]);
+        let json = serde_json::to_value(&tree.projection().unwrap()[0]).unwrap();
+        assert_eq!(json["id"], "1");
+        assert_eq!(json["name"], "main.typ");
+        assert_eq!(json["kind"], "file");
+        assert_eq!(json["path"], "main.typ");
+        assert!(json["blob"].is_object());
     }
 }
