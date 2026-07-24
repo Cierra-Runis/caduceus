@@ -11,6 +11,7 @@ import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
+import { useFileTree } from '@/hooks/useFileTree';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
@@ -46,22 +47,28 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   const [ydoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<null | WebsocketProvider>(null);
 
-  const textFiles = useMemo(
-    () =>
-      project.files
-        .filter((file) => file.content.kind === 'text')
-        .map((file) => ({ id: file.id, path: file.path })),
-    [project],
+  // The file tree comes from the shared CRDT `nodes` map (the server's
+  // authority, seeded on cold start and synced over the provider), not the REST
+  // payload — so structure edits propagate through Yjs like text does. Empty
+  // until the first sync arrives.
+  const textFiles = useFileTree(ydoc);
+  // The compile entry is a project-level property (a file *id*), still carried
+  // by the REST payload. Resolve it to a *path* against the CRDT-derived tree
+  // (typst resolves imports/images by path).
+  const entryId = project.entry;
+  const entry = useMemo(
+    () => textFiles.find((file) => file.id === entryId)?.path ?? null,
+    [textFiles, entryId],
   );
-  // The compile root as a *path* (typst resolves imports/images by path).
-  const entry = useMemo(() => entryPath(project), [project]);
-  // The entry as a file *id*, to mark it in the id-keyed file list.
-  const entryId = useMemo(() => {
-    const file = project.files.find((f) => f.id === project.entry);
-    return file?.content.kind === 'text' ? file.id : null;
-  }, [project]);
   // `focus` is the focused file's id — the editor's Y.Text key.
-  const [focus, setFocus] = useState(() => entryId ?? textFiles[0]?.id ?? '');
+  const [focus, setFocus] = useState('');
+  // Pick a file to focus once the tree has synced, and re-pick if the focused
+  // file disappears (e.g. deleted by a peer). Prefer the entry, else the first.
+  useEffect(() => {
+    if (focus && textFiles.some((file) => file.id === focus)) return;
+    const next = textFiles.find((file) => file.id === entryId) ?? textFiles[0];
+    if (next) setFocus(next.id);
+  }, [textFiles, entryId, focus]);
 
   useEffect(() => {
     const ws = new WebsocketProvider(
@@ -140,10 +147,4 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       </Group>
     </div>
   );
-}
-
-// The compile root, resolved from the project's `entry` (a file id) to its path.
-function entryPath(project: ProjectDetail): null | string {
-  const entry = project.files.find((file) => file.id === project.entry);
-  return entry?.content.kind === 'text' ? entry.path : null;
 }

@@ -134,15 +134,21 @@ pub fn is_valid_segment(name: &str) -> bool {
         && name.trim() == name
 }
 
-/// A REST/Mongo-facing view of one node: the node itself plus its derived
-/// `path`, serialized flat (`{ id, parent, name, kind, blob?, path }`). This is
-/// the *projection* the metadata store keeps so listings and access checks
-/// don't need to load the Y.Doc; it can be rebuilt from the tree at any time.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct NodeProjection {
-    #[serde(flatten)]
-    pub node: Node,
+/// A node's projection value, **keyed by id** in the metadata store (so the id
+/// isn't repeated in the value). Carries the derived `path` plus the
+/// kind-specific content, flattened (`{ parent?, name, path, kind, blob? }`).
+///
+/// This is the *projection* the metadata store keeps — a rebuildable cache
+/// mirroring the CRDT `nodes` map — so listings / access checks don't need to
+/// load and decode the Y.Doc.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectionEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<NodeId>,
+    pub name: String,
     pub path: String,
+    #[serde(flatten)]
+    pub content: NodeContent,
 }
 
 /// An in-memory project file tree: nodes keyed by id. Built by the authority
@@ -285,21 +291,27 @@ impl ProjectTree {
             .collect()
     }
 
-    /// [`validate`](Self::validate) the tree, then build the flattened
-    /// projection (each node plus its derived path) for the metadata store /
-    /// REST. Validation is defensive: an authority that already validated pays a
-    /// second, cheap O(n) pass, in exchange for this never emitting a projection
-    /// of a malformed tree.
-    pub fn projection(&self) -> Result<Vec<NodeProjection>, TreeError> {
+    /// [`validate`](Self::validate) the tree, then build the id-keyed projection
+    /// (mirroring the CRDT `nodes` map) for the metadata store. Validation is
+    /// defensive: an authority that already validated pays a second, cheap O(n)
+    /// pass, in exchange for this never emitting a projection of a malformed
+    /// tree.
+    pub fn projection(&self) -> Result<HashMap<NodeId, ProjectionEntry>, TreeError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(self.nodes.len());
-        for node in self.nodes.values() {
-            out.push(NodeProjection {
-                path: self.path_of(&node.id)?,
-                node: node.clone(),
-            });
-        }
-        Ok(out)
+        self.nodes
+            .iter()
+            .map(|(id, node)| {
+                Ok((
+                    id.clone(),
+                    ProjectionEntry {
+                        parent: node.parent.clone(),
+                        name: node.name.clone(),
+                        path: self.path_of(id)?,
+                        content: node.content.clone(),
+                    },
+                ))
+            })
+            .collect()
     }
 }
 
@@ -355,7 +367,7 @@ mod tests {
         let tree = ProjectTree::default();
         assert!(tree.is_empty());
         assert!(tree.validate().is_ok());
-        assert_eq!(tree.projection().unwrap(), vec![]);
+        assert!(tree.projection().unwrap().is_empty());
     }
 
     #[test]
@@ -541,13 +553,13 @@ mod tests {
         let tree = ProjectTree::from_nodes([folder("d", None, "chapters"), f]);
         tree.validate().unwrap();
 
-        let mut proj = tree.projection().unwrap();
-        proj.sort_by(|a, b| a.path.cmp(&b.path));
-        assert_eq!(proj[0].path, "chapters");
-        assert!(proj[0].node.is_folder());
-        assert_eq!(proj[1].path, "chapters/intro.typ");
-        assert!(proj[1].node.is_file());
-        assert_eq!(proj[1].node.blob(), Some(&blob));
+        // Keyed by id; each entry carries its derived path.
+        let proj = tree.projection().unwrap();
+        assert_eq!(proj["d"].path, "chapters");
+        assert!(matches!(proj["d"].content, NodeContent::Folder));
+        assert_eq!(proj["f"].path, "chapters/intro.typ");
+        assert_eq!(proj["f"].parent.as_deref(), Some("d"));
+        assert_eq!(proj["f"].content, NodeContent::File { blob });
     }
 
     #[test]
@@ -569,12 +581,12 @@ mod tests {
     }
 
     #[test]
-    fn test_projection_serializes_flat_with_path() {
-        // The projection nests two `#[serde(flatten)]`s (projection → node →
-        // content); assert the result is a single flat object.
+    fn test_projection_entry_serializes_flat_with_path() {
+        // An entry flattens its content; it carries no id (that's the map key).
         let tree = ProjectTree::from_nodes([file("1", None, "main.typ")]);
-        let json = serde_json::to_value(&tree.projection().unwrap()[0]).unwrap();
-        assert_eq!(json["id"], "1");
+        let proj = tree.projection().unwrap();
+        let json = serde_json::to_value(&proj["1"]).unwrap();
+        assert!(json.get("id").is_none());
         assert_eq!(json["name"], "main.typ");
         assert_eq!(json["kind"], "file");
         assert_eq!(json["path"], "main.typ");

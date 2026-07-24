@@ -1,4 +1,4 @@
-use std::{collections::HashMap, thread, time::Duration};
+use std::{collections::HashMap, sync::Arc, thread, time::Duration};
 
 use actix_web::ResponseError;
 use actix_web::http::StatusCode;
@@ -14,17 +14,21 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use yrs::{
-    ClientID, Doc, GetString, ReadTxn, Text, Transact,
+    ClientID, Doc, GetString, ReadTxn, Text, Transact, Update,
     sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
     updates::decoder::Decode as _,
     updates::encoder::{Encode, Encoder, EncoderV1},
 };
 
 use crate::config::WsConfig;
+use crate::crdt::snapshot::{encode_doc, load_snapshot_bytes, save_snapshot_bytes};
+use crate::crdt::{nodes_map, read_tree, seed::nodes_from_files, write_tree};
 use crate::models::project::FileContent;
 use crate::models::response::ApiResponse;
+use crate::models::tree::ProjectTree;
 use crate::models::user::UserClaims;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
+use crate::storage::{Blob, ObjectStore};
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -59,10 +63,12 @@ impl ResponseError for WebSocketError {
 /// single lib0 varint byte for values < 128, so the first byte identifies it.
 const MSG_AWARENESS: u8 = 1;
 
-/// A `(file_id, text)` pair used to hydrate a room from stored files. The CRDT
-/// text root is keyed by the file's **id** (stable across renames), not its
-/// path, so renaming a file never detaches its buffer from its edit history.
-type FileSeed = (ObjectId, String);
+/// A `(file_id, path, text, blob)` tuple used to hydrate a *fresh* room's Y.Doc
+/// (nodes + text) from stored files when there is no snapshot yet. The blob is
+/// the file's content already uploaded to the object store, so the file node
+/// references bytes that exist. Text roots are keyed by the file's **id**
+/// (stable across renames), not its path.
+type SeedFile = (ObjectId, String, String, Blob);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -72,6 +78,7 @@ pub async fn ws(
     data: actix_web::web::Data<crate::AppState>,
     project_server: web::Data<ProjectServer>,
     ws_config: web::Data<WsConfig>,
+    store: web::Data<Arc<dyn ObjectStore>>,
     user: UserClaims,
 ) -> Result<HttpResponse, WebSocketError> {
     let project_id =
@@ -84,9 +91,6 @@ pub async fn ws(
         Err(_) => return Err(WebSocketError::ProjectNotFound),
     };
 
-    // Seed data to hydrate the room's CRDT document from the stored text files.
-    // Only the *first* connection to a project uses it; later joiners sync
-    // against the already-live document.
     let project = match data
         .project_service
         .project_repo
@@ -97,14 +101,28 @@ pub async fn ws(
         Ok(None) => return Err(WebSocketError::ProjectNotFound),
         Err(_) => return Err(WebSocketError::ProjectNotFound),
     };
-    let seed: Vec<FileSeed> = project
-        .files
-        .into_iter()
-        .filter_map(|file| match file.content {
-            FileContent::Text { text } => Some((file.id, text)),
-            FileContent::Binary { .. } => None,
-        })
-        .collect();
+
+    // Only the *first* connection to a project hydrates the room; later joiners
+    // sync against the already-live document. Prefer restoring from the last
+    // Y.Doc snapshot; otherwise seed a fresh doc from the stored files, uploading
+    // each text as a blob first so its file node references bytes that exist.
+    // (`web::Data<Arc<dyn _>>` derefs to `Arc<dyn _>`, hence `&***`.)
+    let store: &dyn ObjectStore = &***store;
+    let snapshot = load_snapshot_bytes(store, &project_id.to_hex())
+        .await
+        .ok()
+        .flatten();
+    let mut seed: Vec<SeedFile> = Vec::new();
+    if snapshot.is_none() {
+        for file in project.files {
+            if let FileContent::Text { text } = file.content {
+                match store.put(text.as_bytes()).await {
+                    Ok(blob) => seed.push((file.id, file.path, text, blob)),
+                    Err(e) => warn!("seed blob upload failed for {}: {e:?}", file.id.to_hex()),
+                }
+            }
+        }
+    }
 
     let (res, session, stream) = match actix_ws::handle(&req, stream) {
         Ok(tuple) => tuple,
@@ -114,6 +132,7 @@ pub async fn ws(
     rt::spawn(handle_ws(
         project_server.as_ref().clone(),
         project_id,
+        snapshot,
         seed,
         session,
         stream,
@@ -130,7 +149,8 @@ pub async fn ws(
 async fn handle_ws(
     project_server: ProjectServer,
     project_id: ObjectId,
-    seed: Vec<FileSeed>,
+    snapshot: Option<Vec<u8>>,
+    seed: Vec<SeedFile>,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
     ws_config: WsConfig,
@@ -142,7 +162,7 @@ async fn handle_ws(
 
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    project_server.join(project_id, seed, conn_id, out_tx);
+    project_server.join(project_id, snapshot, seed, conn_id, out_tx);
     info!("WS handler: joined project {}", project_id.to_hex());
 
     let mut msg_stream = msg_stream
@@ -203,7 +223,10 @@ async fn handle_ws(
 enum Command {
     Join {
         project_id: ObjectId,
-        seed: Vec<FileSeed>,
+        /// Prior Y.Doc snapshot bytes, if any — restores the room directly.
+        snapshot: Option<Vec<u8>>,
+        /// Fallback seed (from Mongo files) used only when there is no snapshot.
+        seed: Vec<SeedFile>,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     },
@@ -227,7 +250,11 @@ pub struct ProjectServer {
 }
 
 impl ProjectServer {
-    pub fn new(project_repo: MongoProjectRepo, ws_config: WsConfig) -> Self {
+    pub fn new(
+        project_repo: MongoProjectRepo,
+        ws_config: WsConfig,
+        store: Arc<dyn ObjectStore>,
+    ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         // The room manager owns all `yrs` state on a dedicated thread running a
         // current-thread runtime + LocalSet, so the `!Send` documents never have
@@ -238,7 +265,7 @@ impl ProjectServer {
                 .build()
                 .expect("build room-manager runtime");
             let local = LocalSet::new();
-            local.block_on(&rt, room_manager(cmd_rx, project_repo, ws_config));
+            local.block_on(&rt, room_manager(cmd_rx, project_repo, ws_config, store));
         });
         ProjectServer { cmd_tx }
     }
@@ -246,12 +273,14 @@ impl ProjectServer {
     fn join(
         &self,
         project_id: ObjectId,
-        seed: Vec<FileSeed>,
+        snapshot: Option<Vec<u8>>,
+        seed: Vec<SeedFile>,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     ) {
         let _ = self.cmd_tx.send(Command::Join {
             project_id,
+            snapshot,
             seed,
             conn_id,
             out,
@@ -283,37 +312,68 @@ struct RoomState {
     /// connection's cursor/presence can be retracted when it leaves instead
     /// of lingering as a ghost participant (see `handle_data`/`Leave`).
     client_owner: HashMap<ClientID, ObjectId>,
-    /// text-root key (file id hex) -> file id, for writing snapshots back to
-    /// the right file.
-    files: HashMap<String, ObjectId>,
-    /// Last text persisted per text-root key, to skip unchanged files.
+    /// Last text persisted per text-root key (file id hex), to skip unchanged
+    /// files. The file id list itself is derived from the `nodes` map at
+    /// persist time, not tracked here.
     last: HashMap<String, String>,
+    /// Whether the Y.Doc changed since the last snapshot, so persist can skip
+    /// re-snapshotting an unchanged room.
+    dirty: bool,
 }
 
 impl RoomState {
-    fn new(seed: Vec<FileSeed>) -> RoomState {
+    /// Restore a room from a prior Y.Doc snapshot (nodes + text already inside).
+    fn from_snapshot(bytes: &[u8]) -> RoomState {
         let doc = Doc::new();
-        // Seed from stored text. The server is authoritative on cold start;
-        // clients connect empty and receive this via sync, which avoids two
-        // parties both inserting the initial text (CRDT would merge those into
-        // duplicated content).
-        let mut files = HashMap::new();
-        for (id, text) in seed {
-            // Key the text root by the file's id (hex) — stable across renames.
-            let key = id.to_hex();
-            let root = doc.get_or_insert_text(key.as_str());
-            if !text.is_empty() {
-                let mut txn = doc.transact_mut();
-                root.insert(&mut txn, 0, &text);
+        match Update::decode_v1(bytes) {
+            Ok(update) => {
+                if let Err(e) = doc.transact_mut().apply_update(update) {
+                    warn!("snapshot apply failed: {e:?}");
+                }
             }
-            files.insert(key, id);
+            Err(e) => warn!("snapshot decode failed: {e:?}"),
         }
         RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
             client_owner: HashMap::new(),
-            files,
             last: HashMap::new(),
+            dirty: false, // the snapshot we loaded is already durable
+        }
+    }
+
+    /// Seed a fresh room's Y.Doc from stored files: a text root per file (keyed
+    /// by id) plus the derived `nodes` tree. Used only when a project has no
+    /// snapshot yet. The server is authoritative on cold start; clients connect
+    /// empty and sync against this, avoiding duplicated initial content.
+    fn new(seed: Vec<SeedFile>) -> RoomState {
+        let doc = Doc::new();
+        // Create the text roots and nodes map up front — each `get_or_insert`
+        // opens its own internal txn, so it must precede the write txn below.
+        let mut roots = Vec::with_capacity(seed.len());
+        let mut node_files = Vec::with_capacity(seed.len());
+        for (id, path, text, blob) in seed {
+            let id_hex = id.to_hex();
+            roots.push((doc.get_or_insert_text(id_hex.as_str()), text));
+            node_files.push((id_hex, path, blob));
+        }
+        let nodes = nodes_map(&doc);
+        let tree = ProjectTree::from_nodes(nodes_from_files(node_files));
+        {
+            let mut txn = doc.transact_mut();
+            for (root, text) in &roots {
+                if !text.is_empty() {
+                    root.insert(&mut txn, 0, text);
+                }
+            }
+            write_tree(&mut txn, &nodes, &tree);
+        }
+        RoomState {
+            awareness: Awareness::new(doc),
+            conns: HashMap::new(),
+            client_owner: HashMap::new(),
+            last: HashMap::new(),
+            dirty: true, // a fresh seed needs an initial snapshot
         }
     }
 }
@@ -348,6 +408,7 @@ async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
     repo: MongoProjectRepo,
     ws_config: WsConfig,
+    store: Arc<dyn ObjectStore>,
 ) {
     let mut rooms: HashMap<ObjectId, RoomState> = HashMap::new();
     let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
@@ -356,8 +417,11 @@ async fn room_manager(
         tokio::select! {
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(Command::Join { project_id, seed, conn_id, out }) => {
-                        let room = rooms.entry(project_id).or_insert_with(|| RoomState::new(seed));
+                    Some(Command::Join { project_id, snapshot, seed, conn_id, out }) => {
+                        let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
+                            Some(bytes) => RoomState::from_snapshot(bytes),
+                            None => RoomState::new(seed),
+                        });
                         // Send the initial sync step 1 + awareness state.
                         let mut encoder = EncoderV1::new();
                         if DefaultProtocol.start(&room.awareness, &mut encoder).is_ok() {
@@ -390,8 +454,8 @@ async fn room_manager(
                                 // insertions of the same characters, which the CRDT
                                 // merges into DUPLICATED content. A reconnecting
                                 // client must re-sync against the SAME document.
-                                // Just flush its text now.
-                                persist_room(project_id, room, &repo);
+                                // Just persist now.
+                                persist_room(project_id, room, &repo, &store);
                             }
                         }
                     }
@@ -400,7 +464,7 @@ async fn room_manager(
             }
             _ = persist_tick.tick() => {
                 for (project_id, room) in rooms.iter_mut() {
-                    persist_room(*project_id, room, &repo);
+                    persist_room(*project_id, room, &repo, &store);
                 }
             }
         }
@@ -435,6 +499,7 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
 
     // Applied document changes and awareness frames go to everyone else.
     if let Some(update) = doc_update {
+        room.dirty = true;
         let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
         broadcast(room, conn_id, &msg);
     }
@@ -460,39 +525,82 @@ fn broadcast(room: &RoomState, origin: ObjectId, msg: &[u8]) {
     }
 }
 
-/// Flush each changed file's current CRDT text back to MongoDB. Whole-text
-/// snapshot (not a delta), so the at-rest store stays plain text and REST loads,
-/// preview, and PDF export never need to understand the CRDT.
-fn persist_room(project_id: ObjectId, room: &mut RoomState, repo: &MongoProjectRepo) {
-    let snapshot: Vec<(String, ObjectId, String)> = {
-        let txn = room.awareness.doc().transact();
-        room.files
-            .iter()
-            .filter_map(|(key, id)| {
-                txn.get_text(key.as_str())
-                    .map(|text| (key.clone(), *id, text.get_string(&txn)))
+/// Persist the room's Y.Doc if it changed since the last snapshot. Dual-write:
+/// the whole doc (nodes + text) goes to a MinIO snapshot (the CRDT authority),
+/// the derived tree projection to Mongo (the listing cache), and each changed
+/// file's text back to Mongo `files` (so REST loads keep working during the
+/// migration). All the `!Send` doc work happens synchronously up front; only the
+/// IO is spawned onto this thread's LocalSet.
+fn persist_room(
+    project_id: ObjectId,
+    room: &mut RoomState,
+    repo: &MongoProjectRepo,
+    store: &Arc<dyn ObjectStore>,
+) {
+    if !room.dirty {
+        return;
+    }
+
+    // Phase 1 (sync, holds the doc): encode the snapshot, derive the projection,
+    // and read each file's current text. Outputs are owned/`Send`.
+    let (snapshot_bytes, projection, file_texts) = {
+        let doc = room.awareness.doc();
+        let snapshot_bytes = encode_doc(doc);
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        let tree = read_tree(&txn, &nodes).ok();
+        let projection = tree.as_ref().and_then(|t| t.projection().ok());
+        let file_texts: Vec<(String, String)> = tree
+            .as_ref()
+            .map(|t| {
+                t.iter()
+                    .filter(|n| n.is_file())
+                    .filter_map(|n| {
+                        txn.get_text(n.id.as_str())
+                            .map(|txt| (n.id.clone(), txt.get_string(&txn)))
+                    })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default();
+        (snapshot_bytes, projection, file_texts)
     };
 
-    for (key, id, text) in snapshot {
-        if room.last.get(&key).is_some_and(|prev| prev == &text) {
+    // Dedup text against what was last persisted (sync; mutates room.last).
+    let mut changed = Vec::new();
+    for (id_hex, text) in file_texts {
+        if room.last.get(&id_hex).is_some_and(|prev| prev == &text) {
             continue;
         }
-        room.last.insert(key, text.clone());
-        let repo = repo.clone();
-        // Snapshot is already taken (no document borrow held across the await),
-        // so the write can run as its own task on this thread's LocalSet.
-        tokio::task::spawn_local(async move {
+        room.last.insert(id_hex.clone(), text.clone());
+        if let Ok(file_id) = ObjectId::parse_str(&id_hex) {
+            changed.push((file_id, text));
+        }
+    }
+    room.dirty = false;
+
+    // Phase 2 (async, no doc borrow): write to the durable stores.
+    let repo = repo.clone();
+    let store = store.clone();
+    tokio::task::spawn_local(async move {
+        let pid = project_id.to_hex();
+        if let Err(e) = save_snapshot_bytes(&*store, &pid, &snapshot_bytes).await {
+            warn!("snapshot save failed in {pid}: {e:?}");
+        }
+        if let Some(projection) = projection {
+            if let Err(e) = repo.update_tree(project_id, projection).await {
+                warn!("projection update failed in {pid}: {e:?}");
+            }
+        }
+        for (file_id, text) in changed {
             let size = text.len() as i64;
             if let Err(e) = repo
-                .update_file_content(project_id, id, FileContent::Text { text }, size)
+                .update_file_content(project_id, file_id, FileContent::Text { text }, size)
                 .await
             {
-                warn!("WS persist failed in {}: {:?}", project_id.to_hex(), e);
+                warn!("text persist failed in {pid}: {e:?}");
             }
-        });
-    }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -533,31 +641,44 @@ mod tests {
         (client_id, YMessage::Awareness(update).encode_v1())
     }
 
+    fn blob() -> Blob {
+        Blob {
+            sha256: "a".repeat(64),
+            size: 0,
+        }
+    }
+
     #[test]
-    fn test_room_state_new_seeds_text_and_files_map() {
+    fn test_room_state_new_seeds_text_and_nodes() {
         let id_a = ObjectId::new();
         let id_b = ObjectId::new();
         let room = RoomState::new(vec![
-            (id_a, "hello".to_string()),
-            (id_b, String::new()),
+            (id_a, "main.typ".to_string(), "hello".to_string(), blob()),
+            (id_b, "chapters/intro.typ".to_string(), String::new(), blob()),
         ]);
 
-        // Text roots are keyed by the file id (hex), not the path.
+        let nodes = nodes_map(room.awareness.doc());
         let txn = room.awareness.doc().transact();
+
+        // Text roots are keyed by the file id (hex), not the path.
         assert_eq!(
             txn.get_text(id_a.to_hex().as_str()).unwrap().get_string(&txn),
             "hello"
         );
-        // Empty seed text still declares the root type, but must not insert
-        // any characters into it.
+        // Empty seed text still declares the root type, but inserts nothing.
         assert_eq!(
             txn.get_text(id_b.to_hex().as_str()).unwrap().get_string(&txn),
             ""
         );
-        drop(txn);
 
-        assert_eq!(room.files.get(&id_a.to_hex()), Some(&id_a));
-        assert_eq!(room.files.get(&id_b.to_hex()), Some(&id_b));
+        // The nodes map holds both files plus the derived `chapters` folder.
+        let tree = read_tree(&txn, &nodes).unwrap();
+        tree.validate().unwrap();
+        assert_eq!(tree.path_of(&id_a.to_hex()).unwrap(), "main.typ");
+        assert_eq!(
+            tree.path_of(&id_b.to_hex()).unwrap(),
+            "chapters/intro.typ"
+        );
     }
 
     #[test]
@@ -582,7 +703,8 @@ mod tests {
 
     #[test]
     fn test_handle_data_sync_reply_goes_to_sender_only() {
-        let mut room = RoomState::new(vec![(ObjectId::new(), "hi".to_string())]);
+        let mut room =
+            RoomState::new(vec![(ObjectId::new(), "a.typ".to_string(), "hi".to_string(), blob())]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
