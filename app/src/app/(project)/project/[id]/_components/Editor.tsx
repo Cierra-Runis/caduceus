@@ -11,10 +11,10 @@ import * as Y from 'yjs';
 import { Spinner } from '@/components/ui/spinner';
 
 export interface EditorProps {
+  provider: null | WebsocketProvider;
   /// The focused file's **id** — the key of its `Y.Text` in the shared doc.
   /// Keyed by id (not path) so a rename never detaches the buffer.
   textId: string;
-  provider: null | WebsocketProvider;
   ydoc: Y.Doc;
 }
 
