@@ -90,6 +90,15 @@ pub trait ObjectStore: Send + Sync {
     /// succeeds. Only the GC sweep should ever call this — a file deletion must
     /// not, because other nodes may reference the same content.
     async fn delete(&self, sha256: &str) -> Result<(), StorageError>;
+
+    /// Store `bytes` at a caller-chosen `key`, overwriting any existing object.
+    /// Unlike [`put`](Self::put) this is a *mutable, named* object rather than
+    /// content-addressed — for state that changes in place, like a project's
+    /// Y.Doc snapshot at `ydoc/{project_id}`.
+    async fn put_object(&self, key: &str, bytes: &[u8]) -> Result<(), StorageError>;
+
+    /// Fetch a named object's bytes, or `None` if it doesn't exist.
+    async fn get_object(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError>;
 }
 
 /// MinIO / S3-compatible backend (path-style addressing).
@@ -202,6 +211,36 @@ impl ObjectStore for MinioObjectStore {
             ))),
         }
     }
+
+    async fn put_object(&self, key: &str, bytes: &[u8]) -> Result<(), StorageError> {
+        let resp = self
+            .bucket
+            .put_object(key, bytes)
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        let code = resp.status_code();
+        if !(200..300).contains(&code) {
+            return Err(StorageError::Backend(format!(
+                "put_object returned status {code}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn get_object(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError> {
+        let resp = self
+            .bucket
+            .get_object(key)
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        match resp.status_code() {
+            200 => Ok(Some(resp.to_vec())),
+            404 => Ok(None),
+            code => Err(StorageError::Backend(format!(
+                "get_object returned status {code}"
+            ))),
+        }
+    }
 }
 
 /// In-memory backend for tests. Holds every blob in a map keyed by content
@@ -209,6 +248,9 @@ impl ObjectStore for MinioObjectStore {
 #[derive(Default)]
 pub struct InMemoryObjectStore {
     blobs: Mutex<HashMap<String, Vec<u8>>>,
+    /// Named (mutable) objects, kept separate from content-addressed blobs so
+    /// `len`/`is_empty` still reflect only blobs.
+    objects: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 impl InMemoryObjectStore {
@@ -266,6 +308,18 @@ impl ObjectStore for InMemoryObjectStore {
         }
         self.blobs.lock().unwrap().remove(sha256);
         Ok(())
+    }
+
+    async fn put_object(&self, key: &str, bytes: &[u8]) -> Result<(), StorageError> {
+        self.objects
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), bytes.to_vec());
+        Ok(())
+    }
+
+    async fn get_object(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError> {
+        Ok(self.objects.lock().unwrap().get(key).cloned())
     }
 }
 
@@ -369,6 +423,22 @@ mod tests {
                 Err(StorageError::InvalidHash(_))
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn test_named_object_put_get_overwrite_and_missing() {
+        let store = InMemoryObjectStore::new();
+        assert_eq!(store.get_object("ydoc/p1").await.unwrap(), None);
+
+        store.put_object("ydoc/p1", b"first").await.unwrap();
+        assert_eq!(store.get_object("ydoc/p1").await.unwrap().as_deref(), Some(&b"first"[..]));
+
+        // Named objects are mutable: a second put overwrites.
+        store.put_object("ydoc/p1", b"second").await.unwrap();
+        assert_eq!(store.get_object("ydoc/p1").await.unwrap().as_deref(), Some(&b"second"[..]));
+
+        // Named objects don't count as content-addressed blobs.
+        assert!(store.is_empty());
     }
 
     /// Round-trip against a real MinIO. Ignored by default (needs a running
