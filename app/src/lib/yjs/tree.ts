@@ -1,15 +1,30 @@
 import * as Y from 'yjs';
 
-// Client-side reader for the project's file tree, which lives in the shared
-// Y.Doc as a top-level `nodes` map — `Map<NodeId, Map>`, each entry a node with
-// `kind` ('file' | 'folder'), `name`, an optional `parent`, and (for files) a
-// `sha256` / `size` blob reference. The server is authoritative: it seeds and
-// validates this map, and the client only *reads* structure from it here (CRUD
-// is a later step). A node's **path is derived** from its parent chain, never
-// stored — mirroring the server's `ProjectTree::path_of`.
+// Client-side reader *and writer* for the project's file tree, which lives in
+// the shared Y.Doc as a top-level `nodes` map — `Map<NodeId, Map>`, each entry a
+// node with `kind` ('file' | 'folder'), `name`, an optional `parent`, and (for
+// files) a `sha256` / `size` blob reference. A node's **path is derived** from
+// its parent chain, never stored — mirroring the server's
+// `ProjectTree::path_of`.
+//
+// The mutations here write structure straight into the CRDT; the server accepts
+// and persists whatever lands in the map (it does not yet validate — that is a
+// later, server-authoritative step). So these helpers enforce the same rules
+// the server's `ProjectTree::validate` does (segment shape, sibling-name
+// uniqueness) up front, to avoid producing a tree the authority would reject.
 
 /// Top-level map name; must match the server's `crdt::NODES`.
 const NODES = 'nodes';
+
+/// sha256 of empty content. A freshly created file has no bytes yet, so its node
+/// references the empty blob honestly; keeping `node.blob` in step with edited
+/// text (and uploading the bytes) is a later concern (the text overlay flush).
+const EMPTY_SHA256 =
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+/// Max length of a single path segment, in bytes — matches the server's
+/// `MAX_NAME_LEN`.
+export const MAX_NAME_LEN = 255;
 
 /// A file with its derived path, for the sidebar/editor. Keyed by `id` (stable
 /// across renames); `path` is recomputed from the parent chain.
@@ -26,6 +41,45 @@ export interface TreeNode {
   parent: null | string;
 }
 
+/// Create a new file node (and its empty text root) under `parent` (null = root)
+/// and return its id. Throws if `name` is not a valid segment or collides with a
+/// sibling.
+export function createFile(
+  ydoc: Y.Doc,
+  name: string,
+  parent: null | string,
+): string {
+  assertValidName(readNodes(ydoc), name, parent);
+  const id = newObjectId();
+  ydoc.transact(() => {
+    const node = new Y.Map<unknown>();
+    node.set('kind', 'file');
+    node.set('name', name);
+    if (parent !== null) node.set('parent', parent);
+    node.set('sha256', EMPTY_SHA256);
+    node.set('size', 0);
+    ydoc.getMap<Y.Map<unknown>>(NODES).set(id, node);
+    // Declare the (empty) text root so the editor can bind to it immediately.
+    ydoc.getText(id);
+  });
+  return id;
+}
+
+/// Delete a file node and drop its text. Only files are removable here (deleting
+/// a folder would orphan its children — a later concern); throws otherwise.
+export function deleteFile(ydoc: Y.Doc, id: string): void {
+  const map = ydoc.getMap<Y.Map<unknown>>(NODES);
+  const node = map.get(id);
+  if (!(node instanceof Y.Map) || node.get('kind') !== 'file') {
+    throw new Error(`not a file: ${id}`);
+  }
+  ydoc.transact(() => {
+    map.delete(id);
+    const text = ydoc.getText(id);
+    if (text.length > 0) text.delete(0, text.length);
+  });
+}
+
 /// Derive each file's full path from its parent chain and return the files
 /// sorted by path. Folders contribute path segments but aren't listed. A node
 /// whose chain is broken (a missing or cyclic parent) is dropped — the server
@@ -37,6 +91,22 @@ export function fileEntries(nodes: TreeNode[]): FileEntry[] {
     .map((node) => ({ id: node.id, path: pathOf(node, byId) }))
     .filter((entry): entry is FileEntry => entry.path !== null)
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/// Whether `name` is a legal single path segment, matching the server's
+/// `is_valid_segment`: non-empty, ≤ MAX_NAME_LEN bytes, not `.`/`..`, no `/` or
+/// `\`, no control characters, and no leading/trailing whitespace.
+export function isValidSegment(name: string): boolean {
+  return (
+    name.length > 0 &&
+    new TextEncoder().encode(name).length <= MAX_NAME_LEN &&
+    name !== '.' &&
+    name !== '..' &&
+    !name.includes('/') &&
+    !name.includes('\\') &&
+    !/\p{Cc}/u.test(name) &&
+    name.trim() === name
+  );
 }
 
 /// Decode the `nodes` map of a project Y.Doc into plain nodes. Entries missing
@@ -61,6 +131,54 @@ export function readNodes(ydoc: Y.Doc): TreeNode[] {
     });
   });
   return out;
+}
+
+/// Rename a node (a single `name` field write, so a concurrent edit to any other
+/// field merges). Throws if the new name is invalid or collides with a sibling.
+export function renameNode(ydoc: Y.Doc, id: string, name: string): void {
+  const nodes = readNodes(ydoc);
+  const node = nodes.find((n) => n.id === id);
+  if (!node) throw new Error(`no such node: ${id}`);
+  assertValidName(nodes, name, node.parent, id);
+  const map = ydoc.getMap<Y.Map<unknown>>(NODES);
+  ydoc.transact(() => {
+    const entry = map.get(id);
+    if (entry instanceof Y.Map) entry.set('name', name);
+  });
+}
+
+/// Reject an invalid segment, or one already used by a sibling of `parent`
+/// (excluding `exceptId`, so renaming a node to its own name is fine).
+function assertValidName(
+  nodes: TreeNode[],
+  name: string,
+  parent: null | string,
+  exceptId?: string,
+): void {
+  if (!isValidSegment(name)) {
+    throw new Error(`invalid file name: ${JSON.stringify(name)}`);
+  }
+  const taken = nodes.some(
+    (node) =>
+      node.parent === parent && node.id !== exceptId && node.name === name,
+  );
+  if (taken) {
+    throw new Error(`"${name}" already exists here`);
+  }
+}
+
+/// Generate a 24-hex-char id in MongoDB ObjectId layout (4-byte big-endian
+/// timestamp + 8 random bytes). The server persists file text back to Mongo
+/// keyed by this id via `ObjectId::parse_str`, so it must parse as an ObjectId.
+function newObjectId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const secs = Math.floor(Date.now() / 1000);
+  bytes[0] = (secs >>> 24) & 0xff;
+  bytes[1] = (secs >>> 16) & 0xff;
+  bytes[2] = (secs >>> 8) & 0xff;
+  bytes[3] = secs & 0xff;
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /// Walk `node`'s parent chain to its root, joining names into a `/`-path.
