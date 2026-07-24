@@ -25,7 +25,7 @@
 //! rules here — pure and heavily tested — is what lets the eventual yrs binding
 //! stay a thin serialization layer.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -134,6 +134,16 @@ pub fn is_valid_segment(name: &str) -> bool {
         && name.trim() == name
 }
 
+/// Insert a ` (k)` disambiguator before the last extension: `main.typ` →
+/// `main (2).typ`. A name with no interior dot gets it appended: `refs` →
+/// `refs (2)`. Used by [`ProjectTree::dedupe_sibling_names`].
+fn suffixed_name(name: &str, k: u32) -> String {
+    match name.rfind('.') {
+        Some(dot) if dot > 0 => format!("{} ({}){}", &name[..dot], k, &name[dot..]),
+        _ => format!("{name} ({k})"),
+    }
+}
+
 /// A node's projection value, **keyed by id** in the metadata store (so the id
 /// isn't repeated in the value). Carries the derived `path` plus the
 /// kind-specific content, flattened (`{ parent?, name, path, kind, blob? }`).
@@ -229,6 +239,60 @@ impl ProjectTree {
             .collect::<Vec<_>>()
             .join("/");
         Ok(path)
+    }
+
+    /// Compute the renames needed so no two siblings share a name — the sole
+    /// invariant honest concurrent edits (create/rename) can break, since two
+    /// clients each pick a locally-unique name that only collides once merged.
+    /// For each group of same-named siblings the lowest id keeps the name and
+    /// the rest get a `name (k)` suffix (before the extension), choosing the
+    /// smallest `k` free under that parent. Deterministic and a no-op when names
+    /// are already unique.
+    ///
+    /// This is the server's authoritative repair: it applies the result to the
+    /// Y.Doc and the correction syncs back to every client. Structural
+    /// invariants (cycles, dangling / non-folder parents) are deliberately *not*
+    /// repaired here — with no move or folder-delete operation yet they are
+    /// unreachable from honest edits, so a fix would be dead code. They belong
+    /// to a later movable-tree step.
+    pub fn dedupe_sibling_names(&self) -> Vec<(NodeId, String)> {
+        // Group ids by (parent, name). BTreeMap so processing order — and thus
+        // the assigned suffixes — is deterministic.
+        let mut groups: BTreeMap<(Option<&str>, &str), Vec<&str>> = BTreeMap::new();
+        for node in self.nodes.values() {
+            groups
+                .entry((node.parent.as_deref(), node.name.as_str()))
+                .or_default()
+                .push(node.id.as_str());
+        }
+
+        // Names already taken under each parent; a reassigned name must dodge
+        // all of them (including other duplicates' shared base name).
+        let mut used: HashMap<Option<&str>, HashSet<String>> = HashMap::new();
+        for node in self.nodes.values() {
+            used.entry(node.parent.as_deref())
+                .or_default()
+                .insert(node.name.clone());
+        }
+
+        let mut renames = Vec::new();
+        for ((parent, name), mut ids) in groups {
+            if ids.len() < 2 {
+                continue;
+            }
+            ids.sort_unstable(); // lowest id keeps the name
+            let taken = used.entry(parent).or_default();
+            for id in ids.into_iter().skip(1) {
+                let mut k = 2;
+                while taken.contains(&suffixed_name(name, k)) {
+                    k += 1;
+                }
+                let candidate = suffixed_name(name, k);
+                taken.insert(candidate.clone());
+                renames.push((id.to_string(), candidate));
+            }
+        }
+        renames
     }
 
     /// Validate the whole tree. Enforces, for every node:
@@ -360,6 +424,98 @@ mod tests {
         assert!(!is_valid_segment("trailing ")); // trailing ws
         assert!(!is_valid_segment("with\tctrl")); // control char
         assert!(!is_valid_segment(&"x".repeat(MAX_NAME_LEN + 1))); // too long
+    }
+
+    #[test]
+    fn test_suffixed_name() {
+        assert_eq!(suffixed_name("main.typ", 2), "main (2).typ");
+        assert_eq!(suffixed_name("refs", 3), "refs (3)"); // no extension
+        assert_eq!(suffixed_name("a.b.c", 2), "a.b (2).c"); // last dot only
+        assert_eq!(suffixed_name(".gitignore", 2), ".gitignore (2)"); // leading dot
+    }
+
+    /// Apply the computed renames onto a clone of the tree, for asserting the
+    /// repaired result.
+    fn apply_dedupe(tree: &ProjectTree) -> ProjectTree {
+        let renames: HashMap<String, String> =
+            tree.dedupe_sibling_names().into_iter().collect();
+        ProjectTree::from_nodes(tree.iter().map(|n| {
+            let mut n = n.clone();
+            if let Some(name) = renames.get(&n.id) {
+                n.name = name.clone();
+            }
+            n
+        }))
+    }
+
+    #[test]
+    fn test_dedupe_unique_tree_is_a_noop() {
+        let tree = ProjectTree::from_nodes([
+            file("1", None, "main.typ"),
+            file("2", None, "refs.bib"),
+        ]);
+        assert!(tree.dedupe_sibling_names().is_empty());
+    }
+
+    #[test]
+    fn test_dedupe_keeps_lowest_id_and_suffixes_the_rest() {
+        // Three siblings named "a.typ": id "1" keeps it, the others get suffixes
+        // in id order, and the repaired tree validates.
+        let tree = ProjectTree::from_nodes([
+            file("3", None, "a.typ"),
+            file("1", None, "a.typ"),
+            file("2", None, "a.typ"),
+        ]);
+        let fixed = apply_dedupe(&tree);
+        assert_eq!(fixed.get("1").unwrap().name, "a.typ");
+        assert_eq!(fixed.get("2").unwrap().name, "a (2).typ");
+        assert_eq!(fixed.get("3").unwrap().name, "a (3).typ");
+        fixed.validate().unwrap();
+    }
+
+    #[test]
+    fn test_dedupe_skips_a_name_an_existing_sibling_already_has() {
+        // "a (2).typ" is already taken, so the duplicate of "a.typ" must jump to
+        // "a (3).typ" rather than collide.
+        let tree = ProjectTree::from_nodes([
+            file("1", None, "a.typ"),
+            file("2", None, "a.typ"),
+            file("3", None, "a (2).typ"),
+        ]);
+        let fixed = apply_dedupe(&tree);
+        assert_eq!(fixed.get("1").unwrap().name, "a.typ");
+        assert_eq!(fixed.get("2").unwrap().name, "a (3).typ");
+        assert_eq!(fixed.get("3").unwrap().name, "a (2).typ");
+        fixed.validate().unwrap();
+    }
+
+    #[test]
+    fn test_dedupe_is_scoped_per_parent() {
+        // Two "x.typ" under folder "d" collide; the lone "x.typ" at the root is
+        // untouched.
+        let tree = ProjectTree::from_nodes([
+            folder("d", None, "chapters"),
+            file("1", Some("d"), "x.typ"),
+            file("2", Some("d"), "x.typ"),
+            file("3", None, "x.typ"),
+        ]);
+        let renames: HashMap<String, String> =
+            tree.dedupe_sibling_names().into_iter().collect();
+        assert_eq!(renames.get("2").map(String::as_str), Some("x (2).typ"));
+        assert!(!renames.contains_key("1"));
+        assert!(!renames.contains_key("3"));
+    }
+
+    #[test]
+    fn test_dedupe_treats_a_file_and_folder_sharing_a_name_as_a_clash() {
+        let tree = ProjectTree::from_nodes([
+            file("1", None, "assets"),
+            folder("2", None, "assets"),
+        ]);
+        let fixed = apply_dedupe(&tree);
+        assert_eq!(fixed.get("1").unwrap().name, "assets");
+        assert_eq!(fixed.get("2").unwrap().name, "assets (2)");
+        fixed.validate().unwrap();
     }
 
     #[test]
