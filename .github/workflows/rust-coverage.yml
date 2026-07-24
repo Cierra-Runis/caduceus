@@ -47,6 +47,25 @@ jobs:
       - name: MongoDB in GitHub Action
         uses: supercharge/mongodb-github-action@1.12.0
 
+      # MinIO for the content-addressed storage integration tests. A plain
+      # `services:` container can't launch it (the minio image needs the
+      # `server /data` command, which services can't override), so start it as
+      # a step and provision the bucket. Endpoint/creds/bucket match the
+      # `#[ignore]`d `storage::tests::test_minio_roundtrip`.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio --network host \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data --address ":9000"
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/ready; then break; fi
+            echo "waiting for minio ($i)..."; sleep 1;
+          done
+          docker run --rm --network host --entrypoint sh minio/mc -c \
+            "mc alias set local http://localhost:9000 minioadmin minioadmin && \
+             mc mb --ignore-existing local/caduceus"
+
       # https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#github-actions-and-codecov
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
