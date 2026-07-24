@@ -37,6 +37,7 @@ export function SidebarPanel({
         {files.map(({ id, path }) => (
           <li key={id}>
             <button
+              aria-current={id === focus ? 'true' : undefined}
               className={cn(
                 `flex w-full items-center gap-2 px-3 py-1 text-left text-sm`,
                 id === focus ? 'bg-accent' : 'hover:bg-accent/50',
