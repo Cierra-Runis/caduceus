@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use yrs::{
-    ClientID, Doc, GetString, ReadTxn, Text, Transact, Update,
+    ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
     sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
     updates::decoder::Decode as _,
     updates::encoder::{Encode, Encoder, EncoderV1},
@@ -529,6 +529,12 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
             broadcast(room, conn_id, &msg);
         }
+        // The authority never lets the shared tree rest with two siblings
+        // sharing a name (the one invariant honest concurrent edits can break).
+        // NOTE: reads the tree on every doc-changing frame, text edits included;
+        // it is a cheap map scan at current scale — gate it on a nodes-map
+        // observer if that ever shows up in a profile.
+        reconcile_sibling_names(room);
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -549,6 +555,62 @@ fn broadcast(room: &RoomState, origin: ObjectId, msg: &[u8]) {
         if *conn_id != origin {
             let _ = tx.send(msg.to_vec());
         }
+    }
+}
+
+/// Send a frame to every connection in the room, no exceptions. Used for
+/// authority corrections, which must reach the connection that caused the
+/// clash too so its view snaps to the corrected state.
+fn broadcast_all(room: &RoomState, msg: &[u8]) {
+    for tx in room.conns.values() {
+        let _ = tx.send(msg.to_vec());
+    }
+}
+
+/// Server-authoritative repair of duplicate sibling names in the shared tree.
+/// If two nodes share a `(parent, name)`, renames all but one (see
+/// [`ProjectTree::dedupe_sibling_names`]), applies the fix to the Y.Doc, and
+/// broadcasts the resulting update to every connection.
+fn reconcile_sibling_names(room: &mut RoomState) {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+
+    // Decide the renames from a read-only view before touching the doc.
+    let renames = {
+        let txn = doc.transact();
+        match read_tree(&txn, &nodes) {
+            Ok(tree) => tree.dedupe_sibling_names(),
+            // A node half-written mid-sync — skip; a later frame will retry.
+            Err(_) => return,
+        }
+    };
+    if renames.is_empty() {
+        return;
+    }
+
+    // Apply the corrective renames, capturing the update they produce so it can
+    // be relayed (same observer trick as `handle_data`).
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = doc.observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    {
+        let mut txn = doc.transact_mut();
+        for (id, name) in renames {
+            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                node.insert(&mut txn, "name", name);
+            }
+        }
+    }
+    drop(subscription);
+
+    room.dirty = true;
+    for update in std::mem::take(&mut *applied.lock().unwrap()) {
+        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+        broadcast_all(room, &msg);
     }
 }
 
@@ -829,6 +891,75 @@ mod tests {
         // ...and the shared document reflects it.
         let txn = room.awareness.doc().transact();
         assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "ello");
+    }
+
+    #[test]
+    fn test_reconcile_renames_a_duplicate_sibling_and_broadcasts_to_all() {
+        use crate::models::tree::{Node, NodeContent, ProjectTree};
+
+        let mut room = RoomState::new(vec![]);
+        // Two files share "notes.typ" at the root, as two clients each creating
+        // it concurrently would produce once their updates merge.
+        let dup = ProjectTree::from_nodes([
+            Node {
+                id: "1".to_string(),
+                parent: None,
+                name: "notes.typ".to_string(),
+                content: NodeContent::File { blob: blob() },
+            },
+            Node {
+                id: "2".to_string(),
+                parent: None,
+                name: "notes.typ".to_string(),
+                content: NodeContent::File { blob: blob() },
+            },
+        ]);
+        {
+            let doc = room.awareness.doc();
+            let nodes = nodes_map(doc);
+            let mut txn = doc.transact_mut();
+            write_tree(&mut txn, &nodes, &dup);
+        }
+
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+
+        reconcile_sibling_names(&mut room);
+
+        // The tree is unique again: the lowest id keeps the name, the other is
+        // suffixed, and the result validates.
+        let nodes = nodes_map(room.awareness.doc());
+        let txn = room.awareness.doc().transact();
+        let tree = read_tree(&txn, &nodes).unwrap();
+        tree.validate().unwrap();
+        assert_eq!(tree.get("1").unwrap().name, "notes.typ");
+        assert_eq!(tree.get("2").unwrap().name, "notes (2).typ");
+
+        // The correction reached *every* connection (broadcast_all, no origin
+        // excluded) as a Sync update.
+        for rx in [&mut rx_a, &mut rx_b] {
+            let received = rx.try_recv().expect("correction broadcast");
+            assert!(matches!(
+                YMessage::decode_v1(&received),
+                Ok(YMessage::Sync(SyncMessage::Update(_)))
+            ));
+        }
+    }
+
+    #[test]
+    fn test_reconcile_is_a_noop_for_a_unique_tree() {
+        let mut room = RoomState::new(vec![(
+            ObjectId::new(),
+            "main.typ".to_string(),
+            "hi".to_string(),
+            blob(),
+        )]);
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        reconcile_sibling_names(&mut room);
+
+        // No clash, so no correction is sent.
+        assert!(rx_a.try_recv().is_err());
     }
 
     #[test]
