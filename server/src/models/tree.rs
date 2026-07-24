@@ -267,7 +267,11 @@ impl ProjectTree {
         Ok(())
     }
 
-    /// Derive every node's path. Assumes/validates a well-formed tree.
+    /// [`validate`](Self::validate) the tree, then derive every node's path.
+    /// Fails with the first [`TreeError`] if the tree is malformed — the
+    /// validation is defensive so callers can't derive paths from a bad tree
+    /// (the low-level [`path_of`](Self::path_of) skips it and only surfaces
+    /// broken path chains).
     pub fn paths(&self) -> Result<HashMap<NodeId, String>, TreeError> {
         self.validate()?;
         self.nodes
@@ -276,8 +280,11 @@ impl ProjectTree {
             .collect()
     }
 
-    /// Build the flattened projection (each node plus its derived path) for the
-    /// metadata store / REST. Errors if the tree is malformed.
+    /// [`validate`](Self::validate) the tree, then build the flattened
+    /// projection (each node plus its derived path) for the metadata store /
+    /// REST. Validation is defensive: an authority that already validated pays a
+    /// second, cheap O(n) pass, in exchange for this never emitting a projection
+    /// of a malformed tree.
     pub fn projection(&self) -> Result<Vec<NodeProjection>, TreeError> {
         self.validate()?;
         let mut out = Vec::with_capacity(self.nodes.len());
