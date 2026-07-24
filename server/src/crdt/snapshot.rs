@@ -38,6 +38,27 @@ fn snapshot_key(project_id: &str) -> String {
     format!("ydoc/{project_id}")
 }
 
+/// Save pre-encoded snapshot bytes (see [`encode_doc`]) — for callers that
+/// encode the Doc themselves (e.g. a room persist loop, where the `!Send` Doc
+/// can't cross into the async write).
+pub async fn save_snapshot_bytes(
+    store: &dyn ObjectStore,
+    project_id: &str,
+    bytes: &[u8],
+) -> Result<(), SnapshotError> {
+    store.put_object(&snapshot_key(project_id), bytes).await?;
+    Ok(())
+}
+
+/// Fetch a project's raw snapshot bytes (a yrs update), or `None` if it has no
+/// snapshot yet. The bytes can be applied to a fresh Doc directly.
+pub async fn load_snapshot_bytes(
+    store: &dyn ObjectStore,
+    project_id: &str,
+) -> Result<Option<Vec<u8>>, SnapshotError> {
+    Ok(store.get_object(&snapshot_key(project_id)).await?)
+}
+
 /// Encode the full CRDT state of `doc` as a single v1 update.
 pub fn encode_doc(doc: &Doc) -> Vec<u8> {
     doc.transact()

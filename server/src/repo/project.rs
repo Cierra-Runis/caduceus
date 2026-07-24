@@ -3,7 +3,10 @@ use futures_util::TryStreamExt;
 use mongodb::error::Result;
 use mongodb::options::ReturnDocument;
 
+use std::collections::HashMap;
+
 use crate::models::project::{FileContent, OwnerType, Project};
+use crate::models::tree::{NodeId, ProjectionEntry};
 
 #[async_trait::async_trait]
 pub trait ProjectRepo {
@@ -34,6 +37,15 @@ pub trait ProjectRepo {
         owner_id: ObjectId,
         owner_type: OwnerType,
     ) -> Result<Option<Project>>;
+    /// Overwrite a project's stored tree projection — the id-keyed cache of the
+    /// CRDT file tree, refreshed by the room on persist. The authoritative
+    /// structure lives in the Y.Doc snapshot; this is only the listing cache, so
+    /// it deliberately does not bump `updated_at`.
+    async fn update_tree(
+        &self,
+        project_id: ObjectId,
+        tree: HashMap<NodeId, ProjectionEntry>,
+    ) -> Result<()>;
 }
 
 #[derive(Clone)]
@@ -129,6 +141,18 @@ impl ProjectRepo for MongoProjectRepo {
             .return_document(ReturnDocument::After)
             .await
     }
+
+    async fn update_tree(
+        &self,
+        project_id: ObjectId,
+        tree: HashMap<NodeId, ProjectionEntry>,
+    ) -> Result<()> {
+        let update = bson::doc! { "$set": { "tree": bson::to_bson(&tree)? } };
+        self.collection
+            .update_one(bson::doc! { "_id": project_id }, update)
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -209,6 +233,15 @@ pub mod tests {
             project.owner_type = owner_type;
             project.updated_at = OffsetDateTime::now_utc();
             Ok(Some(project.clone()))
+        }
+
+        async fn update_tree(
+            &self,
+            _project_id: ObjectId,
+            _tree: HashMap<NodeId, ProjectionEntry>,
+        ) -> Result<()> {
+            // The mock doesn't store the projection; nothing reads it in tests.
+            Ok(())
         }
     }
 

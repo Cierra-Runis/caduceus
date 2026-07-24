@@ -8,8 +8,9 @@ use server::{
     handler::ws::ProjectServer,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
+    storage::{InMemoryObjectStore, MinioObjectStore, ObjectStore},
 };
-use std::{env, io};
+use std::{env, io, sync::Arc};
 use tracing_subscriber::fmt;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -54,10 +55,29 @@ async fn main() -> io::Result<()> {
         },
     });
 
+    // Object storage for content-addressed blobs and Y.Doc snapshots. Falls back
+    // to an in-memory store when unconfigured so a checkout runs; production
+    // configures MinIO/S3 via `storage` in the config.
+    let store: Arc<dyn ObjectStore> = match &config.storage {
+        Some(cfg) => Arc::new(
+            MinioObjectStore::new(
+                &cfg.endpoint,
+                &cfg.region,
+                &cfg.bucket,
+                &cfg.access_key,
+                &cfg.secret_key,
+            )
+            .expect("failed to init object storage"),
+        ),
+        None => Arc::new(InMemoryObjectStore::new()),
+    };
+
     // Create ProjectServer instance (actor-less implementation). It owns a repo
-    // handle so collaboration rooms can persist live CRDT text back to MongoDB.
+    // handle and the object store so collaboration rooms can persist the CRDT
+    // Y.Doc (snapshot + projection) and text.
     let ws_config = config.ws.clone();
-    let project_server = ProjectServer::new(project_repo.clone(), ws_config.clone());
+    let project_server =
+        ProjectServer::new(project_repo.clone(), ws_config.clone(), store.clone());
 
     let jwt_secret = config.jwt_secret.clone();
     let address = config.address.clone();
@@ -70,6 +90,7 @@ async fn main() -> io::Result<()> {
             .app_data(data.clone())
             .app_data(web::Data::new(project_server.clone()))
             .app_data(web::Data::new(ws_config.clone()))
+            .app_data(web::Data::new(store.clone()))
             .configure(|cfg| server::routes::configure(cfg, jwt_secret.clone()))
             .wrap(actix_web::middleware::Logger::default())
     };
