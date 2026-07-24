@@ -1,4 +1,9 @@
-use std::{collections::HashMap, sync::Arc, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 use actix_web::ResponseError;
 use actix_web::http::StatusCode;
@@ -475,14 +480,32 @@ async fn room_manager(
 fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let is_awareness = data.first() == Some(&MSG_AWARENESS);
 
-    // Run the protocol against the shared document, and diff the state before /
-    // after to capture exactly what this frame changed.
-    let before = room.awareness.doc().transact().state_vector();
+    // Capture the exact update(s) applied to the shared document while the
+    // protocol runs, so we can relay them verbatim. We must NOT diff the state
+    // vector before/after to detect changes: a deletion only adds tombstones and
+    // does *not* advance the state vector, so an SV diff silently drops deletes
+    // (they would reach peers only when piggy-backed on a later insertion).
+    // `observe_update_v1` fires for inserts and deletes alike, and only when the
+    // transaction actually changed something — so a redundant update stays a
+    // no-op. The `Arc<Mutex<_>>` is to satisfy the observer's `Send + Sync`
+    // bound; this all runs on the single room-manager thread, so it never
+    // contends.
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = room
+        .awareness
+        .doc()
+        .observe_update_v1(move |_txn, event| {
+            if let Ok(mut updates) = sink.lock() {
+                updates.push(event.update.clone());
+            }
+        });
+    if let Err(e) = &subscription {
+        warn!("WS: failed to observe doc updates: {e:?}");
+    }
+
     let replies = DefaultProtocol.handle(&mut room.awareness, &data);
-    let doc_update = {
-        let txn = room.awareness.doc().transact();
-        (txn.state_vector() != before).then(|| txn.encode_state_as_update_v1(&before))
-    };
+    drop(subscription); // stop observing before the doc is touched again
 
     // Sync replies (e.g. the sync step 2 carrying current content) go back to
     // the sender only.
@@ -497,11 +520,15 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
         Err(e) => debug!("WS protocol error: {:?}", e),
     }
 
-    // Applied document changes and awareness frames go to everyone else.
-    if let Some(update) = doc_update {
+    // Applied document changes (inserts and deletes) and awareness frames go to
+    // everyone else.
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    if !updates.is_empty() {
         room.dirty = true;
-        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
-        broadcast(room, conn_id, &msg);
+        for update in updates {
+            let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+            broadcast(room, conn_id, &msg);
+        }
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -736,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_data_no_broadcast_when_state_vector_unchanged() {
+    fn test_handle_data_no_broadcast_for_a_redundant_update() {
         let mut room = RoomState::new(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
@@ -745,11 +772,63 @@ mod tests {
         handle_data(&mut room, conn_a, frame.clone());
         rx_b.try_recv().expect("first broadcast for the real change");
 
-        // Re-applying the exact same update is a no-op against the doc's
-        // state vector, so it must not trigger a second broadcast.
+        // Re-applying the exact same update integrates nothing new, so the
+        // doc's update observer never fires and there is no second broadcast.
         handle_data(&mut room, conn_a, frame);
         assert!(rx_a.try_recv().is_err());
         assert!(rx_b.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_handle_data_broadcasts_a_deletion_to_others() {
+        // A deletion is the regression that motivated capturing the applied
+        // update instead of diffing the state vector: deleting doesn't advance
+        // the SV, so an SV diff would drop it and peers would never see it.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "a.typ".to_string(),
+            "hello".to_string(),
+            blob(),
+        )]);
+
+        // A peer that has already synced the room's content (so it shares the
+        // same item ids), which then deletes the leading character.
+        let client = Doc::new();
+        let synced = room
+            .awareness
+            .doc()
+            .transact()
+            .encode_state_as_update_v1(&yrs::StateVector::default());
+        client
+            .transact_mut()
+            .apply_update(Update::decode_v1(&synced).unwrap())
+            .unwrap();
+        let ctext = client.get_or_insert_text(key.as_str());
+        let before = client.transact().state_vector();
+        {
+            let mut txn = client.transact_mut();
+            ctext.remove_range(&mut txn, 0, 1);
+        }
+        let delete_update = client.transact().encode_state_as_update_v1(&before);
+        let frame = YMessage::Sync(SyncMessage::Update(delete_update)).encode_v1();
+
+        let (conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+        handle_data(&mut room, conn_a, frame);
+
+        // The deletion reached the other peer (not just the sender)...
+        let received = rx_b.try_recv().expect("deletion broadcast to other connection");
+        match YMessage::decode_v1(&received) {
+            Ok(YMessage::Sync(SyncMessage::Update(_))) => {}
+            other => panic!("expected Sync(Update(..)), got {:?}", other),
+        }
+        assert!(rx_a.try_recv().is_err());
+
+        // ...and the shared document reflects it.
+        let txn = room.awareness.doc().transact();
+        assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "ello");
     }
 
     #[test]
