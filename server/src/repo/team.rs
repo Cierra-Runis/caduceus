@@ -80,39 +80,84 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_mongo_team_repo() {
+    async fn test_repo() -> MongoTeamRepo {
         let config = config::Config::load("config/test.yaml").unwrap();
-        let repo = MongoTeamRepo {
-            collection: mongodb::Client::with_uri_str(config.mongo_uri)
-                .await
-                .unwrap()
-                .database("test_db")
+        let client = mongodb::Client::with_uri_str(config.mongo_uri)
+            .await
+            .unwrap();
+        MongoTeamRepo {
+            collection: client
+                .database(&config.db_name)
                 .collection::<Team>("teams"),
-        };
+        }
+    }
 
-        let team = Team {
+    fn new_team(member_ids: Vec<ObjectId>) -> Team {
+        Team {
             id: ObjectId::new(),
-            name: "Test Team".to_string(),
+            name: format!("Test Team {}", ObjectId::new().to_hex()),
             avatar_uri: None,
             creator_id: ObjectId::new(),
-            member_ids: vec![],
+            member_ids,
             created_at: time::OffsetDateTime::now_utc(),
             updated_at: time::OffsetDateTime::now_utc(),
-        };
+        }
+    }
 
-        // Test create
-        let created_team = repo.create(team.clone()).await.unwrap();
-        assert_eq!(created_team.name, team.name);
+    async fn cleanup(repo: &MongoTeamRepo, id: ObjectId) {
+        let _ = repo.collection.delete_one(doc! { "_id": id }).await;
+    }
 
-        // Test find_by_id
-        let found_team = repo.find_by_id(created_team.id).await.unwrap();
-        assert!(found_team.is_some());
-        assert_eq!(found_team.unwrap().name, team.name);
+    #[tokio::test]
+    async fn test_create_and_find_by_id() {
+        let repo = test_repo().await;
+        let team = new_team(vec![]);
 
-        // Test list_by_member_id
+        let created = repo.create(team.clone()).await.unwrap();
+        assert_eq!(created.id, team.id);
+        assert_eq!(created.name, team.name);
+
+        let found = repo.find_by_id(team.id).await.unwrap();
+        assert!(found.is_some());
+        let found = found.unwrap();
+        assert_eq!(found.id, team.id);
+        assert_eq!(found.name, team.name);
+        assert_eq!(found.creator_id, team.creator_id);
+
+        cleanup(&repo, team.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_find_by_id_not_found() {
+        let repo = test_repo().await;
+        let found = repo.find_by_id(ObjectId::new()).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_list_by_member_id_includes_matching_excludes_others() {
+        let repo = test_repo().await;
         let member_id = ObjectId::new();
-        let found_teams = repo.list_by_member_id(member_id).await.unwrap();
-        assert!(found_teams.is_empty());
+        let other_member_id = ObjectId::new();
+
+        let with_member = new_team(vec![member_id, other_member_id]);
+        let without_member = new_team(vec![other_member_id]);
+
+        repo.create(with_member.clone()).await.unwrap();
+        repo.create(without_member.clone()).await.unwrap();
+
+        let found = repo.list_by_member_id(member_id).await.unwrap();
+        assert!(found.iter().any(|t| t.id == with_member.id));
+        assert!(!found.iter().any(|t| t.id == without_member.id));
+
+        cleanup(&repo, with_member.id).await;
+        cleanup(&repo, without_member.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_list_by_member_id_empty_when_no_match() {
+        let repo = test_repo().await;
+        let found = repo.list_by_member_id(ObjectId::new()).await.unwrap();
+        assert!(found.is_empty());
     }
 }

@@ -83,11 +83,20 @@ impl ProjectRepo for MongoProjectRepo {
             "$inc": { "files.$[f].version": 1 },
         };
 
-        self.collection
+        let updated = self
+            .collection
             .find_one_and_update(bson::doc! { "_id": project_id }, update)
             .array_filters(vec![bson::doc! { "f._id": file_id }])
             .return_document(ReturnDocument::After)
-            .await
+            .await?;
+
+        // `array_filters` matching zero elements is not an error: the update
+        // still applies to the document (bumping the top-level `updated_at`
+        // above) and `find_one_and_update` still returns `Some`, even though
+        // nothing in `files` actually changed. Filter that case out here so a
+        // nonexistent `file_id` in an existing project is reported as `None`,
+        // same as a nonexistent project, per this method's contract.
+        Ok(updated.filter(|project| project.files.iter().any(|f| f.id == file_id)))
     }
 }
 
@@ -154,45 +163,182 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_mongo_project_repo() {
-        let config = config::Config::load("config/test.yaml").unwrap();
-        let repo = MongoProjectRepo {
-            collection: mongodb::Client::with_uri_str(config.mongo_uri)
-                .await
-                .unwrap()
-                .database("test_db")
-                .collection::<Project>("projects"),
-        };
+    use crate::models::project::ProjectFile;
 
-        let project = Project {
+    async fn test_repo() -> MongoProjectRepo {
+        let config = config::Config::load("config/test.yaml").unwrap();
+        let client = mongodb::Client::with_uri_str(config.mongo_uri)
+            .await
+            .unwrap();
+        MongoProjectRepo {
+            collection: client
+                .database(&config.db_name)
+                .collection::<Project>("projects"),
+        }
+    }
+
+    fn new_project(owner_id: ObjectId, owner_type: OwnerType, files: Vec<ProjectFile>) -> Project {
+        Project {
             id: ObjectId::new(),
-            name: "Test Project".to_string(),
-            owner_id: ObjectId::new(),
-            owner_type: OwnerType::User,
+            name: format!("Test Project {}", ObjectId::new().to_hex()),
+            owner_id,
+            owner_type,
             creator_id: ObjectId::new(),
-            files: vec![],
+            files,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
-        };
+        }
+    }
 
-        // Test create
-        let created_project = repo.create(project.clone()).await.unwrap();
-        assert_eq!(created_project.name, project.name);
+    async fn cleanup(repo: &MongoProjectRepo, id: ObjectId) {
+        let _ = repo.collection.delete_one(bson::doc! { "_id": id }).await;
+    }
 
-        // Test find_by_id
-        let found_project = repo.find_by_id(created_project.id).await.unwrap();
-        assert!(found_project.is_some());
-        assert_eq!(found_project.unwrap().name, project.name);
+    #[tokio::test]
+    async fn test_create_and_find_by_id() {
+        let repo = test_repo().await;
+        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
 
-        // Test find_by_owner
-        let found_projects = repo
-            .find_by_owner(project.owner_id, OwnerType::User)
+        let created = repo.create(project.clone()).await.unwrap();
+        assert_eq!(created.id, project.id);
+        assert_eq!(created.name, project.name);
+
+        let found = repo.find_by_id(project.id).await.unwrap();
+        assert!(found.is_some());
+        let found = found.unwrap();
+        assert_eq!(found.id, project.id);
+        assert_eq!(found.name, project.name);
+        assert_eq!(found.owner_id, project.owner_id);
+        assert_eq!(found.owner_type, project.owner_type);
+        assert_eq!(found.creator_id, project.creator_id);
+
+        cleanup(&repo, project.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_find_by_id_not_found() {
+        let repo = test_repo().await;
+        let found = repo.find_by_id(ObjectId::new()).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_find_by_owner_matches_owner_id_and_owner_type() {
+        let repo = test_repo().await;
+        let owner_id = ObjectId::new();
+        let other_owner_id = ObjectId::new();
+
+        let matching = new_project(owner_id, OwnerType::User, vec![]);
+        let same_owner_different_type = new_project(owner_id, OwnerType::Team, vec![]);
+        let same_type_different_owner = new_project(other_owner_id, OwnerType::User, vec![]);
+
+        repo.create(matching.clone()).await.unwrap();
+        repo.create(same_owner_different_type.clone())
             .await
             .unwrap();
-        assert!(!found_projects.is_empty());
-        assert_eq!(found_projects[0].owner_id, project.owner_id);
+        repo.create(same_type_different_owner.clone())
+            .await
+            .unwrap();
+
+        let found = repo.find_by_owner(owner_id, OwnerType::User).await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, matching.id);
+
+        cleanup(&repo, matching.id).await;
+        cleanup(&repo, same_owner_different_type.id).await;
+        cleanup(&repo, same_type_different_owner.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_find_by_owner_empty_when_no_match() {
+        let repo = test_repo().await;
+        let found = repo
+            .find_by_owner(ObjectId::new(), OwnerType::Team)
+            .await
+            .unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_update_file_content_bumps_version_and_timestamps() {
+        let repo = test_repo().await;
+        let file = ProjectFile {
+            id: ObjectId::new(),
+            path: "main.typ".to_string(),
+            content: FileContent::Text {
+                text: "original".to_string(),
+            },
+            size: 8,
+            version: 0,
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        let project = new_project(ObjectId::new(), OwnerType::User, vec![file.clone()]);
+        repo.create(project.clone()).await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let new_content = FileContent::Text {
+            text: "updated content".to_string(),
+        };
+        let updated = repo
+            .update_file_content(project.id, file.id, new_content, 16)
+            .await
+            .unwrap();
+
+        assert!(updated.is_some());
+        let updated = updated.unwrap();
+        assert!(updated.updated_at > project.updated_at);
+
+        let updated_file = updated.files.iter().find(|f| f.id == file.id).unwrap();
+        assert_eq!(updated_file.version, file.version + 1);
+        assert!(updated_file.updated_at > file.updated_at);
+        assert_eq!(updated_file.size, 16);
+        match &updated_file.content {
+            FileContent::Text { text } => assert_eq!(text, "updated content"),
+            FileContent::Binary { .. } => panic!("expected text content"),
+        }
+
+        cleanup(&repo, project.id).await;
+    }
+
+    #[tokio::test]
+    async fn test_update_file_content_returns_none_for_missing_project() {
+        let repo = test_repo().await;
+        let result = repo
+            .update_file_content(
+                ObjectId::new(),
+                ObjectId::new(),
+                FileContent::Text {
+                    text: "x".to_string(),
+                },
+                1,
+            )
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_file_content_returns_none_for_missing_file() {
+        let repo = test_repo().await;
+        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
+        repo.create(project.clone()).await.unwrap();
+
+        let result = repo
+            .update_file_content(
+                project.id,
+                ObjectId::new(),
+                FileContent::Text {
+                    text: "x".to_string(),
+                },
+                1,
+            )
+            .await
+            .unwrap();
+        assert!(result.is_none());
+
+        cleanup(&repo, project.id).await;
     }
 }

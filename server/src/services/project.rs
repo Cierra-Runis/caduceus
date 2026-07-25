@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use bson::oid::ObjectId;
 use derive_more::Display;
+use time::OffsetDateTime;
 
 use crate::{
     models::project::{
@@ -147,6 +150,67 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             Ok(None) => Err(ProjectServiceError::ProjectNotFound),
             Err(e) => Err(ProjectServiceError::Database(e)),
         }
+    }
+
+    /// Clone a project the caller can access into a brand-new, independent
+    /// project owned the same way (same `owner_id`/`owner_type`), with the
+    /// requester recorded as the new project's `creator_id`. Every file gets a
+    /// fresh id — the copy must not alias the source's file rows — and `entry`
+    /// is remapped through that id swap so the duplicate still opens on the
+    /// same logical file.
+    pub async fn duplicate(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+    ) -> Result<ProjectPayload, ProjectServiceError> {
+        match self.accessible(project_id, user_id).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ProjectServiceError::AccessDenied),
+            Err(e) => return Err(e),
+        };
+
+        let source = match self.project_repo.find_by_id(project_id).await {
+            Ok(Some(project)) => project,
+            Ok(None) => return Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => return Err(ProjectServiceError::Database(e)),
+        };
+
+        let now = OffsetDateTime::now_utc();
+
+        let mut id_map = HashMap::with_capacity(source.files.len());
+        let files: Vec<ProjectFile> = source
+            .files
+            .into_iter()
+            .map(|file| {
+                let new_id = ObjectId::new();
+                id_map.insert(file.id, new_id);
+                ProjectFile {
+                    id: new_id,
+                    updated_at: now,
+                    ..file
+                }
+            })
+            .collect();
+        let entry = source.entry.and_then(|old_id| id_map.get(&old_id).copied());
+
+        let project = self
+            .project_repo
+            .create(Project {
+                id: ObjectId::new(),
+                name: format!("{} copy", source.name),
+                owner_id: source.owner_id,
+                owner_type: source.owner_type,
+                creator_id: user_id,
+                files,
+                created_at: now,
+                updated_at: now,
+                entry,
+                pinned_version: source.pinned_version,
+            })
+            .await
+            .map_err(ProjectServiceError::Database)?;
+
+        Ok(project.into())
     }
 }
 
@@ -616,5 +680,105 @@ mod tests {
             .update_file(project_id, owner_id, ObjectId::new(), "x".to_string())
             .await;
         assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_project_success() {
+        let creator_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, creator_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let payload = service.duplicate(project_id, creator_id).await.unwrap();
+
+        assert_eq!(payload.name, "test copy");
+        assert_eq!(payload.owner_id, creator_id.to_hex());
+        assert_eq!(payload.creator_id, creator_id.to_hex());
+        assert_ne!(payload.id, project_id.to_hex());
+        assert_eq!(payload.files.len(), 1);
+
+        // The duplicated file gets a fresh id, distinct from the source
+        // file's, and `entry` is remapped to point at the new one.
+        let new_file_id = payload.files[0].id.clone();
+        assert_ne!(new_file_id, file_id.to_hex());
+        assert_eq!(payload.entry, Some(new_file_id));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_project_team_owned_sets_requester_as_creator() {
+        let original_creator_id = ObjectId::new();
+        let team_id = ObjectId::new();
+        let member_id = ObjectId::new();
+        let project_id = ObjectId::new();
+
+        let project = Project {
+            id: project_id,
+            name: "team project".to_string(),
+            owner_id: team_id,
+            owner_type: OwnerType::Team,
+            creator_id: original_creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            entry: None,
+            pinned_version: None,
+        };
+
+        let team = dummy_team(team_id, vec![original_creator_id, member_id]);
+
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team]),
+            },
+        };
+
+        // A team member other than the original creator duplicates the
+        // project: ownership stays with the team, but the duplicate's creator
+        // is the requester, not the original creator.
+        let payload = service.duplicate(project_id, member_id).await.unwrap();
+        assert_eq!(payload.owner_id, team_id.to_hex());
+        assert_eq!(payload.owner_type, OwnerType::Team);
+        assert_eq!(payload.creator_id, member_id.to_hex());
+        assert_ne!(payload.creator_id, original_creator_id.to_hex());
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_project_not_found() {
+        let service = ProjectService {
+            project_repo: MockProjectRepo::default(),
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service.duplicate(ObjectId::new(), ObjectId::new()).await;
+        assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_project_access_denied() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service.duplicate(project_id, other_user_id).await;
+        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
     }
 }
