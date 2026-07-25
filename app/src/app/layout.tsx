@@ -33,11 +33,13 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <Script
-          async
-          crossOrigin='anonymous'
-          src='//unpkg.com/react-scan/dist/auto.global.js'
-        />
+        {process.env.NODE_ENV === 'development' && (
+          <Script
+            async
+            crossOrigin='anonymous'
+            src='//unpkg.com/react-scan/dist/auto.global.js'
+          />
+        )}
       </head>
       <body className={`min-h-screen antialiased`}>
         <NextIntlClientProvider>

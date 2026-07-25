@@ -8,7 +8,7 @@ import '@/styles/globals.css';
 import { NavBar } from './_components/NavBar';
 import { SideBar } from './_components/SideBar';
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children, header }: LayoutProps<'/'>) {
   return (
     <SidebarProvider
       style={
@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     >
       <SideBar />
       <SidebarInset className='flex h-screen w-18 flex-col'>
-        <NavBar />
+        <NavBar header={header} />
         {children}
         <footer
           className={`

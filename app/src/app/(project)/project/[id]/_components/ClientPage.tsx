@@ -38,22 +38,30 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     };
   }, [me]);
 
-  // One Y.Doc per project; each text file is a Y.Text keyed by its path. The
-  // doc is pure JS (SSR-safe); the WebSocket provider is browser-only, so it is
-  // created in an effect. Persistence is server-side — the room flushes CRDT
-  // text back to Mongo — so there is no client-side autosave here.
+  // One Y.Doc per project; each text file is a Y.Text keyed by its **id** (so a
+  // rename never detaches the buffer). The doc is pure JS (SSR-safe); the
+  // WebSocket provider is browser-only, so it is created in an effect.
+  // Persistence is server-side — the room flushes CRDT text back to Mongo — so
+  // there is no client-side autosave here.
   const [ydoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<null | WebsocketProvider>(null);
 
-  const textPaths = useMemo(
+  const textFiles = useMemo(
     () =>
       project.files
         .filter((file) => file.content.kind === 'text')
-        .map((file) => file.path),
+        .map((file) => ({ id: file.id, path: file.path })),
     [project],
   );
+  // The compile root as a *path* (typst resolves imports/images by path).
   const entry = useMemo(() => entryPath(project), [project]);
-  const [focus, setFocus] = useState(() => entry ?? textPaths[0] ?? '');
+  // The entry as a file *id*, to mark it in the id-keyed file list.
+  const entryId = useMemo(() => {
+    const file = project.files.find((f) => f.id === project.entry);
+    return file?.content.kind === 'text' ? file.id : null;
+  }, [project]);
+  // `focus` is the focused file's id — the editor's Y.Text key.
+  const [focus, setFocus] = useState(() => entryId ?? textFiles[0]?.id ?? '');
 
   useEffect(() => {
     const ws = new WebsocketProvider(
@@ -87,13 +95,16 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   useEffect(() => {
     const sync = () => {
       const next: Record<string, string> = {};
-      for (const path of textPaths) next[path] = ydoc.getText(path).toString();
+      // Preview/compile is indexed by path, but the CRDT text is read by id.
+      for (const { id, path } of textFiles) {
+        next[path] = ydoc.getText(id).toString();
+      }
       setFiles(next);
     };
     sync();
     ydoc.on('update', sync);
     return () => ydoc.off('update', sync);
-  }, [ydoc, textPaths]);
+  }, [ydoc, textFiles]);
 
   return (
     <div className='relative flex h-screen'>
@@ -103,10 +114,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <Group orientation='horizontal'>
         <SidebarPanel
-          entry={entry}
+          entry={entryId}
+          files={textFiles}
           focus={focus}
           onSelect={setFocus}
-          paths={textPaths}
           sidebarPanelRef={sidebarPanelRef}
         />
         <Separator className='flex w-4 items-center justify-center'>
@@ -114,8 +125,8 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         </Separator>
         <EditorPanel
           editorPanelRef={editorPanelRef}
-          path={focus}
           provider={provider}
+          textId={focus}
           ydoc={ydoc}
         />
         <Separator className='flex w-4 items-center justify-center'>

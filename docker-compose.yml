@@ -1,0 +1,52 @@
+# Local backing services for development.
+#
+#   docker compose up -d
+#
+# Brings up MongoDB (the metadata store) and MinIO (content-addressed blob
+# storage), and provisions the `caduceus` bucket. Defaults line up with
+# `server/config/*.yaml` so a fresh checkout runs unconfigured.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: create the bucket, then exit. `--ignore-existing` makes it
+  # idempotent across restarts.
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for minio...'; sleep 1;
+      done;
+      mc mb --ignore-existing local/caduceus;
+      echo 'bucket ready';
+      "
+
+volumes:
+  mongo-data:
+  minio-data:

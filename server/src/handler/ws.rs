@@ -59,8 +59,10 @@ impl ResponseError for WebSocketError {
 /// single lib0 varint byte for values < 128, so the first byte identifies it.
 const MSG_AWARENESS: u8 = 1;
 
-/// A `(file_id, path, text)` triple used to hydrate a room from stored files.
-type FileSeed = (ObjectId, String, String);
+/// A `(file_id, text)` pair used to hydrate a room from stored files. The CRDT
+/// text root is keyed by the file's **id** (stable across renames), not its
+/// path, so renaming a file never detaches its buffer from its edit history.
+type FileSeed = (ObjectId, String);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -99,7 +101,7 @@ pub async fn ws(
         .files
         .into_iter()
         .filter_map(|file| match file.content {
-            FileContent::Text { text } => Some((file.id, file.path, text)),
+            FileContent::Text { text } => Some((file.id, text)),
             FileContent::Binary { .. } => None,
         })
         .collect();
@@ -281,9 +283,10 @@ struct RoomState {
     /// connection's cursor/presence can be retracted when it leaves instead
     /// of lingering as a ghost participant (see `handle_data`/`Leave`).
     client_owner: HashMap<ClientID, ObjectId>,
-    /// path -> file id, for writing text snapshots back to the right file.
+    /// text-root key (file id hex) -> file id, for writing snapshots back to
+    /// the right file.
     files: HashMap<String, ObjectId>,
-    /// Last text persisted per path, to skip unchanged files.
+    /// Last text persisted per text-root key, to skip unchanged files.
     last: HashMap<String, String>,
 }
 
@@ -295,13 +298,15 @@ impl RoomState {
         // parties both inserting the initial text (CRDT would merge those into
         // duplicated content).
         let mut files = HashMap::new();
-        for (id, path, text) in seed {
-            let root = doc.get_or_insert_text(path.as_str());
+        for (id, text) in seed {
+            // Key the text root by the file's id (hex) — stable across renames.
+            let key = id.to_hex();
+            let root = doc.get_or_insert_text(key.as_str());
             if !text.is_empty() {
                 let mut txn = doc.transact_mut();
                 root.insert(&mut txn, 0, &text);
             }
-            files.insert(path, id);
+            files.insert(key, id);
         }
         RoomState {
             awareness: Awareness::new(doc),
@@ -311,6 +316,30 @@ impl RoomState {
             last: HashMap::new(),
         }
     }
+}
+
+/// Retract a leaving connection's orphaned awareness state (cursor, presence)
+/// so peers drop it immediately instead of it lingering as a ghost
+/// participant. Returns the encoded awareness update to broadcast, or `None`
+/// if the connection didn't own any awareness client ids.
+fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>> {
+    let orphaned: Vec<_> = room
+        .client_owner
+        .iter()
+        .filter(|(_, owner)| **owner == conn_id)
+        .map(|(client_id, _)| *client_id)
+        .collect();
+    if orphaned.is_empty() {
+        return None;
+    }
+    for client_id in &orphaned {
+        room.client_owner.remove(client_id);
+        room.awareness.remove_state(*client_id);
+    }
+    room.awareness
+        .update_with_clients(orphaned)
+        .ok()
+        .map(|update| YMessage::Awareness(update).encode_v1())
 }
 
 /// Single-threaded owner of every room. Serves commands and periodically
@@ -350,21 +379,8 @@ async fn room_manager(
                             // leaving a ghost participant until the process
                             // restarts (the room itself is kept alive with no
                             // connections, see below).
-                            let orphaned: Vec<_> = room
-                                .client_owner
-                                .iter()
-                                .filter(|(_, owner)| **owner == conn_id)
-                                .map(|(client_id, _)| *client_id)
-                                .collect();
-                            if !orphaned.is_empty() {
-                                for client_id in &orphaned {
-                                    room.client_owner.remove(client_id);
-                                    room.awareness.remove_state(*client_id);
-                                }
-                                if let Ok(update) = room.awareness.update_with_clients(orphaned) {
-                                    let msg = YMessage::Awareness(update).encode_v1();
-                                    broadcast(room, conn_id, &msg);
-                                }
+                            if let Some(msg) = retract_connection(room, conn_id) {
+                                broadcast(room, conn_id, &msg);
                             }
 
                             if room.conns.is_empty() {
@@ -452,18 +468,18 @@ fn persist_room(project_id: ObjectId, room: &mut RoomState, repo: &MongoProjectR
         let txn = room.awareness.doc().transact();
         room.files
             .iter()
-            .filter_map(|(path, id)| {
-                txn.get_text(path.as_str())
-                    .map(|text| (path.clone(), *id, text.get_string(&txn)))
+            .filter_map(|(key, id)| {
+                txn.get_text(key.as_str())
+                    .map(|text| (key.clone(), *id, text.get_string(&txn)))
             })
             .collect()
     };
 
-    for (path, id, text) in snapshot {
-        if room.last.get(&path).is_some_and(|prev| prev == &text) {
+    for (key, id, text) in snapshot {
+        if room.last.get(&key).is_some_and(|prev| prev == &text) {
             continue;
         }
-        room.last.insert(path, text.clone());
+        room.last.insert(key, text.clone());
         let repo = repo.clone();
         // Snapshot is already taken (no document borrow held across the await),
         // so the write can run as its own task on this thread's LocalSet.
@@ -476,5 +492,184 @@ fn persist_room(project_id: ObjectId, room: &mut RoomState, repo: &MongoProjectR
                 warn!("WS persist failed in {}: {:?}", project_id.to_hex(), e);
             }
         });
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    fn insert_conn(room: &mut RoomState) -> (ObjectId, UnboundedReceiver<Vec<u8>>) {
+        let conn_id = ObjectId::new();
+        let (tx, rx) = mpsc::unbounded_channel();
+        room.conns.insert(conn_id, tx);
+        (conn_id, rx)
+    }
+
+    /// Encode a `Sync(Update(..))` frame as if it came from an independent
+    /// client doc that inserted `text` into `path` from an empty state.
+    fn doc_update_frame(path: &str, text: &str) -> Vec<u8> {
+        let doc = Doc::new();
+        let root = doc.get_or_insert_text(path);
+        {
+            let mut txn = doc.transact_mut();
+            root.insert(&mut txn, 0, text);
+        }
+        let update = doc
+            .transact()
+            .encode_state_as_update_v1(&yrs::StateVector::default());
+        YMessage::Sync(SyncMessage::Update(update)).encode_v1()
+    }
+
+    /// Encode an awareness frame as if it came from an independent client
+    /// reporting `state` as its local awareness JSON. Returns the client id
+    /// that frame carries alongside the encoded bytes.
+    fn awareness_frame(state: &str) -> (ClientID, Vec<u8>) {
+        let mut awareness = Awareness::new(Doc::new());
+        awareness.set_local_state_raw(state);
+        let client_id = awareness.client_id();
+        let update = awareness.update().expect("awareness update");
+        (client_id, YMessage::Awareness(update).encode_v1())
+    }
+
+    #[test]
+    fn test_room_state_new_seeds_text_and_files_map() {
+        let id_a = ObjectId::new();
+        let id_b = ObjectId::new();
+        let room = RoomState::new(vec![
+            (id_a, "hello".to_string()),
+            (id_b, String::new()),
+        ]);
+
+        // Text roots are keyed by the file id (hex), not the path.
+        let txn = room.awareness.doc().transact();
+        assert_eq!(
+            txn.get_text(id_a.to_hex().as_str()).unwrap().get_string(&txn),
+            "hello"
+        );
+        // Empty seed text still declares the root type, but must not insert
+        // any characters into it.
+        assert_eq!(
+            txn.get_text(id_b.to_hex().as_str()).unwrap().get_string(&txn),
+            ""
+        );
+        drop(txn);
+
+        assert_eq!(room.files.get(&id_a.to_hex()), Some(&id_a));
+        assert_eq!(room.files.get(&id_b.to_hex()), Some(&id_b));
+    }
+
+    #[test]
+    fn test_handle_data_broadcasts_doc_update_to_others_not_sender() {
+        let mut room = RoomState::new(vec![]);
+        let (conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+
+        let frame = doc_update_frame("a.typ", "hello");
+        handle_data(&mut room, conn_a, frame);
+
+        assert!(rx_a.try_recv().is_err());
+        let received = rx_b.try_recv().expect("broadcast to other connection");
+        match YMessage::decode_v1(&received) {
+            Ok(YMessage::Sync(SyncMessage::Update(_))) => {}
+            other => panic!("expected Sync(Update(..)), got {:?}", other),
+        }
+
+        let txn = room.awareness.doc().transact();
+        assert_eq!(txn.get_text("a.typ").unwrap().get_string(&txn), "hello");
+    }
+
+    #[test]
+    fn test_handle_data_sync_reply_goes_to_sender_only() {
+        let mut room = RoomState::new(vec![(ObjectId::new(), "hi".to_string())]);
+        let (conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+
+        let frame =
+            YMessage::Sync(SyncMessage::SyncStep1(yrs::StateVector::default())).encode_v1();
+        handle_data(&mut room, conn_a, frame);
+
+        let reply = rx_a.try_recv().expect("sync reply to sender");
+        match YMessage::decode_v1(&reply) {
+            Ok(YMessage::Sync(SyncMessage::SyncStep2(_))) => {}
+            other => panic!("expected Sync(SyncStep2(..)), got {:?}", other),
+        }
+        assert!(rx_b.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_handle_data_awareness_updates_client_owner_and_broadcasts() {
+        let mut room = RoomState::new(vec![]);
+        let (conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+
+        let (client_id, frame) = awareness_frame(r#"{"name":"a"}"#);
+        handle_data(&mut room, conn_a, frame.clone());
+
+        assert_eq!(room.client_owner.get(&client_id), Some(&conn_a));
+        assert!(rx_a.try_recv().is_err());
+        let received = rx_b.try_recv().expect("broadcast to other connection");
+        assert_eq!(received, frame);
+    }
+
+    #[test]
+    fn test_handle_data_no_broadcast_when_state_vector_unchanged() {
+        let mut room = RoomState::new(vec![]);
+        let (conn_a, mut rx_a) = insert_conn(&mut room);
+        let (_conn_b, mut rx_b) = insert_conn(&mut room);
+
+        let frame = doc_update_frame("a.typ", "hello");
+        handle_data(&mut room, conn_a, frame.clone());
+        rx_b.try_recv().expect("first broadcast for the real change");
+
+        // Re-applying the exact same update is a no-op against the doc's
+        // state vector, so it must not trigger a second broadcast.
+        handle_data(&mut room, conn_a, frame);
+        assert!(rx_a.try_recv().is_err());
+        assert!(rx_b.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_retract_connection_removes_owned_awareness_and_returns_retraction() {
+        let mut room = RoomState::new(vec![]);
+        let (conn_a, _rx_a) = insert_conn(&mut room);
+        let (_conn_b, _rx_b) = insert_conn(&mut room);
+
+        let (client_id, frame) = awareness_frame(r#"{"name":"a"}"#);
+        handle_data(&mut room, conn_a, frame);
+        assert_eq!(room.client_owner.get(&client_id), Some(&conn_a));
+
+        let retraction = retract_connection(&mut room, conn_a).expect("retraction message");
+
+        assert!(!room.client_owner.contains_key(&client_id));
+        assert!(room.awareness.state::<serde_json::Value>(client_id).is_none());
+
+        match YMessage::decode_v1(&retraction) {
+            Ok(YMessage::Awareness(update)) => {
+                let entry = update
+                    .clients
+                    .get(&client_id)
+                    .expect("retracted client entry present");
+                assert_eq!(entry.json.as_ref(), "null");
+            }
+            other => panic!("expected Awareness(..) retraction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_retract_connection_none_when_connection_owns_nothing() {
+        let mut room = RoomState::new(vec![]);
+        let (conn_a, _rx_a) = insert_conn(&mut room);
+        let (conn_b, _rx_b) = insert_conn(&mut room);
+
+        let (client_id, frame) = awareness_frame(r#"{"name":"b"}"#);
+        handle_data(&mut room, conn_b, frame);
+        assert_eq!(room.client_owner.get(&client_id), Some(&conn_b));
+
+        let result = retract_connection(&mut room, conn_a);
+
+        assert!(result.is_none());
+        assert_eq!(room.client_owner.get(&client_id), Some(&conn_b));
     }
 }

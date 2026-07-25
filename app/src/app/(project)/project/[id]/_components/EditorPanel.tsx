@@ -9,15 +9,15 @@ import { Editor } from './Editor';
 
 export interface EditorPanelProps {
   editorPanelRef: RefObject<null  | PanelImperativeHandle>;
-  path: string;
   provider: null | WebsocketProvider;
+  textId: string;
   ydoc: Y.Doc;
 }
 
 export function EditorPanel({
   editorPanelRef,
-  path,
   provider,
+  textId,
   ydoc,
 }: EditorPanelProps) {
   return (
@@ -29,7 +29,7 @@ export function EditorPanel({
       panelRef={editorPanelRef}
       style={{ overflow: 'auto' }}
     >
-      <Editor path={path} provider={provider} ydoc={ydoc} />
+      <Editor provider={provider} textId={textId} ydoc={ydoc} />
     </Panel>
   );
 }

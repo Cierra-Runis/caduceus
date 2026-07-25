@@ -31,9 +31,15 @@
   },
   "Dashboard": {
     "createProject": "プロジェクトを作成",
+    "duplicated": "プロジェクトが複製されました！",
+    "duplicationFailed": "複製に失敗しました",
+    "duplicationSucceeded": "複製が完了しました",
     "failedToLoad": "プロジェクトの読み込みに失敗しました",
     "noProjects": "プロジェクトがありません。まずは作成してみましょう！",
     "yourProjects": "あなたのプロジェクト"
+  },
+  "DownloadProject": {
+    "failed": "ダウンロードに失敗しました"
   },
   "Home": {
     "caduceus": "Caduceus",
@@ -168,6 +174,9 @@
       "name": "名前を入力してください"
     },
     "save": "保存",
-    "title": "プロジェクトを更新"
+    "title": "プロジェクトを更新",
+    "updated": "プロジェクトが更新されました！",
+    "updateFailed": "更新に失敗しました",
+    "updateSucceeded": "更新が完了しました"
   }
 }

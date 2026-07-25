@@ -11,9 +11,10 @@ import * as Y from 'yjs';
 import { Spinner } from '@/components/ui/spinner';
 
 export interface EditorProps {
-  /// Virtual-FS path of the file currently open in the editor.
-  path: string;
   provider: null | WebsocketProvider;
+  /// The focused file's **id** — the key of its `Y.Text` in the shared doc.
+  /// Keyed by id (not path) so a rename never detaches the buffer.
+  textId: string;
   ydoc: Y.Doc;
 }
 
@@ -21,7 +22,7 @@ export interface EditorProps {
 // file's `Y.Text` via y-monaco, so edits flow through the CRDT (and remote
 // cursors render from awareness). There is no controlled `value`: Yjs owns the
 // content. Typst syntax intelligence comes later with tinymist (M4).
-export function Editor({ path, provider, ydoc }: EditorProps) {
+export function Editor({ provider, textId, ydoc }: EditorProps) {
   const { resolvedTheme } = useTheme();
   const [instance, setInstance] = useState<editor.IStandaloneCodeEditor | null>(
     null,
@@ -32,16 +33,16 @@ export function Editor({ path, provider, ydoc }: EditorProps) {
   // destroying it on cleanup detaches before we bind the next file.
   useEffect(() => {
     const model = instance?.getModel();
-    if (!instance || !model || !provider || !path) return;
+    if (!instance || !model || !provider || !textId) return;
 
     const binding = new MonacoBinding(
-      ydoc.getText(path),
+      ydoc.getText(textId),
       model,
       new Set([instance]),
       provider.awareness,
     );
     return () => binding.destroy();
-  }, [instance, provider, ydoc, path]);
+  }, [instance, provider, ydoc, textId]);
 
   return (
     <MonacoEditor

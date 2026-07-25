@@ -31,9 +31,15 @@
   },
   "Dashboard": {
     "createProject": "新建项目",
+    "duplicated": "项目复制成功！",
+    "duplicationFailed": "复制失败",
+    "duplicationSucceeded": "复制成功",
     "failedToLoad": "加载项目失败",
     "noProjects": "你还没有项目。创建一个来开始吧！",
     "yourProjects": "你的项目"
+  },
+  "DownloadProject": {
+    "failed": "下载失败"
   },
   "Home": {
     "caduceus": "Caduceus",
@@ -168,6 +174,9 @@
       "name": "输入你的项目名称"
     },
     "save": "保存",
-    "title": "更新项目"
+    "title": "更新项目",
+    "updated": "项目更新成功！",
+    "updateFailed": "更新失败",
+    "updateSucceeded": "更新成功"
   }
 }

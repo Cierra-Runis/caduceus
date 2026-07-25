@@ -24,6 +24,8 @@ pub enum TeamServiceError {
     Database(mongodb::error::Error),
     #[display("Team not found")]
     TeamNotFound,
+    #[display("Access denied: You are not a member of this team")]
+    AccessDenied,
 }
 
 impl<R: TeamRepo, U: UserRepo, P: ProjectRepo> TeamService<R, U, P> {
@@ -55,12 +57,19 @@ impl<R: TeamRepo, U: UserRepo, P: ProjectRepo> TeamService<R, U, P> {
         Ok(team.into())
     }
 
+    /// List a team's projects. Only members may see them — team projects are
+    /// not public, so a valid login alone is not enough.
     pub async fn list_projects(
         &self,
         team_id: ObjectId,
+        user_id: ObjectId,
     ) -> Result<Vec<ProjectPayload>, TeamServiceError> {
         match self.team_repo.find_by_id(team_id).await {
-            Ok(Some(_)) => {}
+            Ok(Some(team)) => {
+                if !team.member_ids.contains(&user_id) {
+                    return Err(TeamServiceError::AccessDenied);
+                }
+            }
             Ok(None) => return Err(TeamServiceError::TeamNotFound),
             Err(e) => return Err(TeamServiceError::Database(e))?,
         };
@@ -81,6 +90,7 @@ impl<R: TeamRepo, U: UserRepo, P: ProjectRepo> TeamService<R, U, P> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
+    use crate::models::project::Project;
     use crate::models::user::User;
     use crate::repo::project::tests::MockProjectRepo;
     use crate::repo::{team::tests::MockTeamRepo, user::tests::MockUserRepo};
@@ -131,5 +141,86 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(TeamServiceError::UserNotFound)));
+    }
+
+    fn team_with_members(id: ObjectId, member_ids: Vec<ObjectId>) -> Team {
+        Team {
+            id,
+            name: "Test Team".to_string(),
+            avatar_uri: None,
+            creator_id: member_ids[0],
+            member_ids,
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    fn team_project(owner_id: ObjectId, creator_id: ObjectId) -> Project {
+        Project {
+            id: ObjectId::new(),
+            name: "Team Project".to_string(),
+            owner_id,
+            owner_type: OwnerType::Team,
+            creator_id,
+            files: vec![],
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+            entry: None,
+            pinned_version: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_projects_member_success() {
+        let member_id = ObjectId::new();
+        let team_id = ObjectId::new();
+
+        let service = TeamService {
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team_with_members(team_id, vec![member_id])]),
+            },
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![team_project(team_id, member_id)]),
+            },
+        };
+
+        let projects = service.list_projects(team_id, member_id).await.unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name, "Team Project");
+    }
+
+    #[tokio::test]
+    async fn test_list_projects_denied_for_non_member() {
+        let member_id = ObjectId::new();
+        let outsider_id = ObjectId::new();
+        let team_id = ObjectId::new();
+
+        let service = TeamService {
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo {
+                teams: Mutex::new(vec![team_with_members(team_id, vec![member_id])]),
+            },
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![team_project(team_id, member_id)]),
+            },
+        };
+
+        let result = service.list_projects(team_id, outsider_id).await;
+        assert!(matches!(result, Err(TeamServiceError::AccessDenied)));
+    }
+
+    #[tokio::test]
+    async fn test_list_projects_team_not_found() {
+        let service = TeamService {
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+            project_repo: MockProjectRepo::default(),
+        };
+
+        let result = service
+            .list_projects(ObjectId::new(), ObjectId::new())
+            .await;
+        assert!(matches!(result, Err(TeamServiceError::TeamNotFound)));
     }
 }

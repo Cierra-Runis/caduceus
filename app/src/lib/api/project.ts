@@ -19,6 +19,16 @@ export const CreateProjectResponseSchema = z.object({
   payload: ProjectSchema,
 });
 
+// Response for cloning a project (POST /project/{id}/duplicate): the new
+// project, owned the same way as the source, with the requester as creator.
+export type DuplicateProjectResponse = z.infer<
+  typeof DuplicateProjectResponseSchema
+>;
+export const DuplicateProjectResponseSchema = z.object({
+  message: z.string().trim(),
+  payload: ProjectSchema,
+});
+
 // Response for opening a single project in the editor (GET /project/{id}):
 // the detail payload with the full file tree and inlined content.
 export type ProjectDetailResponse = z.infer<typeof ProjectDetailResponseSchema>;
@@ -32,6 +42,14 @@ export const UpdateProjectRequestSchema = z.object({
   name: z.string().trim().nonempty('Project name is required'),
   owner_id: z.string().trim(),
   owner_type: z.enum(['team', 'user']),
+});
+
+// Response for updating a project's metadata (PUT /project/{id}): the project
+// with its new name/owner applied.
+export type UpdateProjectResponse = z.infer<typeof UpdateProjectResponseSchema>;
+export const UpdateProjectResponseSchema = z.object({
+  message: z.string().trim(),
+  payload: ProjectSchema,
 });
 
 // Persist a single file's text content (whole-buffer save). Returns the file's
