@@ -87,6 +87,10 @@ async fn main() -> io::Result<()> {
                             .route(
                                 "/file/{file_id}",
                                 web::put().to(handler::project::update_file),
+                            )
+                            .route(
+                                "/duplicate",
+                                web::post().to(handler::project::duplicate),
                             ),
                     )
                     .service(
