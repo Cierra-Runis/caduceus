@@ -27,8 +27,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                         )
                         .route("/duplicate", web::post().to(handler::project::duplicate))
                         // Binary blobs (images, fonts). The upload body is raw
-                        // bytes, so lift the default 256 KiB extractor cap.
-                        .app_data(web::PayloadConfig::new(16 * 1024 * 1024))
+                        // bytes; the default extractor cap is 256 KiB. For now
+                        // we don't cap uploads (revisit before production — an
+                        // unbounded in-memory body is a DoS foot-gun).
+                        .app_data(web::PayloadConfig::new(usize::MAX))
                         .route("/blobs", web::post().to(handler::blob::upload))
                         .route("/blobs/{sha}", web::get().to(handler::blob::download)),
                 )
