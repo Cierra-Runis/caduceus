@@ -3,31 +3,38 @@ import userEvent from '@testing-library/user-event';
 import { type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { TreeNode } from '@/lib/yjs/tree';
+
 import { SidebarPanel } from './SidebarPanel';
 
 // `Panel` needs a `PanelGroup` context (and ResizeObserver); this test only
-// cares about the file-list logic, so stub the container to a plain div.
+// cares about the tree logic, so stub the container to a plain div.
 vi.mock('react-resizable-panels', () => ({
   Panel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
-const files = [
-  { id: 'id-main', path: 'main.typ' },
-  { id: 'id-intro', path: 'chapters/intro.typ' },
+// A folder `chapters` holding `intro.typ`, plus a root-level `main.typ`.
+const nodes: TreeNode[] = [
+  { id: 'dir', kind: 'folder', name: 'chapters', parent: null },
+  { id: 'intro', kind: 'file', name: 'intro.typ', parent: 'dir' },
+  { id: 'main', kind: 'file', name: 'main.typ', parent: null },
 ];
 
-// Default no-op handlers; individual tests override what they assert on.
 function renderPanel(
   overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {},
 ) {
   return render(
     <SidebarPanel
       entry={null}
-      files={files}
       focus=''
+      nodes={nodes}
       onCreateFile={vi.fn(() => true)}
+      onCreateFolder={vi.fn(() => true)}
       onDelete={vi.fn()}
       onRename={vi.fn(() => true)}
       onSelect={vi.fn()}
@@ -38,46 +45,36 @@ function renderPanel(
 }
 
 describe('SidebarPanel', () => {
-  it('lists each file by its path', () => {
+  it('renders folders with their nested files', () => {
     renderPanel();
+    expect(screen.getByText('chapters')).toBeTruthy();
+    expect(screen.getByText('intro.typ')).toBeTruthy();
     expect(screen.getByText('main.typ')).toBeTruthy();
-    expect(screen.getByText('chapters/intro.typ')).toBeTruthy();
   });
 
-  it('selects by id, not path', async () => {
+  it('collapses a folder to hide its children', async () => {
+    renderPanel();
+    await userEvent.click(screen.getByRole('button', { name: 'chapters' }));
+    expect(screen.queryByText('intro.typ')).toBeNull();
+  });
+
+  it('selects a file but toggles a folder', async () => {
     const onSelect = vi.fn();
     renderPanel({ onSelect });
-    await userEvent.click(screen.getByText('chapters/intro.typ'));
-    expect(onSelect).toHaveBeenCalledWith('id-intro');
+    await userEvent.click(screen.getByRole('button', { name: 'main.typ' }));
+    expect(onSelect).toHaveBeenCalledWith('main');
+    await userEvent.click(screen.getByRole('button', { name: 'chapters' }));
+    expect(onSelect).toHaveBeenCalledTimes(1); // the folder click did not select
   });
 
-  it('marks the focused file (by id) with aria-current', () => {
-    renderPanel({ focus: 'id-intro' });
-    // Exact names pick the row buttons, not the "Rename/Delete <path>" ones.
-    expect(
-      screen
-        .getByRole('button', { name: 'chapters/intro.typ' })
-        .getAttribute('aria-current'),
-    ).toBe('true');
-    expect(
-      screen
-        .getByRole('button', { name: 'main.typ' })
-        .getAttribute('aria-current'),
-    ).toBeNull();
-  });
-
-  it('labels only the entry file', () => {
-    renderPanel({ entry: 'id-main' });
-    // The entry row's name is "main.typ entry"; the other stays exact.
+  it('labels the entry file', () => {
+    renderPanel({ entry: 'main' });
     expect(
       screen.getByRole('button', { name: /^main\.typ/ }).textContent,
     ).toContain('entry');
-    expect(
-      screen.getByRole('button', { name: 'chapters/intro.typ' }).textContent,
-    ).not.toContain('entry');
   });
 
-  it('creates a file from the new-file input on Enter', async () => {
+  it('creates a file at the root', async () => {
     const onCreateFile = vi.fn(() => true);
     renderPanel({ onCreateFile });
     await userEvent.click(screen.getByRole('button', { name: 'New file' }));
@@ -85,27 +82,72 @@ describe('SidebarPanel', () => {
       screen.getByPlaceholderText('file name'),
       'notes.typ{Enter}',
     );
-    expect(onCreateFile).toHaveBeenCalledWith('notes.typ');
+    expect(onCreateFile).toHaveBeenCalledWith('notes.typ', null);
   });
 
-  it('renames a file, seeding the input with its current name', async () => {
+  it('creates a file inside a folder', async () => {
+    const onCreateFile = vi.fn(() => true);
+    renderPanel({ onCreateFile });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'New file in chapters' }),
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText('file name'),
+      'part2.typ{Enter}',
+    );
+    expect(onCreateFile).toHaveBeenCalledWith('part2.typ', 'dir');
+  });
+
+  it('creates a folder at the root', async () => {
+    const onCreateFolder = vi.fn(() => true);
+    renderPanel({ onCreateFolder });
+    await userEvent.click(screen.getByRole('button', { name: 'New folder' }));
+    await userEvent.type(
+      screen.getByPlaceholderText('folder name'),
+      'assets{Enter}',
+    );
+    expect(onCreateFolder).toHaveBeenCalledWith('assets', null);
+  });
+
+  it('renames a node, seeding the input with its current name', async () => {
     const onRename = vi.fn(() => true);
     renderPanel({ onRename });
     await userEvent.click(
-      screen.getByRole('button', { name: 'Rename chapters/intro.typ' }),
+      screen.getByRole('button', { name: 'Rename intro.typ' }),
     );
     const input = screen.getByDisplayValue('intro.typ');
     await userEvent.clear(input);
     await userEvent.type(input, 'preface.typ{Enter}');
-    expect(onRename).toHaveBeenCalledWith('id-intro', 'preface.typ');
+    expect(onRename).toHaveBeenCalledWith('intro', 'preface.typ');
   });
 
-  it('deletes a file by id', async () => {
+  it('deletes a file without a confirm', async () => {
     const onDelete = vi.fn();
     renderPanel({ onDelete });
     await userEvent.click(
       screen.getByRole('button', { name: 'Delete main.typ' }),
     );
-    expect(onDelete).toHaveBeenCalledWith('id-main');
+    expect(onDelete).toHaveBeenCalledWith('main');
+  });
+
+  it('confirms before deleting a non-empty folder', async () => {
+    const onDelete = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPanel({ onDelete });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Delete chapters' }),
+    );
+    expect(confirm).toHaveBeenCalled();
+    expect(onDelete).toHaveBeenCalledWith('dir');
+  });
+
+  it('does not delete a folder when the confirm is dismissed', async () => {
+    const onDelete = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPanel({ onDelete });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Delete chapters' }),
+    );
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

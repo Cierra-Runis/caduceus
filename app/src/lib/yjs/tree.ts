@@ -65,18 +65,59 @@ export function createFile(
   return id;
 }
 
-/// Delete a file node and drop its text. Only files are removable here (deleting
-/// a folder would orphan its children — a later concern); throws otherwise.
-export function deleteFile(ydoc: Y.Doc, id: string): void {
-  const map = ydoc.getMap<Y.Map<unknown>>(NODES);
-  const node = map.get(id);
-  if (!(node instanceof Y.Map) || node.get('kind') !== 'file') {
-    throw new Error(`not a file: ${id}`);
-  }
+/// Create a new folder node under `parent` (null = root) and return its id.
+/// Throws if `name` is not a valid segment or collides with a sibling.
+export function createFolder(
+  ydoc: Y.Doc,
+  name: string,
+  parent: null | string,
+): string {
+  assertValidName(readNodes(ydoc), name, parent);
+  const id = newObjectId();
   ydoc.transact(() => {
-    map.delete(id);
-    const text = ydoc.getText(id);
-    if (text.length > 0) text.delete(0, text.length);
+    const node = new Y.Map<unknown>();
+    node.set('kind', 'folder');
+    node.set('name', name);
+    if (parent !== null) node.set('parent', parent);
+    ydoc.getMap<Y.Map<unknown>>(NODES).set(id, node);
+  });
+  return id;
+}
+
+/// Delete a node and its whole subtree: the node, every descendant, and each
+/// removed file's text. A file deletes just itself; a folder takes everything
+/// under it (recursively), so no child is ever left orphaned.
+export function deleteNode(ydoc: Y.Doc, id: string): void {
+  const nodes = readNodes(ydoc);
+  const target = nodes.find((node) => node.id === id);
+  if (!target) return;
+
+  const childrenOf = new Map<string, TreeNode[]>();
+  for (const node of nodes) {
+    if (node.parent !== null) {
+      const siblings = childrenOf.get(node.parent) ?? [];
+      siblings.push(node);
+      childrenOf.set(node.parent, siblings);
+    }
+  }
+
+  // Depth-first collect the subtree rooted at `target`.
+  const subtree: TreeNode[] = [];
+  const stack = [target];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    subtree.push(node);
+    stack.push(...(childrenOf.get(node.id) ?? []));
+  }
+
+  const map = ydoc.getMap<Y.Map<unknown>>(NODES);
+  ydoc.transact(() => {
+    for (const node of subtree) {
+      map.delete(node.id);
+      if (node.kind === 'file') {
+        const text = ydoc.getText(node.id);
+        if (text.length > 0) text.delete(0, text.length);
+      }
+    }
   });
 }
 

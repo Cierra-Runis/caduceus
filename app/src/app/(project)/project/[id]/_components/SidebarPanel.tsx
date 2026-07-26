@@ -1,23 +1,39 @@
 'use client';
 
-import { FileIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import { KeyboardEvent, RefObject, useState } from 'react';
+import {
+    ChevronRightIcon,
+    FileIcon,
+    FilePlusIcon,
+    FolderIcon,
+    FolderPlusIcon,
+    PencilIcon,
+    Trash2Icon,
+} from 'lucide-react';
+import {
+    KeyboardEvent,
+    ReactNode,
+    RefObject,
+    useMemo,
+    useState,
+} from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
 import { cn } from '@/lib/utils';
+import { TreeNode } from '@/lib/yjs/tree';
 
 export interface SidebarPanelProps {
   /// Id of the compile entry file, marked in the list. Null if none.
   entry: null | string;
-  /// The text files to list, as `{ id, path }` — selected/keyed by id, shown
-  /// by path.
-  files: { id: string; path: string }[];
   /// Id of the file currently open in the editor.
   focus: string;
-  /// Create a root-level file with this name; returns whether it succeeded (a
-  /// rejected name keeps the input open).
-  onCreateFile: (name: string) => boolean;
-  /// Delete the file with this id.
+  /// Every node (files and folders); the panel builds the tree from `parent`.
+  nodes: TreeNode[];
+  /// Create a file with this name under `parent` (null = root); returns whether
+  /// it succeeded (a rejected name keeps the input open).
+  onCreateFile: (name: string, parent: null | string) => boolean;
+  /// Create a folder with this name under `parent` (null = root).
+  onCreateFolder: (name: string, parent: null | string) => boolean;
+  /// Delete the node with this id (a folder takes its whole subtree).
   onDelete: (id: string) => void;
   /// Rename the node with this id; returns whether it succeeded.
   onRename: (id: string, name: string) => boolean;
@@ -25,20 +41,191 @@ export interface SidebarPanelProps {
   sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
+/// What the inline name input is currently for: creating a `kind` under
+/// `parent`, or renaming the node `id`.
+type Editing =
+  | { id: string; mode: 'rename' }
+  | { kind: 'file' | 'folder'; mode: 'create'; parent: null | string };
+
 export function SidebarPanel({
   entry,
-  files,
   focus,
+  nodes,
   onCreateFile,
+  onCreateFolder,
   onDelete,
   onRename,
   onSelect,
   sidebarPanelRef,
 }: SidebarPanelProps) {
-  // `creating` toggles the new-file input; `renamingId` marks which row is being
-  // renamed. Only one of the two is ever active.
-  const [creating, setCreating] = useState(false);
-  const [renamingId, setRenamingId] = useState<null | string>(null);
+  // A folder is expanded unless it is in `collapsed`, so a fresh tree shows
+  // everything. `editing` drives the single inline input (create or rename).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Editing | null>(null);
+
+  // Group nodes by parent, folders before files then by name, so the tree
+  // renders in a stable order.
+  const childrenOf = useMemo(() => {
+    const map = new Map<null | string, TreeNode[]>();
+    for (const node of nodes) {
+      const siblings = map.get(node.parent) ?? [];
+      siblings.push(node);
+      map.set(node.parent, siblings);
+    }
+    for (const siblings of map.values()) {
+      siblings.sort((a, b) =>
+        a.kind === b.kind
+          ? a.name.localeCompare(b.name)
+          : a.kind === 'folder'
+            ? -1
+            : 1,
+      );
+    }
+    return map;
+  }, [nodes]);
+
+  const expand = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  const toggle = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const startCreate = (parent: null | string, kind: 'file' | 'folder') => {
+    if (parent !== null) expand(parent);
+    setEditing({ kind, mode: 'create', parent });
+  };
+
+  const requestDelete = (node: TreeNode) => {
+    const hasChildren = (childrenOf.get(node.id)?.length ?? 0) > 0;
+    if (
+      hasChildren &&
+      !window.confirm(`Delete “${node.name}” and everything inside it?`)
+    ) {
+      return;
+    }
+    onDelete(node.id);
+  };
+
+  // Render the children of `parent` at indent `depth`, recursing into folders.
+  const renderChildren = (parent: null | string, depth: number): ReactNode => {
+    const rows: ReactNode[] = [];
+
+    if (editing?.mode === 'create' && editing.parent === parent) {
+      rows.push(
+        <li className='py-1' key='__new__' style={{ paddingLeft: pad(depth) }}>
+          <NameInput
+            onCancel={() => setEditing(null)}
+            onSubmit={(name) => {
+              const create =
+                editing.kind === 'folder' ? onCreateFolder : onCreateFile;
+              if (create(name, parent)) setEditing(null);
+            }}
+            placeholder={editing.kind === 'folder' ? 'folder name' : 'file name'}
+          />
+        </li>,
+      );
+    }
+
+    for (const node of childrenOf.get(parent) ?? []) {
+      const renaming = editing?.mode === 'rename' && editing.id === node.id;
+      if (renaming) {
+        rows.push(
+          <li className='py-1' key={node.id} style={{ paddingLeft: pad(depth) }}>
+            <NameInput
+              initial={node.name}
+              onCancel={() => setEditing(null)}
+              onSubmit={(name) => {
+                if (name === node.name || onRename(node.id, name)) {
+                  setEditing(null);
+                }
+              }}
+            />
+          </li>,
+        );
+        continue;
+      }
+
+      const isFolder = node.kind === 'folder';
+      const open = isFolder && !collapsed.has(node.id);
+      rows.push(
+        <li key={node.id}>
+          <div className='group flex items-center'>
+            <button
+              aria-current={node.id === focus ? 'true' : undefined}
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-1 py-1 pr-2 text-left text-sm',
+                node.id === focus ? 'bg-accent' : 'hover:bg-accent/50',
+              )}
+              onClick={() => (isFolder ? toggle(node.id) : onSelect(node.id))}
+              style={{ paddingLeft: pad(depth) }}
+            >
+              {isFolder ? (
+                <ChevronRightIcon
+                  className={cn(
+                    'size-3.5 shrink-0 opacity-60 transition-transform',
+                    open && 'rotate-90',
+                  )}
+                />
+              ) : (
+                <span className='w-3.5 shrink-0' />
+              )}
+              {isFolder ? (
+                <FolderIcon className='size-4 shrink-0 opacity-60' />
+              ) : (
+                <FileIcon className='size-4 shrink-0 opacity-60' />
+              )}
+              <span className='truncate'>{node.name}</span>
+              {node.id === entry && (
+                <span className='ml-auto text-xs opacity-50'>entry</span>
+              )}
+            </button>
+            <span
+              className={`
+                flex shrink-0 items-center pr-2 opacity-0
+                group-focus-within:opacity-100 group-hover:opacity-100
+              `}
+            >
+              {isFolder && (
+                <>
+                  <IconButton
+                    icon={<FilePlusIcon className='size-3.5' />}
+                    label={`New file in ${node.name}`}
+                    onClick={() => startCreate(node.id, 'file')}
+                  />
+                  <IconButton
+                    icon={<FolderPlusIcon className='size-3.5' />}
+                    label={`New folder in ${node.name}`}
+                    onClick={() => startCreate(node.id, 'folder')}
+                  />
+                </>
+              )}
+              <IconButton
+                icon={<PencilIcon className='size-3.5' />}
+                label={`Rename ${node.name}`}
+                onClick={() => setEditing({ id: node.id, mode: 'rename' })}
+              />
+              <IconButton
+                icon={<Trash2Icon className='size-3.5' />}
+                label={`Delete ${node.name}`}
+                onClick={() => requestDelete(node)}
+              />
+            </span>
+          </div>
+          {open && <ul>{renderChildren(node.id, depth + 1)}</ul>}
+        </li>,
+      );
+    }
+
+    return rows;
+  };
 
   return (
     <Panel
@@ -50,100 +237,45 @@ export function SidebarPanel({
     >
       <div className='flex items-center justify-between px-3 py-2'>
         <span className='text-xs font-medium opacity-60'>Files</span>
-        <button
-          aria-label='New file'
-          className='rounded-sm p-1 hover:bg-accent'
-          onClick={() => {
-            setRenamingId(null);
-            setCreating(true);
-          }}
-          title='New file'
-        >
-          <PlusIcon className='size-4' />
-        </button>
+        <span className='flex items-center'>
+          <IconButton
+            icon={<FilePlusIcon className='size-4' />}
+            label='New file'
+            onClick={() => startCreate(null, 'file')}
+          />
+          <IconButton
+            icon={<FolderPlusIcon className='size-4' />}
+            label='New folder'
+            onClick={() => startCreate(null, 'folder')}
+          />
+        </span>
       </div>
 
-      <ul className='flex flex-col pb-2'>
-        {creating && (
-          <li className='px-3 py-1'>
-            <NameInput
-              onCancel={() => setCreating(false)}
-              onSubmit={(name) => {
-                if (onCreateFile(name)) setCreating(false);
-              }}
-              placeholder='file name'
-            />
-          </li>
-        )}
-        {files.map(({ id, path }) =>
-          renamingId === id ? (
-            <li className='px-3 py-1' key={id}>
-              <NameInput
-                initial={basename(path)}
-                onCancel={() => setRenamingId(null)}
-                onSubmit={(name) => {
-                  if (name === basename(path) || onRename(id, name)) {
-                    setRenamingId(null);
-                  }
-                }}
-              />
-            </li>
-          ) : (
-            <li className='group flex items-center' key={id}>
-              <button
-                aria-current={id === focus ? 'true' : undefined}
-                className={cn(
-                  `flex min-w-0 flex-1 items-center gap-2 px-3 py-1 text-left
-                  text-sm`,
-                  id === focus ? 'bg-accent' : 'hover:bg-accent/50',
-                )}
-                onClick={() => onSelect(id)}
-              >
-                <FileIcon className='size-4 shrink-0 opacity-60' />
-                <span className='truncate'>{path}</span>
-                {id === entry && (
-                  <span className='ml-auto text-xs opacity-50'>entry</span>
-                )}
-              </button>
-              <span
-                className={`
-                  flex shrink-0 items-center pr-2 opacity-0
-                  group-focus-within:opacity-100 group-hover:opacity-100
-                `}
-              >
-                <button
-                  aria-label={`Rename ${path}`}
-                  className='rounded-sm p-1 hover:bg-accent'
-                  onClick={() => {
-                    setCreating(false);
-                    setRenamingId(id);
-                  }}
-                  title='Rename'
-                >
-                  <PencilIcon className='size-3.5' />
-                </button>
-                <button
-                  aria-label={`Delete ${path}`}
-                  className='rounded-sm p-1 hover:bg-accent'
-                  onClick={() => onDelete(id)}
-                  title='Delete'
-                >
-                  <Trash2Icon className='size-3.5' />
-                </button>
-              </span>
-            </li>
-          ),
-        )}
-      </ul>
+      <ul className='flex flex-col pb-2'>{renderChildren(null, 0)}</ul>
     </Panel>
   );
 }
 
-/// The last segment of a `/`-path — the node's own name, which is what a rename
-/// edits.
-function basename(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i === -1 ? path : path.slice(i + 1);
+/// A small hover-revealed icon button used for the row actions.
+function IconButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className='rounded-sm p-1 hover:bg-accent'
+      onClick={onClick}
+      title={label}
+    >
+      {icon}
+    </button>
+  );
 }
 
 /// A small inline text input for creating/renaming: submits its trimmed value on
@@ -178,4 +310,9 @@ function NameInput({
       value={value}
     />
   );
+}
+
+/// Indent (in px) for a row at tree `depth`.
+function pad(depth: number): number {
+  return depth * 12 + 8;
 }
