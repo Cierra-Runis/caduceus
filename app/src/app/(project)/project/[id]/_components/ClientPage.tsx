@@ -16,7 +16,7 @@ import { useProjectNodes } from '@/hooks/useProjectNodes';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
-import { createFile, createFolder, deleteNode, fileEntries, renameNode } from '@/lib/yjs/tree';
+import { createFile, createFolder, deleteNode, fileEntries, moveNode, renameNode } from '@/lib/yjs/tree';
 
 import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
@@ -111,6 +111,13 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       toast.error(error instanceof Error ? error.message : 'Could not delete');
     }
   };
+  const handleMove = (id: string, parent: null | string) => {
+    try {
+      moveNode(ydoc, id, parent);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move');
+    }
+  };
 
   useEffect(() => {
     const ws = new WebsocketProvider(
@@ -169,6 +176,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
           onDelete={handleDelete}
+          onMove={handleMove}
           onRename={handleRename}
           onSelect={setFocus}
           sidebarPanelRef={sidebarPanelRef}
