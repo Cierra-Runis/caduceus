@@ -3,7 +3,8 @@ import * as Y from 'yjs';
 
 import {
   createFile,
-  deleteFile,
+  createFolder,
+  deleteNode,
   fileEntries,
   isValidSegment,
   readNodes,
@@ -172,19 +173,47 @@ describe('renameNode', () => {
   });
 });
 
-describe('deleteFile', () => {
-  it('removes the node and clears its text', () => {
+describe('createFolder', () => {
+  it('adds a folder node and lets files nest under it', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    const file = createFile(doc, 'intro.typ', dir);
+    const nodes = readNodes(doc);
+    expect(nodes.find((n) => n.id === dir)?.kind).toBe('folder');
+    expect(fileEntries(nodes)).toEqual([
+      { id: file, path: 'chapters/intro.typ' },
+    ]);
+  });
+
+  it('rejects a folder whose name collides with a sibling', () => {
+    const doc = new Y.Doc();
+    createFolder(doc, 'chapters', null);
+    expect(() => createFolder(doc, 'chapters', null)).toThrow();
+  });
+});
+
+describe('deleteNode', () => {
+  it('removes a file and clears its text', () => {
     const doc = new Y.Doc();
     const id = createFile(doc, 'a.typ', null);
     doc.getText(id).insert(0, 'hello');
-    deleteFile(doc, id);
+    deleteNode(doc, id);
     expect(readNodes(doc)).toEqual([]);
     expect(doc.getText(id).toString()).toBe('');
   });
 
-  it('refuses to delete a folder', () => {
-    const doc = docWith([{ id: 'd', kind: 'folder', name: 'chapters' }]);
-    expect(() => deleteFile(doc, 'd')).toThrow();
-    expect(readNodes(doc)).toHaveLength(1);
+  it('deletes a folder together with its whole subtree', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    const sub = createFolder(doc, 'part1', dir);
+    const nested = createFile(doc, 'intro.typ', sub);
+    const outside = createFile(doc, 'main.typ', null);
+    doc.getText(nested).insert(0, 'body');
+
+    deleteNode(doc, dir);
+
+    // Only the file outside the folder survives; the subtree's text is gone.
+    expect(readNodes(doc).map((n) => n.id)).toEqual([outside]);
+    expect(doc.getText(nested).toString()).toBe('');
   });
 });

@@ -12,11 +12,11 @@ import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
-import { useFileTree } from '@/hooks/useFileTree';
+import { useProjectNodes } from '@/hooks/useProjectNodes';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
-import { createFile, deleteFile, renameNode } from '@/lib/yjs/tree';
+import { createFile, createFolder, deleteNode, fileEntries, renameNode } from '@/lib/yjs/tree';
 
 import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
@@ -52,8 +52,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   // The file tree comes from the shared CRDT `nodes` map (the server's
   // authority, seeded on cold start and synced over the provider), not the REST
   // payload — so structure edits propagate through Yjs like text does. Empty
-  // until the first sync arrives.
-  const textFiles = useFileTree(ydoc);
+  // until the first sync arrives. The sidebar renders the whole tree; everything
+  // else here only needs the files, with their derived paths.
+  const nodes = useProjectNodes(ydoc);
+  const textFiles = useMemo(() => fileEntries(nodes), [nodes]);
   // The compile entry is a project-level property (a file *id*), still carried
   // by the REST payload. Resolve it to a *path* against the CRDT-derived tree
   // (typst resolves imports/images by path).
@@ -73,14 +75,23 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   }, [textFiles, entryId, focus]);
 
   // File-tree edits write straight into the CRDT `nodes` map (and text roots);
-  // useFileTree re-renders the list, and the room persists it. Rejected names
-  // surface as a toast and keep the inline input open.
-  const handleCreateFile = (name: string): boolean => {
+  // useProjectNodes re-renders the tree, and the room persists it. Rejected
+  // names surface as a toast and keep the inline input open.
+  const handleCreateFile = (name: string, parent: null | string): boolean => {
     try {
-      setFocus(createFile(ydoc, name, null));
+      setFocus(createFile(ydoc, name, parent));
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not create file');
+      return false;
+    }
+  };
+  const handleCreateFolder = (name: string, parent: null | string): boolean => {
+    try {
+      createFolder(ydoc, name, parent);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not create folder');
       return false;
     }
   };
@@ -89,15 +100,15 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       renameNode(ydoc, id, name);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not rename file');
+      toast.error(error instanceof Error ? error.message : 'Could not rename');
       return false;
     }
   };
   const handleDelete = (id: string) => {
     try {
-      deleteFile(ydoc, id);
+      deleteNode(ydoc, id);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not delete file');
+      toast.error(error instanceof Error ? error.message : 'Could not delete');
     }
   };
 
@@ -153,9 +164,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <Group orientation='horizontal'>
         <SidebarPanel
           entry={entryId}
-          files={textFiles}
           focus={focus}
+          nodes={nodes}
           onCreateFile={handleCreateFile}
+          onCreateFolder={handleCreateFolder}
           onDelete={handleDelete}
           onRename={handleRename}
           onSelect={setFocus}
