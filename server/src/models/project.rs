@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bson::oid::ObjectId;
 use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use derive_more::Display;
@@ -6,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use time::serde::rfc3339;
+
+use crate::models::tree::{NodeId, ProjectionEntry};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Display)]
 pub enum OwnerType {
@@ -88,6 +92,13 @@ pub struct Project {
     /// policy). Defaulted when absent from an older stored document.
     #[serde(default)]
     pub settings: ProjectSettings,
+    /// The id-keyed projection of the CRDT file tree — a rebuildable cache the
+    /// collaboration room refreshes on persist (see `ProjectTree::projection`).
+    /// The authoritative structure is the Y.Doc snapshot; this mirrors it for
+    /// cheap metadata reads. Defaulted (empty) when absent from an older
+    /// document, and rebuilt on the next persist.
+    #[serde(default)]
+    pub tree: HashMap<NodeId, ProjectionEntry>,
 }
 
 /// A single node in the project's virtual file system.

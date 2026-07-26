@@ -168,6 +168,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         }
     }
 

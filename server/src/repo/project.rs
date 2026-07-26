@@ -45,10 +45,10 @@ pub trait ProjectRepo {
         project_id: ObjectId,
         settings: ProjectSettings,
     ) -> Result<Option<Project>>;
-    /// Overwrite a project's stored tree projection — the id-keyed cache of the
-    /// CRDT file tree, refreshed by the room on persist. The authoritative
-    /// structure lives in the Y.Doc snapshot; this is only the listing cache, so
-    /// it deliberately does not bump `updated_at`.
+    /// Overwrite a project's stored tree projection (`Project::tree`) — the
+    /// id-keyed cache of the CRDT file tree, refreshed by the room on persist.
+    /// The authoritative structure lives in the Y.Doc snapshot; this is only the
+    /// listing cache, so it deliberately does not bump `updated_at`.
     async fn update_tree(
         &self,
         project_id: ObjectId,
@@ -277,15 +277,45 @@ pub mod tests {
 
         async fn update_tree(
             &self,
-            _project_id: ObjectId,
-            _tree: HashMap<NodeId, ProjectionEntry>,
+            project_id: ObjectId,
+            tree: HashMap<NodeId, ProjectionEntry>,
         ) -> Result<()> {
-            // The mock doesn't store the projection; nothing reads it in tests.
+            let mut projects = self.projects.lock().unwrap();
+            if let Some(project) = projects.iter_mut().find(|p| p.id == project_id) {
+                project.tree = tree;
+            }
             Ok(())
         }
     }
 
     use crate::models::project::ProjectFile;
+
+    #[tokio::test]
+    async fn test_update_tree_persists_the_projection_on_the_field() {
+        use crate::models::tree::NodeContent;
+
+        let project_id = ObjectId::new();
+        let repo = MockProjectRepo {
+            projects: Mutex::new(vec![new_project(ObjectId::new(), OwnerType::User, vec![])]),
+        };
+        // Point the seeded project's id at a known value.
+        repo.projects.lock().unwrap()[0].id = project_id;
+
+        let mut tree = HashMap::new();
+        tree.insert(
+            "chapters".to_string(),
+            ProjectionEntry {
+                parent: None,
+                name: "chapters".to_string(),
+                path: "chapters".to_string(),
+                content: NodeContent::Folder,
+            },
+        );
+        repo.update_tree(project_id, tree.clone()).await.unwrap();
+
+        let stored = repo.find_by_id(project_id).await.unwrap().unwrap();
+        assert_eq!(stored.tree, tree);
+    }
 
     async fn test_repo() -> MongoProjectRepo {
         let config = config::Config::load("config/test.yaml").unwrap();
@@ -312,6 +342,7 @@ pub mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         }
     }
 

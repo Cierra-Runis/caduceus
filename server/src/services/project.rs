@@ -99,6 +99,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 entry: Some(entry_id),
                 pinned_version: None,
                 settings: ProjectSettings::default(),
+                tree: std::collections::HashMap::new(),
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -284,6 +285,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 entry,
                 pinned_version: source.pinned_version,
                 settings: source.settings,
+                tree: std::collections::HashMap::new(),
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -526,6 +528,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -558,6 +561,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -591,6 +595,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id, member_id]);
@@ -628,6 +633,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id]);
@@ -665,6 +671,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -701,6 +708,7 @@ mod tests {
             entry: Some(file_id),
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         }
     }
 
@@ -1065,6 +1073,7 @@ mod tests {
             entry: None,
             pinned_version: None,
             settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![original_creator_id, member_id]);
