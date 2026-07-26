@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use yrs::{
-    ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
+    Any, ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
     sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
     updates::decoder::Decode as _,
     updates::encoder::{Encode, Encoder, EncoderV1},
@@ -241,6 +241,14 @@ enum Command {
         project_id: ObjectId,
         conn_id: ObjectId,
     },
+    /// A persist cycle uploaded changed file text as blobs (async, off the room
+    /// thread); this brings the result back so the room can update each file
+    /// node's `blob` (sha256 / size) in the Y.Doc and broadcast it — keeping the
+    /// node's blob reference current with its edited text.
+    FlushBlobs {
+        project_id: ObjectId,
+        blobs: Vec<(String, Blob)>,
+    },
 }
 
 /// Handle to the collaboration subsystem, stored in actix app data. Cheap to
@@ -260,14 +268,19 @@ impl ProjectServer {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         // The room manager owns all `yrs` state on a dedicated thread running a
         // current-thread runtime + LocalSet, so the `!Send` documents never have
-        // to cross threads.
+        // to cross threads. It keeps a `cmd_tx` clone so a persist task can send
+        // itself the blob-flush result once the async upload finishes.
+        let manager_tx = cmd_tx.clone();
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("build room-manager runtime");
             let local = LocalSet::new();
-            local.block_on(&rt, room_manager(cmd_rx, project_repo, ws_config, store));
+            local.block_on(
+                &rt,
+                room_manager(cmd_rx, manager_tx, project_repo, ws_config, store),
+            );
         });
         ProjectServer { cmd_tx }
     }
@@ -408,6 +421,7 @@ fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>
 /// flushes text to MongoDB.
 async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
+    cmd_tx: UnboundedSender<Command>,
     repo: MongoProjectRepo,
     ws_config: WsConfig,
     store: ProjectStore,
@@ -457,8 +471,13 @@ async fn room_manager(
                                 // merges into DUPLICATED content. A reconnecting
                                 // client must re-sync against the SAME document.
                                 // Just persist now.
-                                persist_room(project_id, room, &repo, &store);
+                                persist_room(project_id, room, &repo, &store, &cmd_tx);
                             }
+                        }
+                    }
+                    Some(Command::FlushBlobs { project_id, blobs }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            apply_blobs(room, blobs);
                         }
                     }
                     None => break,
@@ -466,7 +485,7 @@ async fn room_manager(
             }
             _ = persist_tick.tick() => {
                 for (project_id, room) in rooms.iter_mut() {
-                    persist_room(*project_id, room, &repo, &store);
+                    persist_room(*project_id, room, &repo, &store, &cmd_tx);
                 }
             }
         }
@@ -622,6 +641,7 @@ fn persist_room(
     room: &mut RoomState,
     repo: &MongoProjectRepo,
     store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
 ) {
     if !room.dirty {
         return;
@@ -664,9 +684,14 @@ fn persist_room(
     }
     room.dirty = false;
 
-    // Phase 2 (async, no doc borrow): write to the durable stores.
+    // Phase 2 (async, no doc borrow): write to the durable stores. Each changed
+    // file's text is uploaded as a content-addressed blob and its text is also
+    // dual-written to Mongo (kept for REST during the migration). The resulting
+    // blobs are sent back as `FlushBlobs` so the room can refresh each file
+    // node's `blob` reference on the Y.Doc.
     let repo = repo.clone();
     let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
     tokio::task::spawn_local(async move {
         let pid = project_id.to_hex();
         if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
@@ -677,7 +702,14 @@ fn persist_room(
                 warn!("projection update failed in {pid}: {e:?}");
             }
         }
+        let mut flushed: Vec<(String, Blob)> = Vec::new();
         for (file_id, text) in changed {
+            // Blob first (write-before-reference): upload the bytes, then hand
+            // the hash back to be recorded on the node.
+            match store.put_blob(&pid, text.as_bytes()).await {
+                Ok(blob) => flushed.push((file_id.to_hex(), blob)),
+                Err(e) => warn!("blob flush failed in {pid}: {e:?}"),
+            }
             let size = text.len() as i64;
             if let Err(e) = repo
                 .update_file_content(project_id, file_id, FileContent::Text { text }, size)
@@ -686,7 +718,60 @@ fn persist_room(
                 warn!("text persist failed in {pid}: {e:?}");
             }
         }
+        if !flushed.is_empty() {
+            let _ = cmd_tx.send(Command::FlushBlobs {
+                project_id,
+                blobs: flushed,
+            });
+        }
     });
+}
+
+/// Update each named file node's `blob` (sha256 / size) in the Y.Doc to the
+/// freshly-flushed value, so the node reference tracks its edited text, and
+/// broadcast the change to every connection. A node whose blob already matches
+/// is left untouched (no spurious update). Runs on the room thread in response
+/// to a [`Command::FlushBlobs`].
+fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = doc.observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    {
+        let mut txn = doc.transact_mut();
+        for (id, blob) in blobs {
+            let Some(Out::YMap(node)) = nodes.get(&txn, &id) else {
+                continue;
+            };
+            // Skip if the node already carries this blob — avoids re-broadcasting
+            // the converged state on later persist cycles.
+            let unchanged = matches!(
+                node.get(&txn, "sha256"),
+                Some(Out::Any(Any::String(s))) if s.as_ref() == blob.sha256.as_str()
+            );
+            if unchanged {
+                continue;
+            }
+            node.insert(&mut txn, "sha256", blob.sha256);
+            node.insert(&mut txn, "size", blob.size as i64);
+        }
+    }
+    drop(subscription);
+
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    if !updates.is_empty() {
+        room.dirty = true;
+        for update in updates {
+            let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+            broadcast_all(room, &msg);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -956,6 +1041,61 @@ mod tests {
         reconcile_sibling_names(&mut room);
 
         // No clash, so no correction is sent.
+        assert!(rx_a.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_apply_blobs_updates_node_blob_and_broadcasts() {
+        // A file seeded with the stale placeholder blob; a flush bumps it to the
+        // freshly-uploaded sha/size and broadcasts to every connection.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hi".to_string(),
+            blob(),
+        )]);
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        let fresh = Blob {
+            sha256: "b".repeat(64),
+            size: 5,
+        };
+        apply_blobs(&mut room, vec![(key.clone(), fresh)]);
+
+        let nodes = nodes_map(room.awareness.doc());
+        let txn = room.awareness.doc().transact();
+        let node_blob = read_tree(&txn, &nodes).unwrap().get(&key).unwrap().blob().cloned();
+        assert_eq!(
+            node_blob,
+            Some(Blob {
+                sha256: "b".repeat(64),
+                size: 5
+            })
+        );
+
+        let received = rx_a.try_recv().expect("flush broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
+    }
+
+    #[test]
+    fn test_apply_blobs_is_a_noop_when_the_blob_is_unchanged() {
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hi".to_string(),
+            blob(),
+        )]);
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        // The node already carries `blob()`, so re-applying it changes nothing.
+        apply_blobs(&mut room, vec![(key, blob())]);
         assert!(rx_a.try_recv().is_err());
     }
 
