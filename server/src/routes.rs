@@ -25,7 +25,12 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                             "/file/{file_id}",
                             web::put().to(handler::project::update_file),
                         )
-                        .route("/duplicate", web::post().to(handler::project::duplicate)),
+                        .route("/duplicate", web::post().to(handler::project::duplicate))
+                        // Binary blobs (images, fonts). The upload body is raw
+                        // bytes, so lift the default 256 KiB extractor cap.
+                        .app_data(web::PayloadConfig::new(16 * 1024 * 1024))
+                        .route("/blobs", web::post().to(handler::blob::upload))
+                        .route("/blobs/{sha}", web::get().to(handler::blob::download)),
                 )
                 .service(
                     web::scope("/user")

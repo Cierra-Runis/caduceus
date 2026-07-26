@@ -38,6 +38,7 @@ function renderPanel(
       onDelete={vi.fn()}
       onRename={vi.fn(() => true)}
       onSelect={vi.fn()}
+      onUpload={vi.fn()}
       sidebarPanelRef={{ current: null }}
       {...overrides}
     />,

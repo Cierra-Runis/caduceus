@@ -13,10 +13,20 @@ import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
 import { useProjectNodes } from '@/hooks/useProjectNodes';
+import { uploadBlob } from '@/lib/api/blob';
 import { env } from '@/lib/env';
 import { ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
-import { createFile, createFolder, deleteNode, fileEntries, renameNode } from '@/lib/yjs/tree';
+import {
+    createBinaryFile,
+    createFile,
+    createFolder,
+    deleteNode,
+    fileEntries,
+    isBinaryPath,
+    readFileBlob,
+    renameNode,
+} from '@/lib/yjs/tree';
 
 import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
@@ -111,6 +121,35 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       toast.error(error instanceof Error ? error.message : 'Could not delete');
     }
   };
+  // Upload a binary file: send its bytes to the server, then create a file node
+  // referencing the returned blob (no text overlay).
+  const handleUpload = async (file: File) => {
+    try {
+      const { sha256, size } = await uploadBlob(
+        project.id,
+        await file.arrayBuffer(),
+      );
+      setFocus(createBinaryFile(ydoc, file.name, null, sha256, size));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not upload file');
+    }
+  };
+
+  // When the focused file is binary, the editor shows a preview instead of
+  // Monaco — opening it as text would create an overlay the server flushes over
+  // the blob. `nodes` in scope keeps this current as the blob is (re)synced.
+  const focusPath = textFiles.find((file) => file.id === focus)?.path ?? null;
+  const focusBlob =
+    focusPath && isBinaryPath(focusPath) ? readFileBlob(ydoc, focus) : undefined;
+  const binaryFile =
+    focusPath && focusBlob
+      ? {
+          path: focusPath,
+          projectId: project.id,
+          sha256: focusBlob.sha256,
+          size: focusBlob.size,
+        }
+      : null;
 
   useEffect(() => {
     const ws = new WebsocketProvider(
@@ -145,7 +184,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     const sync = () => {
       const next: Record<string, string> = {};
       // Preview/compile is indexed by path, but the CRDT text is read by id.
+      // Skip binary files: they have no text overlay, and calling getText would
+      // create one that the server then flushes empty over the blob.
       for (const { id, path } of textFiles) {
+        if (isBinaryPath(path)) continue;
         next[path] = ydoc.getText(id).toString();
       }
       setFiles(next);
@@ -171,12 +213,14 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           onDelete={handleDelete}
           onRename={handleRename}
           onSelect={setFocus}
+          onUpload={handleUpload}
           sidebarPanelRef={sidebarPanelRef}
         />
         <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
         </Separator>
         <EditorPanel
+          binary={binaryFile}
           editorPanelRef={editorPanelRef}
           provider={provider}
           textId={focus}

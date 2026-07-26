@@ -8,12 +8,14 @@ import {
     FolderPlusIcon,
     PencilIcon,
     Trash2Icon,
+    UploadIcon,
 } from 'lucide-react';
 import {
     KeyboardEvent,
     ReactNode,
     RefObject,
     useMemo,
+    useRef,
     useState,
 } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
@@ -38,6 +40,8 @@ export interface SidebarPanelProps {
   /// Rename the node with this id; returns whether it succeeded.
   onRename: (id: string, name: string) => boolean;
   onSelect: (id: string) => void;
+  /// Upload a picked file as a binary blob at the root.
+  onUpload: (file: File) => void;
   sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
@@ -56,12 +60,14 @@ export function SidebarPanel({
   onDelete,
   onRename,
   onSelect,
+  onUpload,
   sidebarPanelRef,
 }: SidebarPanelProps) {
   // A folder is expanded unless it is in `collapsed`, so a fresh tree shows
   // everything. `editing` drives the single inline input (create or rename).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   // Group nodes by parent, folders before files then by name, so the tree
   // renders in a stable order.
@@ -247,6 +253,21 @@ export function SidebarPanel({
             icon={<FolderPlusIcon className='size-4' />}
             label='New folder'
             onClick={() => startCreate(null, 'folder')}
+          />
+          <IconButton
+            icon={<UploadIcon className='size-4' />}
+            label='Upload file'
+            onClick={() => fileInput.current?.click()}
+          />
+          <input
+            className='hidden'
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onUpload(file);
+              event.target.value = ''; // allow re-picking the same file
+            }}
+            ref={fileInput}
+            type='file'
           />
         </span>
       </div>

@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import {
+  createBinaryFile,
   createFile,
   createFolder,
   deleteNode,
   fileEntries,
+  isBinaryPath,
   isValidSegment,
+  readFileBlob,
   readNodes,
   renameNode,
   TreeNode,
@@ -215,5 +218,36 @@ describe('deleteNode', () => {
     // Only the file outside the folder survives; the subtree's text is gone.
     expect(readNodes(doc).map((n) => n.id)).toEqual([outside]);
     expect(doc.getText(nested).toString()).toBe('');
+  });
+});
+
+describe('isBinaryPath', () => {
+  it('recognises image and font extensions, case-insensitively', () => {
+    for (const p of ['logo.png', 'a/b/pic.JPG', 'font.woff2', 'doc.pdf']) {
+      expect(isBinaryPath(p)).toBe(true);
+    }
+  });
+
+  it('treats source files as text', () => {
+    for (const p of ['main.typ', 'refs.bib', 'notes', 'a.svg']) {
+      expect(isBinaryPath(p)).toBe(false);
+    }
+  });
+});
+
+describe('createBinaryFile', () => {
+  it('creates a file node with the blob but no text root', () => {
+    const doc = new Y.Doc();
+    const id = createBinaryFile(doc, 'logo.png', null, 'f'.repeat(64), 1234);
+    expect(fileEntries(readNodes(doc))).toEqual([{ id, path: 'logo.png' }]);
+    expect(readFileBlob(doc, id)).toEqual({ sha256: 'f'.repeat(64), size: 1234 });
+    // No text overlay was declared — the id is not a top-level shared type.
+    expect(doc.share.has(id)).toBe(false);
+  });
+
+  it('rejects a name that collides with a sibling', () => {
+    const doc = new Y.Doc();
+    createFile(doc, 'logo.png', null);
+    expect(() => createBinaryFile(doc, 'logo.png', null, 'a'.repeat(64), 1)).toThrow();
   });
 });

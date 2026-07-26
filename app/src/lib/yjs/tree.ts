@@ -41,6 +41,31 @@ export interface TreeNode {
   parent: null | string;
 }
 
+/// Create a binary file node (image, font, …) referencing an already-uploaded
+/// blob, under `parent` (null = root). Unlike [`createFile`] it declares **no**
+/// text root: a binary file has no text overlay, so the server never flushes
+/// text over its blob. Throws on an invalid or duplicate name.
+export function createBinaryFile(
+  ydoc: Y.Doc,
+  name: string,
+  parent: null | string,
+  sha256: string,
+  size: number,
+): string {
+  assertValidName(readNodes(ydoc), name, parent);
+  const id = newObjectId();
+  ydoc.transact(() => {
+    const node = new Y.Map<unknown>();
+    node.set('kind', 'file');
+    node.set('name', name);
+    if (parent !== null) node.set('parent', parent);
+    node.set('sha256', sha256);
+    node.set('size', size);
+    ydoc.getMap<Y.Map<unknown>>(NODES).set(id, node);
+  });
+  return id;
+}
+
 /// Create a new file node (and its empty text root) under `parent` (null = root)
 /// and return its id. Throws if `name` is not a valid segment or collides with a
 /// sibling.
@@ -134,6 +159,20 @@ export function fileEntries(nodes: TreeNode[]): FileEntry[] {
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/// Extensions the editor treats as binary — content that is a blob, not editable
+/// text, so it is never opened in the code editor (which would create a text
+/// overlay and let the server flush empty text over the blob).
+const BINARY_EXTENSIONS = new Set([
+  'avif', 'bmp', 'gif', 'ico', 'jpeg', 'jpg', 'otf', 'pdf', 'png',
+  'ttf', 'webp', 'woff', 'woff2',
+]);
+
+/// Whether `path` names a binary file, by extension.
+export function isBinaryPath(path: string): boolean {
+  const dot = path.lastIndexOf('.');
+  return dot !== -1 && BINARY_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+}
+
 /// Whether `name` is a legal single path segment, matching the server's
 /// `is_valid_segment`: non-empty, ≤ MAX_NAME_LEN bytes, not `.`/`..`, no `/` or
 /// `\`, no control characters, and no leading/trailing whitespace.
@@ -148,6 +187,20 @@ export function isValidSegment(name: string): boolean {
     !/\p{Cc}/u.test(name) &&
     name.trim() === name
   );
+}
+
+/// The blob a file node references (its uploaded bytes), or `undefined` for a
+/// folder or a not-yet-synced node. Used to fetch a binary file's content.
+export function readFileBlob(
+  ydoc: Y.Doc,
+  id: string,
+): { sha256: string; size: number } | undefined {
+  const node = ydoc.getMap<Y.Map<unknown>>(NODES).get(id);
+  if (!(node instanceof Y.Map)) return undefined;
+  const sha256 = node.get('sha256');
+  if (typeof sha256 !== 'string') return undefined;
+  const size = node.get('size');
+  return { sha256, size: typeof size === 'number' ? size : 0 };
 }
 
 /// Decode the `nodes` map of a project Y.Doc into plain nodes. Entries missing
