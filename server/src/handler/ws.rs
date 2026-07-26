@@ -26,14 +26,14 @@ use yrs::{
 };
 
 use crate::config::WsConfig;
-use crate::crdt::snapshot::{encode_doc, load_snapshot_bytes, save_snapshot_bytes};
+use crate::crdt::snapshot::encode_doc;
 use crate::crdt::{nodes_map, read_tree, seed::nodes_from_files, write_tree};
 use crate::models::project::FileContent;
 use crate::models::response::ApiResponse;
 use crate::models::tree::ProjectTree;
 use crate::models::user::UserClaims;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
-use crate::storage::{Blob, ObjectStore};
+use crate::storage::{Blob, ProjectStore};
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -83,7 +83,7 @@ pub async fn ws(
     data: actix_web::web::Data<crate::AppState>,
     project_server: web::Data<ProjectServer>,
     ws_config: web::Data<WsConfig>,
-    store: web::Data<Arc<dyn ObjectStore>>,
+    store: web::Data<ProjectStore>,
     user: UserClaims,
 ) -> Result<HttpResponse, WebSocketError> {
     let project_id =
@@ -111,17 +111,14 @@ pub async fn ws(
     // sync against the already-live document. Prefer restoring from the last
     // Y.Doc snapshot; otherwise seed a fresh doc from the stored files, uploading
     // each text as a blob first so its file node references bytes that exist.
-    // (`web::Data<Arc<dyn _>>` derefs to `Arc<dyn _>`, hence `&***`.)
-    let store: &dyn ObjectStore = &***store;
-    let snapshot = load_snapshot_bytes(store, &project_id.to_hex())
-        .await
-        .ok()
-        .flatten();
+    let store: &ProjectStore = store.get_ref();
+    let project_hex = project_id.to_hex();
+    let snapshot = store.get_snapshot(&project_hex).await.ok().flatten();
     let mut seed: Vec<SeedFile> = Vec::new();
     if snapshot.is_none() {
         for file in project.files {
             if let FileContent::Text { text } = file.content {
-                match store.put(text.as_bytes()).await {
+                match store.put_blob(&project_hex, text.as_bytes()).await {
                     Ok(blob) => seed.push((file.id, file.path, text, blob)),
                     Err(e) => warn!("seed blob upload failed for {}: {e:?}", file.id.to_hex()),
                 }
@@ -258,7 +255,7 @@ impl ProjectServer {
     pub fn new(
         project_repo: MongoProjectRepo,
         ws_config: WsConfig,
-        store: Arc<dyn ObjectStore>,
+        store: ProjectStore,
     ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         // The room manager owns all `yrs` state on a dedicated thread running a
@@ -413,7 +410,7 @@ async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
     repo: MongoProjectRepo,
     ws_config: WsConfig,
-    store: Arc<dyn ObjectStore>,
+    store: ProjectStore,
 ) {
     let mut rooms: HashMap<ObjectId, RoomState> = HashMap::new();
     let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
@@ -624,7 +621,7 @@ fn persist_room(
     project_id: ObjectId,
     room: &mut RoomState,
     repo: &MongoProjectRepo,
-    store: &Arc<dyn ObjectStore>,
+    store: &ProjectStore,
 ) {
     if !room.dirty {
         return;
@@ -672,7 +669,7 @@ fn persist_room(
     let store = store.clone();
     tokio::task::spawn_local(async move {
         let pid = project_id.to_hex();
-        if let Err(e) = save_snapshot_bytes(&*store, &pid, &snapshot_bytes).await {
+        if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
             warn!("snapshot save failed in {pid}: {e:?}");
         }
         if let Some(projection) = projection {

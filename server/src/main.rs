@@ -8,7 +8,7 @@ use server::{
     handler::ws::ProjectServer,
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     services::{project::ProjectService, team::TeamService, user::UserService},
-    storage::{InMemoryObjectStore, MinioObjectStore, ObjectStore},
+    storage::{InMemoryObjectStore, MinioObjectStore, ObjectStore, ProjectStore},
 };
 use std::{env, io, sync::Arc};
 use tracing_subscriber::fmt;
@@ -55,10 +55,11 @@ async fn main() -> io::Result<()> {
         },
     });
 
-    // Object storage for content-addressed blobs and Y.Doc snapshots. Falls back
-    // to an in-memory store when unconfigured so a checkout runs; production
-    // configures MinIO/S3 via `storage` in the config.
-    let store: Arc<dyn ObjectStore> = match &config.storage {
+    // Object storage for a project's blobs and Y.Doc snapshot, laid out under
+    // `projects/{id}/...`. Falls back to an in-memory backend when unconfigured
+    // so a checkout runs; production configures MinIO/S3 via `storage` in the
+    // config. `ProjectStore` owns the key layout on top of the raw backend.
+    let backend: Arc<dyn ObjectStore> = match &config.storage {
         Some(cfg) => Arc::new(
             MinioObjectStore::new(
                 &cfg.endpoint,
@@ -71,6 +72,7 @@ async fn main() -> io::Result<()> {
         ),
         None => Arc::new(InMemoryObjectStore::new()),
     };
+    let store = ProjectStore::new(backend);
 
     // Create ProjectServer instance (actor-less implementation). It owns a repo
     // handle and the object store so collaboration rooms can persist the CRDT

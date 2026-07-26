@@ -1,19 +1,20 @@
 //! Persisting a project's Y.Doc as a snapshot in object storage.
 //!
 //! The whole CRDT state is encoded as a single yrs update and written to the
-//! **mutable, named** key `ydoc/{project_id}`, overwritten on each save — as
-//! opposed to the immutable content-addressed `blobs/{sha}`. Loading rebuilds a
-//! `Doc` by applying that update onto an empty one.
+//! project's snapshot object (`projects/{project_id}/ydoc`, see
+//! [`ProjectStore`]), overwritten on each save. Loading rebuilds a `Doc` by
+//! applying that update onto an empty one.
 //!
 //! This is the durable source of truth for a room's CRDT state: a room rehydrates
 //! from its snapshot on cold start (rather than re-seeding from text, which would
 //! duplicate content), and the Mongo projection is a rebuildable cache derived
-//! from it.
+//! from it. This module owns only the yrs encode/decode; where the bytes live is
+//! [`ProjectStore`]'s concern.
 
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
-use crate::storage::{ObjectStore, StorageError};
+use crate::storage::{ProjectStore, StorageError};
 
 /// A snapshot couldn't be persisted or restored.
 #[derive(Debug, derive_more::Display)]
@@ -33,75 +34,60 @@ impl From<StorageError> for SnapshotError {
     }
 }
 
-/// Object key for a project's Y.Doc snapshot.
-fn snapshot_key(project_id: &str) -> String {
-    format!("ydoc/{project_id}")
-}
-
-/// Save pre-encoded snapshot bytes (see [`encode_doc`]) — for callers that
-/// encode the Doc themselves (e.g. a room persist loop, where the `!Send` Doc
-/// can't cross into the async write).
-pub async fn save_snapshot_bytes(
-    store: &dyn ObjectStore,
-    project_id: &str,
-    bytes: &[u8],
-) -> Result<(), SnapshotError> {
-    store.put_object(&snapshot_key(project_id), bytes).await?;
-    Ok(())
-}
-
-/// Fetch a project's raw snapshot bytes (a yrs update), or `None` if it has no
-/// snapshot yet. The bytes can be applied to a fresh Doc directly.
-pub async fn load_snapshot_bytes(
-    store: &dyn ObjectStore,
-    project_id: &str,
-) -> Result<Option<Vec<u8>>, SnapshotError> {
-    Ok(store.get_object(&snapshot_key(project_id)).await?)
-}
-
-/// Encode the full CRDT state of `doc` as a single v1 update.
+/// Encode the full CRDT state of `doc` as a single v1 update. Callers that hold
+/// a `!Send` `Doc` encode it themselves (e.g. a room persist loop) and hand the
+/// bytes to [`ProjectStore::put_snapshot`].
 pub fn encode_doc(doc: &Doc) -> Vec<u8> {
     doc.transact()
         .encode_state_as_update_v1(&StateVector::default())
 }
 
-/// Save `doc`'s full state to `ydoc/{project_id}`, replacing any prior snapshot.
+/// Decode raw snapshot bytes (a yrs v1 update) into a fresh `Doc`. Errors only
+/// if the bytes are corrupt.
+pub fn decode_doc(bytes: &[u8]) -> Result<Doc, SnapshotError> {
+    let update = Update::decode_v1(bytes).map_err(|e| SnapshotError::Decode(e.to_string()))?;
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(update)
+        .map_err(|e| SnapshotError::Decode(e.to_string()))?;
+    Ok(doc)
+}
+
+/// Save `doc`'s full state as `project_id`'s snapshot, replacing any prior one.
 pub async fn save_snapshot(
-    store: &dyn ObjectStore,
+    store: &ProjectStore,
     project_id: &str,
     doc: &Doc,
 ) -> Result<(), SnapshotError> {
-    store
-        .put_object(&snapshot_key(project_id), &encode_doc(doc))
-        .await?;
+    store.put_snapshot(project_id, &encode_doc(doc)).await?;
     Ok(())
 }
 
 /// Load a project's `Doc` from its snapshot, or `None` if it has none yet (a
 /// brand-new project). Errors only if a snapshot exists but is corrupt.
 pub async fn load_snapshot(
-    store: &dyn ObjectStore,
+    store: &ProjectStore,
     project_id: &str,
 ) -> Result<Option<Doc>, SnapshotError> {
-    let Some(bytes) = store.get_object(&snapshot_key(project_id)).await? else {
+    let Some(bytes) = store.get_snapshot(project_id).await? else {
         return Ok(None);
     };
-    let update =
-        Update::decode_v1(&bytes).map_err(|e| SnapshotError::Decode(e.to_string()))?;
-    let doc = Doc::new();
-    doc.transact_mut()
-        .apply_update(update)
-        .map_err(|e| SnapshotError::Decode(e.to_string()))?;
-    Ok(Some(doc))
+    Ok(Some(decode_doc(&bytes)?))
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use std::sync::Arc;
+
     use super::super::{nodes_map, read_tree, write_tree};
     use super::*;
     use crate::models::tree::{Node, NodeContent, ProjectTree};
     use crate::storage::{Blob, InMemoryObjectStore};
+
+    fn store() -> ProjectStore {
+        ProjectStore::new(Arc::new(InMemoryObjectStore::new()))
+    }
 
     fn sample_tree() -> ProjectTree {
         ProjectTree::from_nodes([
@@ -127,7 +113,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_then_load_reconstructs_the_tree() {
-        let store = InMemoryObjectStore::new();
+        let store = store();
         let tree = sample_tree();
 
         // Build a doc holding the tree, snapshot it.
@@ -150,14 +136,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_missing_snapshot_is_none() {
-        let store = InMemoryObjectStore::new();
+        let store = store();
         assert!(load_snapshot(&store, "never-saved").await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn test_corrupt_snapshot_is_a_decode_error() {
-        let store = InMemoryObjectStore::new();
-        store.put_object("ydoc/proj1", b"not a yrs update").await.unwrap();
+        let store = store();
+        store.put_snapshot("proj1", b"not a yrs update").await.unwrap();
         assert!(matches!(
             load_snapshot(&store, "proj1").await,
             Err(SnapshotError::Decode(_))
