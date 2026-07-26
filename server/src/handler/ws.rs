@@ -360,6 +360,10 @@ struct RoomState {
     /// periodic persist tick never flushes on its own — the client's
     /// `files.autoSave` policy decides *when* via `ProjectServer::flush`.
     blobs_pending: bool,
+    /// When the room fell to zero connections, or `None` while occupied. A room
+    /// idle past `room_idle_secs` is evicted from memory (freeing RAM); the next
+    /// joiner rebuilds it verbatim from the snapshot.
+    empty_since: Option<Instant>,
 }
 
 impl RoomState {
@@ -381,6 +385,7 @@ impl RoomState {
             last: HashMap::new(),
             dirty: false, // the snapshot we loaded is already durable
             blobs_pending: false,
+            empty_since: Some(Instant::now()),
         }
     }
 
@@ -419,6 +424,7 @@ impl RoomState {
             // Seed blobs already match their seeded text; nothing to flush until
             // an edit drifts a file from its blob.
             blobs_pending: false,
+            empty_since: Some(Instant::now()),
         }
     }
 }
@@ -462,6 +468,10 @@ async fn room_manager(
     let mut gc_pending: HashMap<ObjectId, HashSet<String>> = HashMap::new();
     let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
     let mut gc_tick = interval(Duration::from_secs(ws_config.gc_interval_secs));
+    let room_idle = Duration::from_secs(ws_config.room_idle_secs);
+    // Check for idle, evictable rooms on the GC cadence (both are lazy space/RAM
+    // reclamation, so they can share a slow tick).
+    let mut evict_tick = interval(Duration::from_secs(ws_config.gc_interval_secs));
 
     loop {
         tokio::select! {
@@ -478,6 +488,7 @@ async fn room_manager(
                             let _ = out.send(encoder.to_vec());
                         }
                         room.conns.insert(conn_id, out);
+                        room.empty_since = None; // occupied again
                     }
                     Some(Command::Data { project_id, conn_id, data }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
@@ -498,15 +509,16 @@ async fn room_manager(
                             }
 
                             if room.conns.is_empty() {
-                                // Keep the room (and its CRDT document) in memory
-                                // even with no connections. Re-deriving the doc
-                                // from text on every (re)join produces independent
-                                // insertions of the same characters, which the CRDT
-                                // merges into DUPLICATED content. A reconnecting
-                                // client must re-sync against the SAME document.
-                                // Just persist now, forcing a blob flush — the
-                                // room is emptying, so there is no later settle
-                                // to catch the final edits.
+                                // The room stays in memory for now; only after it
+                                // sits idle past `room_idle_secs` is it evicted
+                                // (see the evict tick). Until then a reconnecting
+                                // client re-syncs against the SAME live document —
+                                // re-deriving a doc from text would re-insert the
+                                // same characters and the CRDT would merge them
+                                // into DUPLICATED content. Mark the idle clock and
+                                // persist now, forcing a blob flush (no later
+                                // settle will catch the final edits).
+                                room.empty_since = Some(Instant::now());
                                 persist_room(project_id, room, &repo, &store, &cmd_tx, true);
                             }
                         }
@@ -540,6 +552,27 @@ async fn room_manager(
                 for (project_id, room) in rooms.iter() {
                     let prev = gc_pending.get(project_id).cloned().unwrap_or_default();
                     gc_room(*project_id, room, &store, &cmd_tx, prev);
+                }
+            }
+            _ = evict_tick.tick() => {
+                // Persist and drop rooms idle (no connections) past the threshold,
+                // reclaiming their in-memory document. Safe because the next
+                // joiner rebuilds the room verbatim from the snapshot — a
+                // reconnecting client still meets a byte-identical document.
+                let stale: Vec<ObjectId> = rooms
+                    .iter()
+                    .filter(|(_, room)| {
+                        room.empty_since
+                            .is_some_and(|since| since.elapsed() >= room_idle)
+                    })
+                    .map(|(id, _)| *id)
+                    .collect();
+                for project_id in stale {
+                    if let Some(room) = rooms.get_mut(&project_id) {
+                        persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                    }
+                    rooms.remove(&project_id);
+                    gc_pending.remove(&project_id);
                 }
             }
         }
@@ -1361,6 +1394,39 @@ mod tests {
                 assert!(store.get_blob(&pid, &hi.sha256).await.unwrap().is_some());
             })
             .await;
+    }
+
+    #[test]
+    fn test_snapshot_round_trip_rebuilds_the_same_document() {
+        // Idle eviction persists a snapshot and drops the room; a rejoin
+        // rebuilds it via `from_snapshot`. The rebuild must be the *same*
+        // document (text + tree), so a reconnecting client re-syncs without the
+        // CRDT re-inserting — and duplicating — content.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hello".to_string(),
+            blob(),
+        )]);
+
+        let snapshot = encode_doc(room.awareness.doc());
+        let restored = RoomState::from_snapshot(&snapshot);
+
+        let doc = restored.awareness.doc();
+        // `nodes_map` opens its own transaction, so resolve it *before* holding
+        // the read txn below — grabbing both at once would deadlock the doc.
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        assert_eq!(
+            txn.get_text(key.as_str()).unwrap().get_string(&txn),
+            "hello"
+        );
+        let tree = read_tree(&txn, &nodes).unwrap();
+        assert_eq!(tree.get(&key).unwrap().name, "main.typ");
+        // A freshly restored, unoccupied room is again a candidate for eviction.
+        assert!(restored.empty_since.is_some());
     }
 
     #[test]

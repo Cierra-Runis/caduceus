@@ -29,6 +29,12 @@ pub struct WsConfig {
     /// deleted (a grace window against the upload-then-reference gap).
     #[serde(default = "WsConfig::default_gc_interval_secs")]
     pub gc_interval_secs: u64,
+    /// Seconds a room may sit with no connections before it is evicted from
+    /// memory (after a final persist). The next joiner rebuilds it verbatim from
+    /// the snapshot, so eviction only reclaims RAM — a reconnecting client still
+    /// syncs against a byte-identical document.
+    #[serde(default = "WsConfig::default_room_idle_secs")]
+    pub room_idle_secs: u64,
 }
 
 impl WsConfig {
@@ -44,6 +50,9 @@ impl WsConfig {
     fn default_gc_interval_secs() -> u64 {
         300
     }
+    fn default_room_idle_secs() -> u64 {
+        1800
+    }
 }
 
 impl Default for WsConfig {
@@ -53,6 +62,7 @@ impl Default for WsConfig {
             client_timeout_secs: Self::default_client_timeout_secs(),
             persist_interval_secs: Self::default_persist_interval_secs(),
             gc_interval_secs: Self::default_gc_interval_secs(),
+            room_idle_secs: Self::default_room_idle_secs(),
         }
     }
 }

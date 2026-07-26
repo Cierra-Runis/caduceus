@@ -164,6 +164,27 @@ A room emptying on the last leave also force-flushes, so a final edit isn't left
 in the snapshot alone. `blobs_pending` on the room short-circuits a flush when no
 text has drifted from its recorded blob.
 
+### Idle room eviction
+
+A room with no connections stays in memory (its `empty_since` clock starts). Once
+it sits idle past `room_idle_secs`, the manager force-flushes it and **drops it
+from memory**, reclaiming the in-memory `Y.Doc`. The next joiner rebuilds the
+room from the snapshot via `RoomState::from_snapshot` — a verbatim
+`Update::decode` + apply, so the reconstructed document is byte-for-byte the same
+CRDT state. A reconnecting client therefore still re-syncs against an *identical*
+document and nothing is duplicated.
+
+> **Why the resting snapshot still carries text.** It is tempting to strip text
+> from the resting snapshot (leaving only structure) and rematerialize each
+> file's `Y.Text` from its blob on rejoin — text would then live once, in blobs.
+> But re-inserting blob bytes as fresh `Y.Text` content mints *new* CRDT items
+> (new client id / clocks), which a client holding the pre-eviction document
+> would merge alongside its own → **duplicated content** (the exact hazard that
+> keeps a live room pinned rather than re-derived from text). Doing this safely
+> needs the client to *discard* its document on a room-generation change, not a
+> transparent server rewrite — a separate, deliberate protocol change. Until
+> then, eviction reclaims RAM but the snapshot remains the authoritative text.
+
 ### Reclaiming bytes (GC)
 
 - **Deleting a project** is a single `ProjectStore::delete_project` — a
