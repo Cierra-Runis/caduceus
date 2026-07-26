@@ -30,6 +30,25 @@ export const ProjectFileSchema = z.object({
   version: z.number(),
 });
 
+// When the editor materializes a file's live text into a durable blob —
+// mirrors VS Code's `files.autoSave`. Governs *blob materialization*, not
+// durability (edits are always synced + snapshotted server-side).
+export type AutoSavePolicy = z.infer<typeof AutoSavePolicySchema>;
+export const AutoSavePolicySchema = z.enum([
+  'afterDelay',
+  'off',
+  'onFocusChange',
+  'onWindowChange',
+]);
+
+// Project-level editor settings, shared by every collaborator. Defaults match
+// the server's, so a payload written before settings existed still parses.
+export type ProjectSettings = z.infer<typeof ProjectSettingsSchema>;
+export const ProjectSettingsSchema = z.object({
+  autoSave: AutoSavePolicySchema.default('onFocusChange'),
+  autoSaveDelay: z.number().default(1000),
+});
+
 // Editor-facing project ("open in editor"): carries the whole virtual file
 // system with text content inlined, plus the compile `entry`. `entry` is a file
 // id (resolved to a path against `files`); null for a project with no entry.
@@ -37,4 +56,8 @@ export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
 export const ProjectDetailSchema = ProjectSchema.extend({
   entry: z.string().trim().nullable(),
   files: z.array(ProjectFileSchema),
+  settings: ProjectSettingsSchema.default({
+    autoSave: 'onFocusChange',
+    autoSaveDelay: 1000,
+  }),
 });

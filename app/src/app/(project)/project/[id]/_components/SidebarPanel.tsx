@@ -21,16 +21,30 @@ import {
 } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
+import { AutoSavePolicy } from '@/lib/types/project';
 import { cn } from '@/lib/utils';
 import { TreeNode } from '@/lib/yjs/tree';
 
+/// Human labels for each `files.autoSave` policy, shown in the selector.
+const AUTO_SAVE_LABELS: Record<AutoSavePolicy, string> = {
+  afterDelay: 'After delay',
+  off: 'Manual (off)',
+  onFocusChange: 'On focus change',
+  onWindowChange: 'On window change',
+};
+
 export interface SidebarPanelProps {
+  /// Current auto-save policy; when set (with `onAutoSaveChange`) the panel
+  /// renders a selector for it.
+  autoSave?: AutoSavePolicy;
   /// Id of the compile entry file, marked in the list. Null if none.
   entry: null | string;
   /// Id of the file currently open in the editor.
   focus: string;
   /// Every node (files and folders); the panel builds the tree from `parent`.
   nodes: TreeNode[];
+  /// Change the auto-save policy (persisted project-wide).
+  onAutoSaveChange?: (policy: AutoSavePolicy) => void;
   /// Create a file with this name under `parent` (null = root); returns whether
   /// it succeeded (a rejected name keeps the input open).
   onCreateFile: (name: string, parent: null | string) => boolean;
@@ -55,9 +69,11 @@ type Editing =
   | { kind: 'file' | 'folder'; mode: 'create'; parent: null | string };
 
 export function SidebarPanel({
+  autoSave,
   entry,
   focus,
   nodes,
+  onAutoSaveChange,
   onCreateFile,
   onCreateFolder,
   onDelete,
@@ -328,6 +344,25 @@ export function SidebarPanel({
       >
         {renderChildren(null, 0)}
       </ul>
+
+      {autoSave && onAutoSaveChange && (
+        <label className='mt-auto flex items-center gap-2 border-t px-3 py-2 text-xs opacity-70'>
+          <span className='shrink-0'>Auto-save</span>
+          <select
+            className='min-w-0 flex-1 rounded-sm border bg-background px-1 py-0.5'
+            onChange={(event) =>
+              onAutoSaveChange(event.target.value as AutoSavePolicy)
+            }
+            value={autoSave}
+          >
+            {(Object.keys(AUTO_SAVE_LABELS) as AutoSavePolicy[]).map((policy) => (
+              <option key={policy} value={policy}>
+                {AUTO_SAVE_LABELS[policy]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </Panel>
   );
 }

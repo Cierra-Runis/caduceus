@@ -21,6 +21,9 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                     web::scope("/project/{id}")
                         .route("", web::get().to(handler::project::find_by_id))
                         .route("", web::put().to(handler::project::update))
+                        .route("/settings", web::put().to(handler::project::update_settings))
+                        // Client auto-save trigger: force a blob flush for the room.
+                        .route("/flush", web::post().to(handler::project::flush))
                         .route(
                             "/file/{file_id}",
                             web::put().to(handler::project::update_file),

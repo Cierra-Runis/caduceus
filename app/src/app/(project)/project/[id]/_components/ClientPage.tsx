@@ -1,7 +1,7 @@
 'use client';
 
 import { GripVerticalIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Group,
     Separator,
@@ -14,8 +14,9 @@ import * as Y from 'yjs';
 import { useUserMe } from '@/hooks/api/user/me';
 import { useProjectNodes } from '@/hooks/useProjectNodes';
 import { uploadBlob } from '@/lib/api/blob';
+import { flushProject, updateProjectSettings } from '@/lib/api/project';
 import { env } from '@/lib/env';
-import { ProjectDetail } from '@/lib/types/project';
+import { AutoSavePolicy, ProjectDetail } from '@/lib/types/project';
 import { presenceColor, PresenceUser, syncRemoteCursorStyles } from '@/lib/yjs/presence';
 import {
     createBinaryFile,
@@ -75,6 +76,34 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     () => textFiles.find((file) => file.id === entryId)?.path ?? null,
     [textFiles, entryId],
   );
+  // Auto-save policy (VS Code's `files.autoSave`), project-level and shared.
+  // Governs *when* the server materializes live text into a durable blob — not
+  // durability itself (edits are always synced + snapshotted). Seeded from the
+  // REST payload; changing it persists to the project.
+  const [autoSave, setAutoSave] = useState<AutoSavePolicy>(
+    project.settings.autoSave,
+  );
+  const autoSaveDelay = project.settings.autoSaveDelay;
+  const handleAutoSaveChange = (next: AutoSavePolicy) => {
+    const prev = autoSave;
+    setAutoSave(next); // optimistic
+    updateProjectSettings(project.id, {
+      autoSave: next,
+      autoSaveDelay,
+    }).catch((error) => {
+      setAutoSave(prev); // revert on failure
+      toast.error(
+        error instanceof Error ? error.message : 'Could not update auto-save',
+      );
+    });
+  };
+
+  // Ask the server to flush the room's live text into blobs now. Fire-and-
+  // forget: a failure is harmless (the periodic snapshot still holds the text).
+  const flush = useCallback(() => {
+    void flushProject(project.id).catch(() => undefined);
+  }, [project.id]);
+
   // `focus` is the focused file's id — the editor's Y.Text key.
   const [focus, setFocus] = useState('');
   // Pick a file to focus once the tree has synced, and re-pick if the focused
@@ -206,6 +235,64 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     return () => ydoc.off('update', sync);
   }, [ydoc, textFiles]);
 
+  // ── Auto-save triggers (per `files.autoSave`) ────────────────────────────
+  // Each policy detects its moment on the client and asks the server to flush.
+
+  // Ctrl/Cmd+S always saves, whatever the policy (a manual save, VS Code-style).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        flush();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [flush]);
+
+  // afterDelay: debounce a flush `autoSaveDelay` ms after the last edit.
+  useEffect(() => {
+    if (autoSave !== 'afterDelay') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onUpdate = () => {
+      clearTimeout(timer);
+      timer = setTimeout(flush, autoSaveDelay);
+    };
+    ydoc.on('update', onUpdate);
+    return () => {
+      clearTimeout(timer);
+      ydoc.off('update', onUpdate);
+    };
+  }, [autoSave, autoSaveDelay, ydoc, flush]);
+
+  // onWindowChange: flush when the window/tab loses focus or is hidden.
+  useEffect(() => {
+    if (autoSave !== 'onWindowChange') return;
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('blur', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('blur', flush);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [autoSave, flush]);
+
+  // onFocusChange: flush when the focused file changes (switching tabs). The
+  // ref skips the initial focus assignment, which isn't a "change".
+  const prevFocus = useRef(focus);
+  useEffect(() => {
+    if (
+      autoSave === 'onFocusChange' &&
+      prevFocus.current &&
+      prevFocus.current !== focus
+    ) {
+      flush();
+    }
+    prevFocus.current = focus;
+  }, [autoSave, focus, flush]);
+
   return (
     <div className='relative flex h-screen'>
       <div className='absolute top-2 right-2 z-10'>
@@ -214,9 +301,11 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <Sidebar sidebarPanelRef={sidebarPanelRef} />
       <Group orientation='horizontal'>
         <SidebarPanel
+          autoSave={autoSave}
           entry={entryId}
           focus={focus}
           nodes={nodes}
+          onAutoSaveChange={handleAutoSaveChange}
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
           onDelete={handleDelete}

@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use crate::{
     models::project::{
         FileContent, OwnerType, Project, ProjectDetailPayload, ProjectFile, ProjectPayload,
-        UpdateFilePayload,
+        ProjectSettings, UpdateFilePayload,
     },
     repo::{project::ProjectRepo, team::TeamRepo, user::UserRepo},
 };
@@ -98,6 +98,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 updated_at: now,
                 entry: Some(entry_id),
                 pinned_version: None,
+                settings: ProjectSettings::default(),
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -206,6 +207,28 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         }
     }
 
+    /// Update a project's editor settings (auto-save policy, …). Any
+    /// collaborator with access can change them — they are project-level and
+    /// shared. Returns the stored settings.
+    pub async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        settings: ProjectSettings,
+    ) -> Result<ProjectSettings, ProjectServiceError> {
+        match self.accessible(project_id, user_id).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ProjectServiceError::AccessDenied),
+            Err(e) => return Err(e),
+        };
+
+        match self.project_repo.update_settings(project_id, settings).await {
+            Ok(Some(project)) => Ok(project.settings),
+            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => Err(ProjectServiceError::Database(e)),
+        }
+    }
+
     /// Clone a project the caller can access into a brand-new, independent
     /// project owned the same way (same `owner_id`/`owner_type`), with the
     /// requester recorded as the new project's `creator_id`. Every file gets a
@@ -260,6 +283,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                 updated_at: now,
                 entry,
                 pinned_version: source.pinned_version,
+                settings: source.settings,
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -501,6 +525,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let service = ProjectService {
@@ -532,6 +557,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let service = ProjectService {
@@ -564,6 +590,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id, member_id]);
@@ -600,6 +627,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id]);
@@ -636,6 +664,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let service = ProjectService {
@@ -671,6 +700,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: Some(file_id),
             pinned_version: None,
+            settings: ProjectSettings::default(),
         }
     }
 
@@ -941,6 +971,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_settings_success() {
+        use crate::models::project::AutoSavePolicy;
+
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let settings = ProjectSettings {
+            auto_save: AutoSavePolicy::AfterDelay,
+            auto_save_delay: 500,
+        };
+        let stored = service
+            .update_settings(project_id, owner_id, settings)
+            .await
+            .unwrap();
+
+        assert_eq!(stored.auto_save, AutoSavePolicy::AfterDelay);
+        assert_eq!(stored.auto_save_delay, 500);
+    }
+
+    #[tokio::test]
+    async fn test_update_settings_access_denied() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service
+            .update_settings(project_id, other_user_id, ProjectSettings::default())
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
+    }
+
+    #[tokio::test]
     async fn test_duplicate_project_success() {
         let creator_id = ObjectId::new();
         let project_id = ObjectId::new();
@@ -986,6 +1064,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         };
 
         let team = dummy_team(team_id, vec![original_creator_id, member_id]);

@@ -138,6 +138,32 @@ Cheap listings skip steps 1–4 and read the Mongo projection directly.
    the Doc. A crash between the two leaves an unreferenced (GC-able) blob, never
    a node pointing at bytes that were never written.
 
+### When a text file's blob is (re)flushed — `files.autoSave`
+
+Every keystroke is already synced to the room over the CRDT and captured by the
+periodic snapshot, so text is durable regardless of blob state. Minting a fresh
+content-addressed **blob** from that text is a *separate*, coarser event, and
+uploading one on every persist tick while someone types would spray a new MinIO
+object per keystroke-burst (each immediately superseded and left for GC).
+
+So the blob flush is **client-driven**, governed by a project-level
+`files.autoSave` policy (mirroring VS Code) stored on `Project.settings`:
+
+| Policy | Client flushes when… |
+| --- | --- |
+| `off` | only on a manual save (Ctrl/Cmd+S) |
+| `afterDelay` | a debounce (`autoSaveDelay` ms) after the last edit |
+| `onFocusChange` *(default)* | the focused file changes |
+| `onWindowChange` | the window/tab loses focus |
+
+The client detects the moment (only it knows about editor/window focus and
+keystroke timing) and calls `POST /project/{id}/flush`, which sends the room a
+forced flush (`Command::FlushRoom` → `persist_room(force_flush = true)`). The
+plain persist tick never mints a blob; it only writes the snapshot + projection.
+A room emptying on the last leave also force-flushes, so a final edit isn't left
+in the snapshot alone. `blobs_pending` on the room short-circuits a flush when no
+text has drifted from its recorded blob.
+
 ### Reclaiming bytes (GC)
 
 - **Deleting a project** is a single `ProjectStore::delete_project` — a

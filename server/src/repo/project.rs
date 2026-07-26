@@ -5,7 +5,7 @@ use mongodb::options::ReturnDocument;
 
 use std::collections::HashMap;
 
-use crate::models::project::{FileContent, OwnerType, Project};
+use crate::models::project::{FileContent, OwnerType, Project, ProjectSettings};
 use crate::models::tree::{NodeId, ProjectionEntry};
 
 #[async_trait::async_trait]
@@ -36,6 +36,14 @@ pub trait ProjectRepo {
         name: String,
         owner_id: ObjectId,
         owner_type: OwnerType,
+    ) -> Result<Option<Project>>;
+    /// Overwrite a project's editor settings (auto-save policy, …), bump
+    /// `updated_at`, and return the updated project. `None` if it does not
+    /// exist.
+    async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        settings: ProjectSettings,
     ) -> Result<Option<Project>>;
     /// Overwrite a project's stored tree projection — the id-keyed cache of the
     /// CRDT file tree, refreshed by the room on persist. The authoritative
@@ -142,6 +150,24 @@ impl ProjectRepo for MongoProjectRepo {
             .await
     }
 
+    async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        settings: ProjectSettings,
+    ) -> Result<Option<Project>> {
+        let update = bson::doc! {
+            "$set": {
+                "settings": bson::to_bson(&settings)?,
+                "updated_at": bson::DateTime::now(),
+            },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .return_document(ReturnDocument::After)
+            .await
+    }
+
     async fn update_tree(
         &self,
         project_id: ObjectId,
@@ -235,6 +261,20 @@ pub mod tests {
             Ok(Some(project.clone()))
         }
 
+        async fn update_settings(
+            &self,
+            project_id: ObjectId,
+            settings: ProjectSettings,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            project.settings = settings;
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
+        }
+
         async fn update_tree(
             &self,
             _project_id: ObjectId,
@@ -271,6 +311,7 @@ pub mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         }
     }
 

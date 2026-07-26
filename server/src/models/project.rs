@@ -15,6 +15,54 @@ pub enum OwnerType {
     Team,
 }
 
+/// When the editor materializes a file's live text into a durable
+/// content-addressed blob — mirroring VS Code's `files.autoSave`. Note this
+/// governs *blob materialization*, not durability: every keystroke is already
+/// streamed to the server over the CRDT and snapshotted, so `Off` never risks
+/// losing synced text — it only defers minting a blob until an explicit save.
+/// The trigger itself is detected on the client (only it knows about editor /
+/// window focus and keystroke timing); the server just flushes on request.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum AutoSavePolicy {
+    /// Never flush automatically; the user saves by hand (e.g. Ctrl/Cmd+S).
+    Off,
+    /// Flush a short debounce after the last edit (see `auto_save_delay`).
+    AfterDelay,
+    /// Flush when focus leaves the edited file (switching tabs, blurring).
+    #[default]
+    OnFocusChange,
+    /// Flush when the browser window / tab loses focus.
+    OnWindowChange,
+}
+
+/// Project-level editor settings, shared by every collaborator. Every field is
+/// `#[serde(default)]` so a project document written before this existed still
+/// deserializes (missing settings become the defaults).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    #[serde(default)]
+    pub auto_save: AutoSavePolicy,
+    /// Debounce in milliseconds for `AutoSavePolicy::AfterDelay` (VS Code's
+    /// `files.autoSaveDelay`). Ignored by the other policies.
+    #[serde(default = "default_auto_save_delay")]
+    pub auto_save_delay: u32,
+}
+
+fn default_auto_save_delay() -> u32 {
+    1000
+}
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            auto_save: AutoSavePolicy::default(),
+            auto_save_delay: default_auto_save_delay(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Project {
     #[serde(rename = "_id")]
@@ -36,6 +84,10 @@ pub struct Project {
     /// awareness channel, never in this document.
     pub entry: Option<ObjectId>,
     pub pinned_version: Option<Version>,
+    /// Editor settings shared by every collaborator (e.g. the auto-save
+    /// policy). Defaulted when absent from an older stored document.
+    #[serde(default)]
+    pub settings: ProjectSettings,
 }
 
 /// A single node in the project's virtual file system.
@@ -200,6 +252,8 @@ pub struct ProjectDetailPayload {
     /// path against `files` — id is the stable key, path can be renamed.
     pub entry: Option<String>,
     pub pinned_version: Option<Version>,
+    /// Project-level editor settings (auto-save policy, …).
+    pub settings: ProjectSettings,
 }
 
 /// A single file with its content inlined, for the editor's initial load.
@@ -291,6 +345,7 @@ impl From<Project> for ProjectDetailPayload {
             updated_at: project.updated_at,
             entry: project.entry.map(|id| id.to_hex()),
             pinned_version: project.pinned_version,
+            settings: project.settings,
         }
     }
 }

@@ -241,6 +241,12 @@ enum Command {
         project_id: ObjectId,
         conn_id: ObjectId,
     },
+    /// A client asked to save now (its `files.autoSave` policy fired). Force a
+    /// blob flush for the room so the current text is materialized, regardless
+    /// of the settle cadence. Missing room = nothing to flush.
+    FlushRoom {
+        project_id: ObjectId,
+    },
     /// A persist cycle uploaded changed file text as blobs (async, off the room
     /// thread); this brings the result back so the room can update each file
     /// node's `blob` (sha256 / size) in the Y.Doc and broadcast it — keeping the
@@ -324,6 +330,12 @@ impl ProjectServer {
             conn_id,
         });
     }
+
+    /// Request an immediate blob flush for a room (a client's auto-save fired).
+    /// Fire-and-forget: the room manager force-flushes on its own thread.
+    pub fn flush(&self, project_id: ObjectId) {
+        let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
+    }
 }
 
 /// One live collaboration room: the shared CRDT document plus its connections.
@@ -342,14 +354,11 @@ struct RoomState {
     /// Whether the Y.Doc changed since the last snapshot, so persist can skip
     /// re-snapshotting an unchanged room.
     dirty: bool,
-    /// Whether a *text* edit landed since the last persist tick. Reset every
-    /// persist; a persist that sees it still `false` means the room went a full
-    /// interval untouched — i.e. editing has settled, so it is safe to flush
-    /// blobs without spraying a new object per keystroke-burst.
-    edited_since_persist: bool,
     /// Whether some file's text has drifted from its recorded blob since the
-    /// last blob flush, so a settle (or leave) still has blobs to upload. Set on
-    /// each text edit, cleared once the stale blobs are flushed.
+    /// last blob flush, so a forced flush (client auto-save, or leave) still has
+    /// blobs to upload. Set on each text edit, cleared once the blobs flush. The
+    /// periodic persist tick never flushes on its own — the client's
+    /// `files.autoSave` policy decides *when* via `ProjectServer::flush`.
     blobs_pending: bool,
 }
 
@@ -371,7 +380,6 @@ impl RoomState {
             client_owner: HashMap::new(),
             last: HashMap::new(),
             dirty: false, // the snapshot we loaded is already durable
-            edited_since_persist: false,
             blobs_pending: false,
         }
     }
@@ -408,7 +416,6 @@ impl RoomState {
             client_owner: HashMap::new(),
             last: HashMap::new(),
             dirty: true, // a fresh seed needs an initial snapshot
-            edited_since_persist: false,
             // Seed blobs already match their seeded text; nothing to flush until
             // an edit drifts a file from its blob.
             blobs_pending: false,
@@ -504,6 +511,11 @@ async fn room_manager(
                             }
                         }
                     }
+                    Some(Command::FlushRoom { project_id }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                        }
+                    }
                     Some(Command::FlushBlobs { project_id, blobs }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
                             apply_blobs(room, blobs);
@@ -583,11 +595,11 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
-        // A doc change resets the settle window and marks blobs to (re)flush.
-        // This over-approximates: a pure structural edit (no text change) also
-        // sets these, but the next settle simply finds nothing stale and clears
-        // the flag — cheaper than distinguishing text from structure here.
-        room.edited_since_persist = true;
+        // Mark that some file may have drifted from its blob, so the next forced
+        // flush (client auto-save, or leave) re-uploads it. This over-
+        // approximates: a pure structural edit (no text change) sets it too, but
+        // the flush then finds nothing stale and clears it — cheaper than
+        // distinguishing text from structure here.
         room.blobs_pending = true;
         for update in updates {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
@@ -706,12 +718,13 @@ fn reconcile_tree(room: &mut RoomState) {
 /// file's text back to Mongo `files` (so REST loads keep working during the
 /// migration).
 ///
-/// Content-addressed blobs are handled separately, on a **settle** cadence: a
-/// blob is uploaded only once the room has gone a full persist interval without
-/// an edit (or when `force_flush` is set, e.g. the room is emptying on leave).
-/// Flushing a fresh blob on every tick while someone is mid-edit would spray a
-/// new MinIO object per keystroke-burst — each superseded moments later and left
-/// for GC — so the flush waits for typing to pause.
+/// Content-addressed blobs are materialized only on a **forced flush**
+/// (`force_flush`): a client's `files.autoSave` policy firing (via
+/// `ProjectServer::flush`), or the room emptying on leave. The periodic tick
+/// never mints a blob on its own — uploading a fresh blob on every tick while
+/// someone is mid-edit would spray a new MinIO object per keystroke-burst, each
+/// superseded moments later and left for GC. The client owns the *when* (it
+/// alone knows about editor / window focus and keystroke timing).
 ///
 /// All the `!Send` doc work happens synchronously up front; only the IO is
 /// spawned onto this thread's LocalSet.
@@ -723,12 +736,8 @@ fn persist_room(
     cmd_tx: &UnboundedSender<Command>,
     force_flush: bool,
 ) {
-    // A persist that finds the settle flag still clear (no edit this interval)
-    // means editing has paused, so it may flush the pending blobs. `force_flush`
-    // shortcuts that when the room is emptying and there is no later settle.
-    let settled = force_flush || !room.edited_since_persist;
-    room.edited_since_persist = false;
-    let do_flush = room.blobs_pending && settled;
+    // Only a forced flush materializes blobs; the plain tick just snapshots.
+    let do_flush = force_flush && room.blobs_pending;
 
     // Nothing to snapshot and no blobs to flush — skip entirely.
     if !room.dirty && !do_flush {

@@ -159,6 +159,20 @@ describe('SidebarPanel', () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
+  it('shows the auto-save selector and reports a change', async () => {
+    const onAutoSaveChange = vi.fn();
+    renderPanel({ autoSave: 'onFocusChange', onAutoSaveChange });
+    const select = screen.getByRole('combobox');
+    expect((select as HTMLSelectElement).value).toBe('onFocusChange');
+    await userEvent.selectOptions(select, 'afterDelay');
+    expect(onAutoSaveChange).toHaveBeenCalledWith('afterDelay');
+  });
+
+  it('omits the auto-save selector when no handler is given', () => {
+    renderPanel();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
   it('moves a node when dropped onto a folder', () => {
     const onMove = vi.fn();
     renderPanel({ onMove });

@@ -90,7 +90,7 @@ impl<R: TeamRepo, U: UserRepo, P: ProjectRepo> TeamService<R, U, P> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::models::project::Project;
+    use crate::models::project::{Project, ProjectSettings};
     use crate::models::user::User;
     use crate::repo::project::tests::MockProjectRepo;
     use crate::repo::{team::tests::MockTeamRepo, user::tests::MockUserRepo};
@@ -167,6 +167,7 @@ mod tests {
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
         }
     }
 

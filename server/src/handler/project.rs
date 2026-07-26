@@ -142,6 +142,71 @@ pub async fn update(
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSettingsRequest {
+    pub auto_save: crate::models::project::AutoSavePolicy,
+    #[serde(default)]
+    pub auto_save_delay: Option<u32>,
+}
+
+/// Update a project's editor settings (auto-save policy, …). Shared by every
+/// collaborator; access is enforced in `ProjectService::update_settings`.
+pub async fn update_settings(
+    id: actix_web::web::Path<String>,
+    req: actix_web::web::Json<UpdateSettingsRequest>,
+    data: actix_web::web::Data<crate::AppState>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    use crate::models::project::ProjectSettings;
+
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    let settings = ProjectSettings {
+        auto_save: req.auto_save,
+        auto_save_delay: req.auto_save_delay.unwrap_or_else(default_auto_save_delay),
+    };
+
+    match data
+        .project_service
+        .update_settings(project_id, user.sub, settings)
+        .await
+    {
+        Ok(settings) => {
+            let response = ApiResponse::success("Project settings updated", settings);
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn default_auto_save_delay() -> u32 {
+    1000
+}
+
+/// Force an immediate blob flush for the project's live room — the client's
+/// `files.autoSave` policy fired. Access is checked here (the room manager has
+/// no auth context); the flush itself is fire-and-forget.
+pub async fn flush(
+    id: actix_web::web::Path<String>,
+    data: actix_web::web::Data<crate::AppState>,
+    project_server: actix_web::web::Data<crate::handler::ws::ProjectServer>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    match data.project_service.accessible(project_id, user.sub).await {
+        Ok(true) => {}
+        Ok(false) => return Err(ProjectServiceError::AccessDenied),
+        Err(e) => return Err(e),
+    };
+
+    project_server.flush(project_id);
+    Ok(HttpResponse::Ok().json(ApiResponse::success("Flush requested", ())))
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct UpdateFileRequest {
     pub text: String,
 }
