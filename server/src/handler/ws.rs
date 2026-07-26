@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -33,7 +33,7 @@ use crate::models::response::ApiResponse;
 use crate::models::tree::ProjectTree;
 use crate::models::user::UserClaims;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
-use crate::storage::{Blob, ProjectStore};
+use crate::storage::{Blob, ProjectStore, sha256_hex};
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -249,6 +249,14 @@ enum Command {
         project_id: ObjectId,
         blobs: Vec<(String, Blob)>,
     },
+    /// The result of a GC sweep (async): the blobs found orphaned this pass. The
+    /// manager stores them so the *next* sweep only deletes blobs orphaned twice
+    /// in a row — a grace window so a blob uploaded between passes is never
+    /// swept before its `FlushBlobs` records it on a node.
+    GcSwept {
+        project_id: ObjectId,
+        orphans: HashSet<String>,
+    },
 }
 
 /// Handle to the collaboration subsystem, stored in actix app data. Cheap to
@@ -427,7 +435,11 @@ async fn room_manager(
     store: ProjectStore,
 ) {
     let mut rooms: HashMap<ObjectId, RoomState> = HashMap::new();
+    // Blobs seen orphaned in the previous GC sweep, per project — deleted next
+    // sweep only if still orphaned (a two-pass grace window).
+    let mut gc_pending: HashMap<ObjectId, HashSet<String>> = HashMap::new();
     let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
+    let mut gc_tick = interval(Duration::from_secs(ws_config.gc_interval_secs));
 
     loop {
         tokio::select! {
@@ -480,12 +492,25 @@ async fn room_manager(
                             apply_blobs(room, blobs);
                         }
                     }
+                    Some(Command::GcSwept { project_id, orphans }) => {
+                        if orphans.is_empty() {
+                            gc_pending.remove(&project_id);
+                        } else {
+                            gc_pending.insert(project_id, orphans);
+                        }
+                    }
                     None => break,
                 }
             }
             _ = persist_tick.tick() => {
                 for (project_id, room) in rooms.iter_mut() {
                     persist_room(*project_id, room, &repo, &store, &cmd_tx);
+                }
+            }
+            _ = gc_tick.tick() => {
+                for (project_id, room) in rooms.iter() {
+                    let prev = gc_pending.get(project_id).cloned().unwrap_or_default();
+                    gc_room(*project_id, room, &store, &cmd_tx, prev);
                 }
             }
         }
@@ -772,6 +797,68 @@ fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
             broadcast_all(room, &msg);
         }
     }
+}
+
+/// Sweep orphaned blobs for one project. The reference set is every file node's
+/// current blob sha *plus* the sha of every file's current text — the latter
+/// covers the window between a text upload and the [`Command::FlushBlobs`] that
+/// records its hash on the node, so an in-flight blob is never mistaken for an
+/// orphan. Combined with the two-pass grace (`prev`), a blob is deleted only
+/// when it was orphaned across two consecutive sweeps. The sweep result is
+/// reported back via [`Command::GcSwept`].
+fn gc_room(
+    project_id: ObjectId,
+    room: &RoomState,
+    store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
+    prev: HashSet<String>,
+) {
+    // Sync (holds the doc): the shas the live doc references right now.
+    let referenced: HashSet<String> = {
+        let doc = room.awareness.doc();
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        let mut set: HashSet<String> = tree
+            .iter()
+            .filter_map(|n| n.blob().map(|b| b.sha256.clone()))
+            .collect();
+        for node in tree.iter().filter(|n| n.is_file()) {
+            if let Some(text) = txn.get_text(node.id.as_str()) {
+                set.insert(sha256_hex(text.get_string(&txn).as_bytes()));
+            }
+        }
+        set
+    };
+
+    // Async: list stored blobs, delete those orphaned two sweeps running.
+    let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        let pid = project_id.to_hex();
+        let stored = match store.list_blobs(&pid).await {
+            Ok(stored) => stored,
+            Err(e) => {
+                warn!("gc list failed in {pid}: {e:?}");
+                return;
+            }
+        };
+        let orphans: HashSet<String> = stored
+            .into_iter()
+            .filter(|sha| !referenced.contains(sha))
+            .collect();
+        for sha in orphans.intersection(&prev) {
+            if let Err(e) = store.delete_blob(&pid, sha).await {
+                warn!("gc delete failed in {pid}: {e:?}");
+            }
+        }
+        let _ = cmd_tx.send(Command::GcSwept {
+            project_id,
+            orphans,
+        });
+    });
 }
 
 #[cfg(test)]
@@ -1097,6 +1184,55 @@ mod tests {
         // The node already carries `blob()`, so re-applying it changes nothing.
         apply_blobs(&mut room, vec![(key, blob())]);
         assert!(rx_a.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_gc_sweeps_a_blob_orphaned_across_two_passes() {
+        use crate::storage::{InMemoryObjectStore, sha256_hex};
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let store = ProjectStore::new(Arc::new(InMemoryObjectStore::new()));
+                let project_id = ObjectId::new();
+                let pid = project_id.to_hex();
+                let file_id = ObjectId::new();
+
+                // A room with one file `main.typ` = "hi"; its node references the
+                // "hi" blob. Store that blob plus an unreferenced orphan.
+                let hi = Blob {
+                    sha256: sha256_hex(b"hi"),
+                    size: 2,
+                };
+                let room = RoomState::new(vec![(
+                    file_id,
+                    "main.typ".to_string(),
+                    "hi".to_string(),
+                    hi.clone(),
+                )]);
+                store.put_blob(&pid, b"hi").await.unwrap();
+                let orphan = store.put_blob(&pid, b"garbage").await.unwrap();
+
+                let (tx, mut rx) = mpsc::unbounded_channel();
+
+                // Pass 1 (no prior candidates): the orphan is only *reported*,
+                // not deleted — the two-pass grace.
+                gc_room(project_id, &room, &store, &tx, HashSet::new());
+                let prev = match rx.recv().await {
+                    Some(Command::GcSwept { orphans, .. }) => orphans,
+                    other => panic!("expected GcSwept, got {:?}", other.is_some()),
+                };
+                assert!(prev.contains(&orphan.sha256));
+                assert!(store.get_blob(&pid, &orphan.sha256).await.unwrap().is_some());
+
+                // Pass 2 (orphan was pending): now it is deleted, and the
+                // referenced blob survives.
+                gc_room(project_id, &room, &store, &tx, prev);
+                let _ = rx.recv().await;
+                assert_eq!(store.get_blob(&pid, &orphan.sha256).await.unwrap(), None);
+                assert!(store.get_blob(&pid, &hi.sha256).await.unwrap().is_some());
+            })
+            .await;
     }
 
     #[test]
