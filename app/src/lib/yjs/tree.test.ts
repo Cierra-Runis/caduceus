@@ -5,8 +5,11 @@ import {
   createBinaryFile,
   createFile,
   createFolder,
+  createTextFile,
   deleteNode,
+  ensureFolderPath,
   fileEntries,
+  isBinaryFile,
   isBinaryPath,
   isValidSegment,
   moveNode,
@@ -250,6 +253,55 @@ describe('createBinaryFile', () => {
     const doc = new Y.Doc();
     createFile(doc, 'logo.png', null);
     expect(() => createBinaryFile(doc, 'logo.png', null, 'a'.repeat(64), 1)).toThrow();
+  });
+});
+
+describe('createTextFile', () => {
+  it('creates an editable text file seeded with its content', () => {
+    const doc = new Y.Doc();
+    const id = createTextFile(doc, 'refs.bib', null, '@book{x}', 'a'.repeat(64), 8);
+    expect(fileEntries(readNodes(doc))).toEqual([{ id, path: 'refs.bib' }]);
+    expect(doc.getText(id).toString()).toBe('@book{x}');
+    expect(readFileBlob(doc, id)).toEqual({ sha256: 'a'.repeat(64), size: 8 });
+  });
+});
+
+describe('isBinaryFile', () => {
+  it('is true for a blob file and false for a text file', () => {
+    const doc = new Y.Doc();
+    const bin = createBinaryFile(doc, 'logo.png', null, 'f'.repeat(64), 1);
+    const txt = createTextFile(doc, 'a.typ', null, 'hi', 'a'.repeat(64), 2);
+    const empty = createFile(doc, 'b.typ', null);
+    expect(isBinaryFile(doc, bin)).toBe(true);
+    expect(isBinaryFile(doc, txt)).toBe(false);
+    expect(isBinaryFile(doc, empty)).toBe(false);
+  });
+});
+
+describe('ensureFolderPath', () => {
+  it('creates missing folders and returns the deepest id', () => {
+    const doc = new Y.Doc();
+    const id = ensureFolderPath(doc, ['assets', 'img']);
+    const nodes = readNodes(doc);
+    expect(nodes.find((n) => n.id === id)?.name).toBe('img');
+    const file = createFile(doc, 'logo.svg', id);
+    expect(fileEntries(readNodes(doc))).toContainEqual({
+      id: file,
+      path: 'assets/img/logo.svg',
+    });
+  });
+
+  it('reuses existing folders instead of duplicating them', () => {
+    const doc = new Y.Doc();
+    const first = ensureFolderPath(doc, ['assets']);
+    const second = ensureFolderPath(doc, ['assets', 'img']);
+    // The shared `assets` folder was reused, not recreated.
+    expect(readNodes(doc).filter((n) => n.name === 'assets')).toHaveLength(1);
+    expect(readNodes(doc).find((n) => n.id === second)?.parent).toBe(first);
+  });
+
+  it('returns null for an empty path (the root)', () => {
+    expect(ensureFolderPath(new Y.Doc(), [])).toBeNull();
   });
 });
 

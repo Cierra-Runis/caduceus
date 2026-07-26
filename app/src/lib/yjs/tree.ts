@@ -109,6 +109,38 @@ export function createFolder(
   return id;
 }
 
+/// Create a **text** file node seeded with `content`, under `parent` (null =
+/// root). Unlike [`createBinaryFile`] it declares a Y.Text root (so the file is
+/// editable) and, because the content already matches the uploaded blob
+/// (`sha256` / `size`), the node references that blob immediately — the file is
+/// "saved" from the start. Used for an uploaded file detected as text. Throws on
+/// an invalid or duplicate name.
+export function createTextFile(
+  ydoc: Y.Doc,
+  name: string,
+  parent: null | string,
+  content: string,
+  sha256: string,
+  size: number,
+): string {
+  assertValidName(readNodes(ydoc), name, parent);
+  const id = newObjectId();
+  ydoc.transact(() => {
+    const node = new Y.Map<unknown>();
+    node.set('kind', 'file');
+    node.set('name', name);
+    if (parent !== null) node.set('parent', parent);
+    node.set('sha256', sha256);
+    node.set('size', size);
+    ydoc.getMap<Y.Map<unknown>>(NODES).set(id, node);
+    // Declare the text root and seed it — this makes the node a *text* file
+    // (it has an overlay), distinguishing it from a binary blob.
+    const text = ydoc.getText(id);
+    if (content) text.insert(0, content);
+  });
+  return id;
+}
+
 /// Delete a node and its whole subtree: the node, every descendant, and each
 /// removed file's text. A file deletes just itself; a folder takes everything
 /// under it (recursively), so no child is ever left orphaned.
@@ -146,6 +178,27 @@ export function deleteNode(ydoc: Y.Doc, id: string): void {
   });
 }
 
+/// Ensure a chain of nested folders exists under the root, creating any that are
+/// missing, and return the id of the deepest one (or `null` for an empty chain,
+/// i.e. the root). Used to recreate a folder hierarchy on folder upload. Runs
+/// synchronously, so concurrent uploads calling it never race.
+export function ensureFolderPath(
+  ydoc: Y.Doc,
+  segments: string[],
+): null | string {
+  let parent: null | string = null;
+  for (const segment of segments) {
+    const existing = readNodes(ydoc).find(
+      (node) =>
+        node.parent === parent &&
+        node.name === segment &&
+        node.kind === 'folder',
+    );
+    parent = existing ? existing.id : createFolder(ydoc, segment, parent);
+  }
+  return parent;
+}
+
 /// Derive each file's full path from its parent chain and return the files
 /// sorted by path. Folders contribute path segments but aren't listed. A node
 /// whose chain is broken (a missing or cyclic parent) is dropped — the server
@@ -167,7 +220,18 @@ const BINARY_EXTENSIONS = new Set([
   'ttf', 'webp', 'woff', 'woff2',
 ]);
 
-/// Whether `path` names a binary file, by extension.
+/// Whether the file node `id` is binary — i.e. it has **no** Y.Text overlay.
+/// A text file declares its text root at creation (see [`createFile`] /
+/// [`createTextFile`]); a binary file does not. Mirrors the server's rule
+/// ("`get_text` → `None` means binary"), so it never opens a blob in the editor
+/// (which would create an empty overlay the server flushes over the bytes).
+export function isBinaryFile(ydoc: Y.Doc, id: string): boolean {
+  return !ydoc.share.has(id);
+}
+
+/// Whether `path` names a binary file, by extension. A hint used when *deciding*
+/// how to store an upload; the authoritative "is this file binary" check for an
+/// existing node is [`isBinaryFile`] (does it have a text overlay).
 export function isBinaryPath(path: string): boolean {
   const dot = path.lastIndexOf('.');
   return dot !== -1 && BINARY_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());

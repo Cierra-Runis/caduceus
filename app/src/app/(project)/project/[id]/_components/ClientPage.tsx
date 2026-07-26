@@ -23,9 +23,11 @@ import {
     createBinaryFile,
     createFile,
     createFolder,
+    createTextFile,
     deleteNode,
+    ensureFolderPath,
     fileEntries,
-    isBinaryPath,
+    isBinaryFile,
     moveNode,
     readFileBlob,
     renameNode,
@@ -158,7 +160,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       const entries = await Promise.all(
         openTabs.map(async (id): Promise<[string, boolean]> => {
           const file = textFiles.find((f) => f.id === id);
-          if (!file || isBinaryPath(file.path)) return [id, false];
+          if (!file || isBinaryFile(ydoc, id)) return [id, false];
           const blob = readFileBlob(ydoc, id);
           const text = ydoc.getText(id).toString();
           const hash = await sha256Hex(text);
@@ -230,11 +232,23 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     }
   };
   // The upload dialog uploads blobs (with progress); this creates the file node
-  // for each finished blob. Throws on a duplicate name so the dialog surfaces it
-  // on that row rather than swallowing it.
+  // for each finished blob, recreating any folders in its relative path. A file
+  // detected as text (`text` provided) becomes an editable text file; otherwise
+  // a binary blob. Does NOT focus the new file — a bulk upload shouldn't hijack
+  // the editor. Throws on a duplicate name so the dialog surfaces it per row.
   const [uploadOpen, setUploadOpen] = useState(false);
-  const createBinaryNode = (name: string, sha256: string, size: number) => {
-    openFile(createBinaryFile(ydoc, name, null, sha256, size));
+  const createUploadedNode = (
+    relativePath: string,
+    sha256: string,
+    size: number,
+    text?: string,
+  ) => {
+    const segments = relativePath.split('/').filter(Boolean);
+    const name = segments.pop();
+    if (!name) throw new Error('empty file name');
+    const parent = ensureFolderPath(ydoc, segments);
+    if (text === undefined) createBinaryFile(ydoc, name, parent, sha256, size);
+    else createTextFile(ydoc, name, parent, text, sha256, size);
   };
 
   // When the focused file is binary, the editor shows a preview instead of
@@ -242,7 +256,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   // the blob. `nodes` in scope keeps this current as the blob is (re)synced.
   const focusPath = textFiles.find((file) => file.id === focus)?.path ?? null;
   const focusBlob =
-    focusPath && isBinaryPath(focusPath) ? readFileBlob(ydoc, focus) : undefined;
+    focusPath && isBinaryFile(ydoc, focus) ? readFileBlob(ydoc, focus) : undefined;
   const binaryFile =
     focusPath && focusBlob
       ? {
@@ -297,7 +311,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       // Skip binary files: they have no text overlay, and calling getText would
       // create one that the server then flushes empty over the blob.
       for (const { id, path } of textFiles) {
-        if (isBinaryPath(path)) continue;
+        if (isBinaryFile(ydoc, id)) continue;
         next[path] = ydoc.getText(id).toString();
       }
       setFiles(next);
@@ -421,7 +435,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       </Group>
       <UploadDialog
         onOpenChange={setUploadOpen}
-        onUploaded={createBinaryNode}
+        onUploaded={createUploadedNode}
         open={uploadOpen}
         projectId={project.id}
       />

@@ -71,6 +71,7 @@
     "settings": "設定",
     "upload": {
       "choose": "ファイルを選択",
+      "chooseFolder": "フォルダーを選択",
       "empty": "ファイルが選択されていません",
       "remove": "{name} を削除",
       "start": "アップロード",

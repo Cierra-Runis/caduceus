@@ -74,6 +74,7 @@
     "settings": "设置",
     "upload": {
       "choose": "选择文件",
+      "chooseFolder": "选择文件夹",
       "empty": "未选择文件",
       "remove": "移除 {name}",
       "start": "上传",

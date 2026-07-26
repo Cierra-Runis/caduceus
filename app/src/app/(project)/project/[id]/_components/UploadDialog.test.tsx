@@ -58,15 +58,35 @@ describe('UploadDialog', () => {
     expect(screen.getByText('logo.png')).toBeTruthy();
   });
 
-  it('uploads staged files and reports each blob', async () => {
+  it('uploads a binary file with no text content', async () => {
     const onUploaded = vi.fn();
     renderDialog({ onUploaded });
     pickFile(new File(['hi'], 'logo.png'));
     await userEvent.click(screen.getByRole('button', { name: 'Upload' }));
     await waitFor(() =>
-      expect(onUploaded).toHaveBeenCalledWith('logo.png', 'a'.repeat(64), 3),
+      expect(onUploaded).toHaveBeenCalledWith(
+        'logo.png',
+        'a'.repeat(64),
+        3,
+        undefined,
+      ),
     );
     expect(uploadBlobWithProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('uploads a text file with its decoded content', async () => {
+    const onUploaded = vi.fn();
+    renderDialog({ onUploaded });
+    pickFile(new File(['hello'], 'notes.txt'));
+    await userEvent.click(screen.getByRole('button', { name: 'Upload' }));
+    await waitFor(() =>
+      expect(onUploaded).toHaveBeenCalledWith(
+        'notes.txt',
+        'a'.repeat(64),
+        3,
+        'hello',
+      ),
+    );
   });
 
   it('surfaces a node-creation failure on the row', async () => {
