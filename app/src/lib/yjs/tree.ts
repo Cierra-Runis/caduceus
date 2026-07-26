@@ -150,6 +150,45 @@ export function isValidSegment(name: string): boolean {
   );
 }
 
+/// Move a node under `newParent` (null = root) by rewriting its `parent` field.
+/// Throws if the destination isn't a folder, if it would put the node inside
+/// itself or a descendant (a cycle), or if the destination already holds a
+/// sibling with this node's name. A no-op when it's already there.
+export function moveNode(
+  ydoc: Y.Doc,
+  id: string,
+  newParent: null | string,
+): void {
+  const nodes = readNodes(ydoc);
+  const node = nodes.find((n) => n.id === id);
+  if (!node) throw new Error(`no such node: ${id}`);
+  if (node.parent === newParent) return;
+  if (newParent !== null) {
+    const dest = nodes.find((n) => n.id === newParent);
+    if (!dest || dest.kind !== 'folder') {
+      throw new Error('destination is not a folder');
+    }
+    if (newParent === id || isDescendant(nodes, newParent, id)) {
+      throw new Error('cannot move a folder into itself');
+    }
+  }
+  if (
+    nodes.some(
+      (n) => n.parent === newParent && n.id !== id && n.name === node.name,
+    )
+  ) {
+    throw new Error(`"${node.name}" already exists there`);
+  }
+  const map = ydoc.getMap<Y.Map<unknown>>(NODES);
+  ydoc.transact(() => {
+    const entry = map.get(id);
+    if (entry instanceof Y.Map) {
+      if (newParent === null) entry.delete('parent');
+      else entry.set('parent', newParent);
+    }
+  });
+}
+
 /// Decode the `nodes` map of a project Y.Doc into plain nodes. Entries missing
 /// the required fields (e.g. mid-sync, before every field has arrived) are
 /// skipped rather than throwing — the map is eventually consistent.
@@ -206,6 +245,26 @@ function assertValidName(
   if (taken) {
     throw new Error(`"${name}" already exists here`);
   }
+}
+
+/// Whether `candidate` sits inside the subtree rooted at `ancestorId` (walking
+/// up from `candidate` reaches it). Guards a move against dropping a folder into
+/// its own descendant.
+function isDescendant(
+  nodes: TreeNode[],
+  candidate: string,
+  ancestorId: string,
+): boolean {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const seen = new Set<string>();
+  let current = byId.get(candidate);
+  while (current && current.parent !== null) {
+    if (seen.has(current.id)) return false; // cycle guard
+    seen.add(current.id);
+    if (current.parent === ancestorId) return true;
+    current = byId.get(current.parent);
+  }
+  return false;
 }
 
 /// Generate a 24-hex-char id in MongoDB ObjectId layout (4-byte big-endian

@@ -10,10 +10,12 @@ import {
     Trash2Icon,
 } from 'lucide-react';
 import {
+    DragEvent,
     KeyboardEvent,
     ReactNode,
     RefObject,
     useMemo,
+    useRef,
     useState,
 } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
@@ -35,6 +37,8 @@ export interface SidebarPanelProps {
   onCreateFolder: (name: string, parent: null | string) => boolean;
   /// Delete the node with this id (a folder takes its whole subtree).
   onDelete: (id: string) => void;
+  /// Move the node with this id under `parent` (null = root).
+  onMove: (id: string, parent: null | string) => void;
   /// Rename the node with this id; returns whether it succeeded.
   onRename: (id: string, name: string) => boolean;
   onSelect: (id: string) => void;
@@ -54,6 +58,7 @@ export function SidebarPanel({
   onCreateFile,
   onCreateFolder,
   onDelete,
+  onMove,
   onRename,
   onSelect,
   sidebarPanelRef,
@@ -62,6 +67,31 @@ export function SidebarPanel({
   // everything. `editing` drives the single inline input (create or rename).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
+  // Drag-to-move: `dragging` holds the grabbed node id; `dropTarget` is the
+  // folder id currently hovered (or '' for the root) so it can be highlighted.
+  // The empty string is safe as the root sentinel — node ids are 24-hex.
+  const dragging = useRef<null | string>(null);
+  const [dropTarget, setDropTarget] = useState<null | string>(null);
+
+  const startDrag = (event: DragEvent, id: string) => {
+    dragging.current = id;
+    event.dataTransfer.setData('text/plain', id);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+  const allowDrop = (event: DragEvent, target: string) => {
+    event.preventDefault();
+    event.stopPropagation(); // a folder hover shouldn't also count as root
+    event.dataTransfer.dropEffect = 'move';
+    setDropTarget(target);
+  };
+  const drop = (event: DragEvent, parent: null | string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = dragging.current ?? event.dataTransfer.getData('text/plain');
+    dragging.current = null;
+    setDropTarget(null);
+    if (id) onMove(id, parent);
+  };
 
   // Group nodes by parent, folders before files then by name, so the tree
   // renders in a stable order.
@@ -156,8 +186,25 @@ export function SidebarPanel({
       const isFolder = node.kind === 'folder';
       const open = isFolder && !collapsed.has(node.id);
       rows.push(
-        <li key={node.id}>
-          <div className='group flex items-center'>
+        <li
+          key={node.id}
+          {...(isFolder && {
+            onDragOver: (event: DragEvent) => allowDrop(event, node.id),
+            onDrop: (event: DragEvent) => drop(event, node.id),
+          })}
+        >
+          <div
+            className={cn(
+              'group flex items-center',
+              isFolder && dropTarget === node.id && 'bg-accent/60',
+            )}
+            draggable
+            onDragEnd={() => {
+              dragging.current = null;
+              setDropTarget(null);
+            }}
+            onDragStart={(event) => startDrag(event, node.id)}
+          >
             <button
               aria-current={node.id === focus ? 'true' : undefined}
               className={cn(
@@ -251,7 +298,16 @@ export function SidebarPanel({
         </span>
       </div>
 
-      <ul className='flex flex-col pb-2'>{renderChildren(null, 0)}</ul>
+      <ul
+        className={cn(
+          'flex min-h-24 flex-col pb-2',
+          dropTarget === '' && 'bg-accent/30',
+        )}
+        onDragOver={(event) => allowDrop(event, '')}
+        onDrop={(event) => drop(event, null)}
+      >
+        {renderChildren(null, 0)}
+      </ul>
     </Panel>
   );
 }
