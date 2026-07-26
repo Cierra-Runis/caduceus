@@ -14,7 +14,6 @@ import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
 import { useProjectNodes } from '@/hooks/useProjectNodes';
-import { uploadBlob } from '@/lib/api/blob';
 import { flushProject, updateProjectSettings } from '@/lib/api/project';
 import { env } from '@/lib/env';
 import { sha256Hex } from '@/lib/hash';
@@ -38,6 +37,7 @@ import { PreviewPanel } from './PreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Sidebar, SidebarView } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
+import { UploadDialog } from './UploadDialog';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
   const t = useTranslations('Editor');
@@ -229,18 +229,12 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       toast.error(error instanceof Error ? error.message : t('errors.delete'));
     }
   };
-  // Upload a binary file: send its bytes to the server, then create a file node
-  // referencing the returned blob (no text overlay).
-  const handleUpload = async (file: File) => {
-    try {
-      const { sha256, size } = await uploadBlob(
-        project.id,
-        await file.arrayBuffer(),
-      );
-      openFile(createBinaryFile(ydoc, file.name, null, sha256, size));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('errors.upload'));
-    }
+  // The upload dialog uploads blobs (with progress); this creates the file node
+  // for each finished blob. Throws on a duplicate name so the dialog surfaces it
+  // on that row rather than swallowing it.
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const createBinaryNode = (name: string, sha256: string, size: number) => {
+    openFile(createBinaryFile(ydoc, name, null, sha256, size));
   };
 
   // When the focused file is binary, the editor shows a preview instead of
@@ -393,7 +387,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
             onMove={handleMove}
             onRename={handleRename}
             onSelect={openFile}
-            onUpload={handleUpload}
+            onUpload={() => setUploadOpen(true)}
             sidebarPanelRef={sidebarPanelRef}
           />
         ) : (
@@ -425,6 +419,12 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           previewPanelRef={previewPanelRef}
         />
       </Group>
+      <UploadDialog
+        onOpenChange={setUploadOpen}
+        onUploaded={createBinaryNode}
+        open={uploadOpen}
+        projectId={project.id}
+      />
     </div>
   );
 }

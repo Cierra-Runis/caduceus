@@ -44,8 +44,8 @@ export interface SidebarPanelProps {
   /// Rename the node with this id; returns whether it succeeded.
   onRename: (id: string, name: string) => boolean;
   onSelect: (id: string) => void;
-  /// Upload a picked file as a binary blob at the root.
-  onUpload: (file: File) => void;
+  /// Open the upload dialog to add binary files.
+  onUpload: () => void;
   sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
@@ -73,7 +73,6 @@ export function SidebarPanel({
   // everything. `editing` drives the single inline input (create or rename).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   // Drag-to-move: `dragging` holds the grabbed node id; `dropTarget` is the
   // folder id currently hovered (or '' for the root) so it can be highlighted.
   // The empty string is safe as the root sentinel — node ids are 24-hex.
@@ -307,17 +306,7 @@ export function SidebarPanel({
           <IconButton
             icon={<UploadIcon className='size-4' />}
             label={t('uploadFile')}
-            onClick={() => fileInput.current?.click()}
-          />
-          <input
-            className='hidden'
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onUpload(file);
-              event.target.value = ''; // allow re-picking the same file
-            }}
-            ref={fileInput}
-            type='file'
+            onClick={onUpload}
           />
         </span>
       </div>

@@ -72,6 +72,13 @@
     "noFileOpen": "No file open",
     "rename": "Rename {name}",
     "settings": "Settings",
+    "upload": {
+      "choose": "Choose files",
+      "empty": "No files selected",
+      "remove": "Remove {name}",
+      "start": "Upload",
+      "title": "Upload files"
+    },
     "uploadFile": "Upload file"
   },
   "Home": {

@@ -72,6 +72,13 @@
     "noFileOpen": "未打开文件",
     "rename": "重命名 {name}",
     "settings": "设置",
+    "upload": {
+      "choose": "选择文件",
+      "empty": "未选择文件",
+      "remove": "移除 {name}",
+      "start": "上传",
+      "title": "上传文件"
+    },
     "uploadFile": "上传文件"
   },
   "Home": {
