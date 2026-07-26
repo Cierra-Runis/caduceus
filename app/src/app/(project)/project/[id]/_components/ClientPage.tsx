@@ -24,6 +24,7 @@ import {
     deleteNode,
     fileEntries,
     isBinaryPath,
+    moveNode,
     readFileBlob,
     renameNode,
 } from '@/lib/yjs/tree';
@@ -151,6 +152,14 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         }
       : null;
 
+  const handleMove = (id: string, parent: null | string) => {
+    try {
+      moveNode(ydoc, id, parent);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move');
+    }
+  };
+
   useEffect(() => {
     const ws = new WebsocketProvider(
       `${env.NEXT_PUBLIC_WS_URL}/project`,
@@ -211,6 +220,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
           onDelete={handleDelete}
+          onMove={handleMove}
           onRename={handleRename}
           onSelect={setFocus}
           onUpload={handleUpload}

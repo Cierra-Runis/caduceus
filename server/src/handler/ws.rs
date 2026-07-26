@@ -342,6 +342,15 @@ struct RoomState {
     /// Whether the Y.Doc changed since the last snapshot, so persist can skip
     /// re-snapshotting an unchanged room.
     dirty: bool,
+    /// Whether a *text* edit landed since the last persist tick. Reset every
+    /// persist; a persist that sees it still `false` means the room went a full
+    /// interval untouched — i.e. editing has settled, so it is safe to flush
+    /// blobs without spraying a new object per keystroke-burst.
+    edited_since_persist: bool,
+    /// Whether some file's text has drifted from its recorded blob since the
+    /// last blob flush, so a settle (or leave) still has blobs to upload. Set on
+    /// each text edit, cleared once the stale blobs are flushed.
+    blobs_pending: bool,
 }
 
 impl RoomState {
@@ -362,6 +371,8 @@ impl RoomState {
             client_owner: HashMap::new(),
             last: HashMap::new(),
             dirty: false, // the snapshot we loaded is already durable
+            edited_since_persist: false,
+            blobs_pending: false,
         }
     }
 
@@ -397,6 +408,10 @@ impl RoomState {
             client_owner: HashMap::new(),
             last: HashMap::new(),
             dirty: true, // a fresh seed needs an initial snapshot
+            edited_since_persist: false,
+            // Seed blobs already match their seeded text; nothing to flush until
+            // an edit drifts a file from its blob.
+            blobs_pending: false,
         }
     }
 }
@@ -482,8 +497,10 @@ async fn room_manager(
                                 // insertions of the same characters, which the CRDT
                                 // merges into DUPLICATED content. A reconnecting
                                 // client must re-sync against the SAME document.
-                                // Just persist now.
-                                persist_room(project_id, room, &repo, &store, &cmd_tx);
+                                // Just persist now, forcing a blob flush — the
+                                // room is emptying, so there is no later settle
+                                // to catch the final edits.
+                                persist_room(project_id, room, &repo, &store, &cmd_tx, true);
                             }
                         }
                     }
@@ -504,7 +521,7 @@ async fn room_manager(
             }
             _ = persist_tick.tick() => {
                 for (project_id, room) in rooms.iter_mut() {
-                    persist_room(*project_id, room, &repo, &store, &cmd_tx);
+                    persist_room(*project_id, room, &repo, &store, &cmd_tx, false);
                 }
             }
             _ = gc_tick.tick() => {
@@ -566,16 +583,22 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
+        // A doc change resets the settle window and marks blobs to (re)flush.
+        // This over-approximates: a pure structural edit (no text change) also
+        // sets these, but the next settle simply finds nothing stale and clears
+        // the flag — cheaper than distinguishing text from structure here.
+        room.edited_since_persist = true;
+        room.blobs_pending = true;
         for update in updates {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
             broadcast(room, conn_id, &msg);
         }
-        // The authority never lets the shared tree rest with two siblings
-        // sharing a name (the one invariant honest concurrent edits can break).
-        // NOTE: reads the tree on every doc-changing frame, text edits included;
-        // it is a cheap map scan at current scale — gate it on a nodes-map
-        // observer if that ever shows up in a profile.
-        reconcile_sibling_names(room);
+        // The authority never lets the shared tree rest in an illegal state —
+        // a name clash, a cycle, or a dangling parent that concurrent edits can
+        // produce. NOTE: reads the tree on every doc-changing frame, text edits
+        // included; it is a cheap map scan at current scale — gate it on a
+        // nodes-map observer if that ever shows up in a profile.
+        reconcile_tree(room);
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -608,29 +631,22 @@ fn broadcast_all(room: &RoomState, msg: &[u8]) {
     }
 }
 
-/// Server-authoritative repair of duplicate sibling names in the shared tree.
-/// If two nodes share a `(parent, name)`, renames all but one (see
-/// [`ProjectTree::dedupe_sibling_names`]), applies the fix to the Y.Doc, and
-/// broadcasts the resulting update to every connection.
-fn reconcile_sibling_names(room: &mut RoomState) {
+/// Server-authoritative repair of the shared tree, in two passes:
+///
+/// 1. **Structural** — reparent cycle / dangling-parent victims to the root
+///    (the invariants a concurrent *move* can break, see
+///    [`ProjectTree::structural_repairs`]).
+/// 2. **Naming** — dedupe siblings that share a `(parent, name)`, on the now
+///    structurally-sound tree (see [`ProjectTree::dedupe_sibling_names`]).
+///
+/// Both passes mutate the Y.Doc; the resulting updates are captured and
+/// broadcast to *every* connection, so the client that caused the clash also
+/// snaps to the corrected state.
+fn reconcile_tree(room: &mut RoomState) {
     let doc = room.awareness.doc();
     let nodes = nodes_map(doc);
 
-    // Decide the renames from a read-only view before touching the doc.
-    let renames = {
-        let txn = doc.transact();
-        match read_tree(&txn, &nodes) {
-            Ok(tree) => tree.dedupe_sibling_names(),
-            // A node half-written mid-sync — skip; a later frame will retry.
-            Err(_) => return,
-        }
-    };
-    if renames.is_empty() {
-        return;
-    }
-
-    // Apply the corrective renames, capturing the update they produce so it can
-    // be relayed (same observer trick as `handle_data`).
+    // One observer spans both passes, capturing whatever they change to relay.
     let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = applied.clone();
     let subscription = doc.observe_update_v1(move |_txn, event| {
@@ -638,7 +654,32 @@ fn reconcile_sibling_names(room: &mut RoomState) {
             updates.push(event.update.clone());
         }
     });
-    {
+
+    // Pass 1: reparent structural victims to the root (drop their `parent`).
+    let structural = {
+        let txn = doc.transact();
+        // A node half-written mid-sync — skip; a later frame retries.
+        read_tree(&txn, &nodes)
+            .map(|tree| tree.structural_repairs())
+            .unwrap_or_default()
+    };
+    if !structural.is_empty() {
+        let mut txn = doc.transact_mut();
+        for id in structural {
+            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                node.remove(&mut txn, "parent");
+            }
+        }
+    }
+
+    // Pass 2: dedupe sibling names on the repaired tree.
+    let renames = {
+        let txn = doc.transact();
+        read_tree(&txn, &nodes)
+            .map(|tree| tree.dedupe_sibling_names())
+            .unwrap_or_default()
+    };
+    if !renames.is_empty() {
         let mut txn = doc.transact_mut();
         for (id, name) in renames {
             if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
@@ -646,12 +687,16 @@ fn reconcile_sibling_names(room: &mut RoomState) {
             }
         }
     }
+
     drop(subscription);
 
-    room.dirty = true;
-    for update in std::mem::take(&mut *applied.lock().unwrap()) {
-        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
-        broadcast_all(room, &msg);
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    if !updates.is_empty() {
+        room.dirty = true;
+        for update in updates {
+            let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+            broadcast_all(room, &msg);
+        }
     }
 }
 
@@ -659,88 +704,121 @@ fn reconcile_sibling_names(room: &mut RoomState) {
 /// the whole doc (nodes + text) goes to a MinIO snapshot (the CRDT authority),
 /// the derived tree projection to Mongo (the listing cache), and each changed
 /// file's text back to Mongo `files` (so REST loads keep working during the
-/// migration). All the `!Send` doc work happens synchronously up front; only the
-/// IO is spawned onto this thread's LocalSet.
+/// migration).
+///
+/// Content-addressed blobs are handled separately, on a **settle** cadence: a
+/// blob is uploaded only once the room has gone a full persist interval without
+/// an edit (or when `force_flush` is set, e.g. the room is emptying on leave).
+/// Flushing a fresh blob on every tick while someone is mid-edit would spray a
+/// new MinIO object per keystroke-burst — each superseded moments later and left
+/// for GC — so the flush waits for typing to pause.
+///
+/// All the `!Send` doc work happens synchronously up front; only the IO is
+/// spawned onto this thread's LocalSet.
 fn persist_room(
     project_id: ObjectId,
     room: &mut RoomState,
     repo: &MongoProjectRepo,
     store: &ProjectStore,
     cmd_tx: &UnboundedSender<Command>,
+    force_flush: bool,
 ) {
-    if !room.dirty {
+    // A persist that finds the settle flag still clear (no edit this interval)
+    // means editing has paused, so it may flush the pending blobs. `force_flush`
+    // shortcuts that when the room is emptying and there is no later settle.
+    let settled = force_flush || !room.edited_since_persist;
+    room.edited_since_persist = false;
+    let do_flush = room.blobs_pending && settled;
+
+    // Nothing to snapshot and no blobs to flush — skip entirely.
+    if !room.dirty && !do_flush {
         return;
+    }
+    let snapshot_dirty = room.dirty;
+    room.dirty = false;
+    if do_flush {
+        room.blobs_pending = false;
     }
 
     // Phase 1 (sync, holds the doc): encode the snapshot, derive the projection,
-    // and read each file's current text. Outputs are owned/`Send`.
-    let (snapshot_bytes, projection, file_texts) = {
+    // read each changed file's text (for the Mongo dual-write), and — only when
+    // flushing — the files whose text has drifted from their recorded blob.
+    // Outputs are owned/`Send`.
+    let (snapshot_bytes, projection, mongo_changed, blob_stale) = {
         let doc = room.awareness.doc();
         let snapshot_bytes = encode_doc(doc);
         let nodes = nodes_map(doc);
         let txn = doc.transact();
         let tree = read_tree(&txn, &nodes).ok();
         let projection = tree.as_ref().and_then(|t| t.projection().ok());
-        let file_texts: Vec<(String, String)> = tree
-            .as_ref()
-            .map(|t| {
-                t.iter()
-                    .filter(|n| n.is_file())
-                    .filter_map(|n| {
-                        txn.get_text(n.id.as_str())
-                            .map(|txt| (n.id.clone(), txt.get_string(&txn)))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        (snapshot_bytes, projection, file_texts)
+
+        let mut mongo_changed: Vec<(ObjectId, String)> = Vec::new();
+        let mut blob_stale: Vec<(String, String)> = Vec::new();
+        if let Some(tree) = tree.as_ref() {
+            for node in tree.iter().filter(|n| n.is_file()) {
+                // A binary file has no text overlay; skip it (its blob is set at
+                // upload time and must never be flushed over with empty text).
+                let Some(text) = txn
+                    .get_text(node.id.as_str())
+                    .map(|txt| txt.get_string(&txn))
+                else {
+                    continue;
+                };
+                // Mongo dual-write: dedup against the last persisted text.
+                let unchanged = room.last.get(&node.id).is_some_and(|prev| prev == &text);
+                if !unchanged {
+                    room.last.insert(node.id.clone(), text.clone());
+                    if let Ok(file_id) = ObjectId::parse_str(&node.id) {
+                        mongo_changed.push((file_id, text.clone()));
+                    }
+                }
+                // Blob flush (settle only): a file whose current text hashes to
+                // something other than its recorded blob sha needs re-uploading.
+                if do_flush {
+                    let fresh = sha256_hex(text.as_bytes());
+                    let recorded = node.blob().map(|b| b.sha256.as_str());
+                    if recorded != Some(fresh.as_str()) {
+                        blob_stale.push((node.id.clone(), text));
+                    }
+                }
+            }
+        }
+        (snapshot_bytes, projection, mongo_changed, blob_stale)
     };
 
-    // Dedup text against what was last persisted (sync; mutates room.last).
-    let mut changed = Vec::new();
-    for (id_hex, text) in file_texts {
-        if room.last.get(&id_hex).is_some_and(|prev| prev == &text) {
-            continue;
-        }
-        room.last.insert(id_hex.clone(), text.clone());
-        if let Ok(file_id) = ObjectId::parse_str(&id_hex) {
-            changed.push((file_id, text));
-        }
-    }
-    room.dirty = false;
-
-    // Phase 2 (async, no doc borrow): write to the durable stores. Each changed
-    // file's text is uploaded as a content-addressed blob and its text is also
-    // dual-written to Mongo (kept for REST during the migration). The resulting
-    // blobs are sent back as `FlushBlobs` so the room can refresh each file
-    // node's `blob` reference on the Y.Doc.
+    // Phase 2 (async, no doc borrow): write to the durable stores. The snapshot
+    // and projection go only when the doc actually changed; the Mongo text cache
+    // tracks every persist; blobs are uploaded (write-before-reference) and their
+    // hashes sent back as `FlushBlobs` so each node's blob reference catches up.
     let repo = repo.clone();
     let store = store.clone();
     let cmd_tx = cmd_tx.clone();
     tokio::task::spawn_local(async move {
         let pid = project_id.to_hex();
-        if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
-            warn!("snapshot save failed in {pid}: {e:?}");
-        }
-        if let Some(projection) = projection {
-            if let Err(e) = repo.update_tree(project_id, projection).await {
-                warn!("projection update failed in {pid}: {e:?}");
+        if snapshot_dirty {
+            if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
+                warn!("snapshot save failed in {pid}: {e:?}");
+            }
+            if let Some(projection) = projection {
+                if let Err(e) = repo.update_tree(project_id, projection).await {
+                    warn!("projection update failed in {pid}: {e:?}");
+                }
             }
         }
-        let mut flushed: Vec<(String, Blob)> = Vec::new();
-        for (file_id, text) in changed {
-            // Blob first (write-before-reference): upload the bytes, then hand
-            // the hash back to be recorded on the node.
-            match store.put_blob(&pid, text.as_bytes()).await {
-                Ok(blob) => flushed.push((file_id.to_hex(), blob)),
-                Err(e) => warn!("blob flush failed in {pid}: {e:?}"),
-            }
+        for (file_id, text) in mongo_changed {
             let size = text.len() as i64;
             if let Err(e) = repo
                 .update_file_content(project_id, file_id, FileContent::Text { text }, size)
                 .await
             {
                 warn!("text persist failed in {pid}: {e:?}");
+            }
+        }
+        let mut flushed: Vec<(String, Blob)> = Vec::new();
+        for (id_hex, text) in blob_stale {
+            match store.put_blob(&pid, text.as_bytes()).await {
+                Ok(blob) => flushed.push((id_hex, blob)),
+                Err(e) => warn!("blob flush failed in {pid}: {e:?}"),
             }
         }
         if !flushed.is_empty() {
@@ -1093,7 +1171,7 @@ mod tests {
         let (_conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
-        reconcile_sibling_names(&mut room);
+        reconcile_tree(&mut room);
 
         // The tree is unique again: the lowest id keeps the name, the other is
         // suffixed, and the result validates.
@@ -1125,7 +1203,7 @@ mod tests {
         )]);
         let (_conn_a, mut rx_a) = insert_conn(&mut room);
 
-        reconcile_sibling_names(&mut room);
+        reconcile_tree(&mut room);
 
         // No clash, so no correction is sent.
         assert!(rx_a.try_recv().is_err());
@@ -1163,6 +1241,47 @@ mod tests {
         );
 
         let received = rx_a.try_recv().expect("flush broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
+    }
+
+    #[test]
+    fn test_reconcile_breaks_a_cycle_and_broadcasts_to_all() {
+        use crate::models::tree::{Node, NodeContent, ProjectTree};
+
+        let folder = |id: &str, parent: &str| Node {
+            id: id.to_string(),
+            parent: Some(parent.to_string()),
+            name: id.to_string(),
+            content: NodeContent::Folder,
+        };
+
+        let mut room = RoomState::new(vec![]);
+        // a↔b cycle, as two peers each moving one under the other would merge to.
+        let cyclic = ProjectTree::from_nodes([folder("a", "b"), folder("b", "a")]);
+        {
+            let doc = room.awareness.doc();
+            let nodes = nodes_map(doc);
+            let mut txn = doc.transact_mut();
+            write_tree(&mut txn, &nodes, &cyclic);
+        }
+
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        reconcile_tree(&mut room);
+
+        // The cycle is broken (lowest id reparented to the root) and the tree
+        // now validates.
+        let nodes = nodes_map(room.awareness.doc());
+        let txn = room.awareness.doc().transact();
+        let tree = read_tree(&txn, &nodes).unwrap();
+        tree.validate().unwrap();
+        assert_eq!(tree.get("a").unwrap().parent, None);
+        assert_eq!(tree.get("b").unwrap().parent.as_deref(), Some("a"));
+
+        let received = rx_a.try_recv().expect("correction broadcast");
         assert!(matches!(
             YMessage::decode_v1(&received),
             Ok(YMessage::Sync(SyncMessage::Update(_)))

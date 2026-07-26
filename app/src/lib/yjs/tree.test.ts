@@ -9,6 +9,7 @@ import {
   fileEntries,
   isBinaryPath,
   isValidSegment,
+  moveNode,
   readFileBlob,
   readNodes,
   renameNode,
@@ -249,5 +250,58 @@ describe('createBinaryFile', () => {
     const doc = new Y.Doc();
     createFile(doc, 'logo.png', null);
     expect(() => createBinaryFile(doc, 'logo.png', null, 'a'.repeat(64), 1)).toThrow();
+  });
+});
+
+describe('moveNode', () => {
+  it('moves a file into a folder, re-deriving its path', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    const f = createFile(doc, 'intro.typ', null);
+    moveNode(doc, f, dir);
+    expect(fileEntries(readNodes(doc))).toEqual([
+      { id: f, path: 'chapters/intro.typ' },
+    ]);
+  });
+
+  it('moves a file back to the root', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    const f = createFile(doc, 'intro.typ', dir);
+    moveNode(doc, f, null);
+    expect(fileEntries(readNodes(doc))).toEqual([{ id: f, path: 'intro.typ' }]);
+  });
+
+  it('rejects moving into a non-folder', () => {
+    const doc = new Y.Doc();
+    const a = createFile(doc, 'a.typ', null);
+    const b = createFile(doc, 'b.typ', null);
+    expect(() => moveNode(doc, a, b)).toThrow();
+  });
+
+  it('rejects moving a folder into itself or a descendant', () => {
+    const doc = new Y.Doc();
+    const outer = createFolder(doc, 'outer', null);
+    const inner = createFolder(doc, 'inner', outer);
+    expect(() => moveNode(doc, outer, outer)).toThrow();
+    expect(() => moveNode(doc, outer, inner)).toThrow();
+  });
+
+  it('rejects a move that would collide with a name at the destination', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    createFile(doc, 'intro.typ', dir);
+    const other = createFile(doc, 'intro.typ', null);
+    expect(() => moveNode(doc, other, dir)).toThrow();
+  });
+
+  it('is a no-op when already under the target parent', () => {
+    const doc = new Y.Doc();
+    const dir = createFolder(doc, 'chapters', null);
+    const f = createFile(doc, 'intro.typ', dir);
+    expect(() => moveNode(doc, f, dir)).not.toThrow();
+    expect(fileEntries(readNodes(doc))).toEqual([
+      { id: f, path: 'chapters/intro.typ' },
+    ]);
   });
 });
