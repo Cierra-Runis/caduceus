@@ -1,6 +1,7 @@
 'use client';
 
 import { GripVerticalIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Group,
@@ -34,10 +35,12 @@ import {
 import { EditorPanel } from './EditorPanel';
 import { PresenceBar } from './PresenceBar';
 import { PreviewPanel } from './PreviewPanel';
-import { Sidebar } from './Sidebar';
+import { SettingsPanel } from './SettingsPanel';
+import { Sidebar, SidebarView } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
+  const t = useTranslations('Editor');
   const sidebarPanelRef = usePanelRef();
   const editorPanelRef = usePanelRef();
   const previewPanelRef = usePanelRef();
@@ -84,6 +87,9 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   const [autoSave, setAutoSave] = useState<AutoSavePolicy>(
     project.settings.autoSave,
   );
+  // Which view the sidebar panel shows (files vs settings), driven by the
+  // activity bar.
+  const [activePanel, setActivePanel] = useState<SidebarView>('files');
   const autoSaveDelay = project.settings.autoSaveDelay;
   const handleAutoSaveChange = (next: AutoSavePolicy) => {
     const prev = autoSave;
@@ -93,9 +99,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       autoSaveDelay,
     }).catch((error) => {
       setAutoSave(prev); // revert on failure
-      toast.error(
-        error instanceof Error ? error.message : 'Could not update auto-save',
-      );
+      toast.error(error instanceof Error ? error.message : t('errors.autoSave'));
     });
   };
 
@@ -196,7 +200,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       openFile(createFile(ydoc, name, parent));
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not create file');
+      toast.error(error instanceof Error ? error.message : t('errors.createFile'));
       return false;
     }
   };
@@ -205,7 +209,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       createFolder(ydoc, name, parent);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not create folder');
+      toast.error(error instanceof Error ? error.message : t('errors.createFolder'));
       return false;
     }
   };
@@ -214,7 +218,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       renameNode(ydoc, id, name);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not rename');
+      toast.error(error instanceof Error ? error.message : t('errors.rename'));
       return false;
     }
   };
@@ -222,7 +226,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     try {
       deleteNode(ydoc, id);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not delete');
+      toast.error(error instanceof Error ? error.message : t('errors.delete'));
     }
   };
   // Upload a binary file: send its bytes to the server, then create a file node
@@ -235,7 +239,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       );
       openFile(createBinaryFile(ydoc, file.name, null, sha256, size));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not upload file');
+      toast.error(error instanceof Error ? error.message : t('errors.upload'));
     }
   };
 
@@ -259,7 +263,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     try {
       moveNode(ydoc, id, parent);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not move');
+      toast.error(error instanceof Error ? error.message : t('errors.move'));
     }
   };
 
@@ -372,23 +376,33 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
       <div className='absolute top-2 right-2 z-10'>
         <PresenceBar me={localUser} provider={provider} />
       </div>
-      <Sidebar sidebarPanelRef={sidebarPanelRef} />
+      <Sidebar
+        activePanel={activePanel}
+        onSelectPanel={setActivePanel}
+        sidebarPanelRef={sidebarPanelRef}
+      />
       <Group orientation='horizontal'>
-        <SidebarPanel
-          autoSave={autoSave}
-          entry={entryId}
-          focus={focus}
-          nodes={nodes}
-          onAutoSaveChange={handleAutoSaveChange}
-          onCreateFile={handleCreateFile}
-          onCreateFolder={handleCreateFolder}
-          onDelete={handleDelete}
-          onMove={handleMove}
-          onRename={handleRename}
-          onSelect={openFile}
-          onUpload={handleUpload}
-          sidebarPanelRef={sidebarPanelRef}
-        />
+        {activePanel === 'files' ? (
+          <SidebarPanel
+            entry={entryId}
+            focus={focus}
+            nodes={nodes}
+            onCreateFile={handleCreateFile}
+            onCreateFolder={handleCreateFolder}
+            onDelete={handleDelete}
+            onMove={handleMove}
+            onRename={handleRename}
+            onSelect={openFile}
+            onUpload={handleUpload}
+            sidebarPanelRef={sidebarPanelRef}
+          />
+        ) : (
+          <SettingsPanel
+            autoSave={autoSave}
+            onAutoSaveChange={handleAutoSaveChange}
+            sidebarPanelRef={sidebarPanelRef}
+          />
+        )}
         <Separator className='flex w-4 items-center justify-center'>
           <GripVerticalIcon className='w-4' />
         </Separator>

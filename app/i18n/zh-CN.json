@@ -41,6 +41,39 @@
   "DownloadProject": {
     "failed": "下载失败"
   },
+  "Editor": {
+    "autoSave": {
+      "afterDelay": "延迟后",
+      "label": "自动保存",
+      "off": "手动（关闭）",
+      "onFocusChange": "焦点变化时",
+      "onWindowChange": "窗口失焦时"
+    },
+    "closeTab": "关闭 {name}",
+    "confirmDelete": "删除“{name}”及其中所有内容？",
+    "delete": "删除 {name}",
+    "entry": "入口",
+    "errors": {
+      "autoSave": "无法更新自动保存设置",
+      "createFile": "无法创建文件",
+      "createFolder": "无法创建文件夹",
+      "delete": "无法删除",
+      "move": "无法移动",
+      "rename": "无法重命名",
+      "upload": "无法上传文件"
+    },
+    "fileName": "文件名",
+    "files": "文件",
+    "folderName": "文件夹名",
+    "newFile": "新建文件",
+    "newFileIn": "在 {name} 中新建文件",
+    "newFolder": "新建文件夹",
+    "newFolderIn": "在 {name} 中新建文件夹",
+    "noFileOpen": "未打开文件",
+    "rename": "重命名 {name}",
+    "settings": "设置",
+    "uploadFile": "上传文件"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "一个开源的 <typstApp>Typst App</typstApp> 替代品",

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { RefObject } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 import { WebsocketProvider } from 'y-websocket';
@@ -43,6 +44,7 @@ export function EditorPanel({
   textId,
   ydoc,
 }: EditorPanelProps) {
+  const t = useTranslations('Editor');
   return (
     <Panel
       collapsible
@@ -61,7 +63,7 @@ export function EditorPanel({
         <div className='min-h-0 flex-1 overflow-auto'>
           {tabs.length === 0 ? (
             <div className='grid h-full place-items-center text-sm opacity-50'>
-              No file open
+              {t('noFileOpen')}
             </div>
           ) : binary ? (
             <BinaryFileView

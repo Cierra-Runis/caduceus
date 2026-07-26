@@ -4,6 +4,7 @@ import { type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TreeNode } from '@/lib/yjs/tree';
+import { withIntl } from '@/test/intl';
 
 import { SidebarPanel } from './SidebarPanel';
 
@@ -35,20 +36,22 @@ function renderPanel(
   overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {},
 ) {
   return render(
-    <SidebarPanel
-      entry={null}
-      focus=''
-      nodes={nodes}
-      onCreateFile={vi.fn(() => true)}
-      onCreateFolder={vi.fn(() => true)}
-      onDelete={vi.fn()}
-      onMove={vi.fn()}
-      onRename={vi.fn(() => true)}
-      onSelect={vi.fn()}
-      onUpload={vi.fn()}
-      sidebarPanelRef={{ current: null }}
-      {...overrides}
-    />,
+    withIntl(
+      <SidebarPanel
+        entry={null}
+        focus=''
+        nodes={nodes}
+        onCreateFile={vi.fn(() => true)}
+        onCreateFolder={vi.fn(() => true)}
+        onDelete={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn(() => true)}
+        onSelect={vi.fn()}
+        onUpload={vi.fn()}
+        sidebarPanelRef={{ current: null }}
+        {...overrides}
+      />,
+    ),
   );
 }
 
@@ -157,20 +160,6 @@ describe('SidebarPanel', () => {
       screen.getByRole('button', { name: 'Delete chapters' }),
     );
     expect(onDelete).not.toHaveBeenCalled();
-  });
-
-  it('shows the auto-save selector and reports a change', async () => {
-    const onAutoSaveChange = vi.fn();
-    renderPanel({ autoSave: 'onFocusChange', onAutoSaveChange });
-    const select = screen.getByRole('combobox');
-    expect((select as HTMLSelectElement).value).toBe('onFocusChange');
-    await userEvent.selectOptions(select, 'afterDelay');
-    expect(onAutoSaveChange).toHaveBeenCalledWith('afterDelay');
-  });
-
-  it('omits the auto-save selector when no handler is given', () => {
-    renderPanel();
-    expect(screen.queryByRole('combobox')).toBeNull();
   });
 
   it('moves a node when dropped onto a folder', () => {

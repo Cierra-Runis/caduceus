@@ -1,6 +1,7 @@
 'use client';
 
 import { XIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,7 @@ export interface FileTabsProps {
 /// when it has unsaved changes, a dot that turns into a close button on hover
 /// (an always-visible close button on hover otherwise). Middle-click also closes.
 export function FileTabs({ activeId, onClose, onSelect, tabs }: FileTabsProps) {
+  const t = useTranslations('Editor');
   if (tabs.length === 0) return null;
 
   return (
@@ -58,7 +60,7 @@ export function FileTabs({ activeId, onClose, onSelect, tabs }: FileTabsProps) {
               {tab.name}
             </button>
             <button
-              aria-label={`Close ${tab.name}`}
+              aria-label={t('closeTab', { name: tab.name })}
               className='relative mr-1 grid size-5 place-items-center rounded-sm hover:bg-accent'
               onClick={() => onClose(tab.id)}
             >

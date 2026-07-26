@@ -38,6 +38,39 @@
     "noProjects": "プロジェクトがありません。まずは作成してみましょう！",
     "yourProjects": "あなたのプロジェクト"
   },
+  "Editor": {
+    "autoSave": {
+      "afterDelay": "遅延後",
+      "label": "自動保存",
+      "off": "手動（オフ）",
+      "onFocusChange": "フォーカス変更時",
+      "onWindowChange": "ウィンドウ切り替え時"
+    },
+    "closeTab": "{name} を閉じる",
+    "confirmDelete": "「{name}」とその中身をすべて削除しますか？",
+    "delete": "{name} を削除",
+    "entry": "エントリー",
+    "errors": {
+      "autoSave": "自動保存の更新に失敗しました",
+      "createFile": "ファイルを作成できませんでした",
+      "createFolder": "フォルダーを作成できませんでした",
+      "delete": "削除できませんでした",
+      "move": "移動できませんでした",
+      "rename": "名前を変更できませんでした",
+      "upload": "ファイルをアップロードできませんでした"
+    },
+    "fileName": "ファイル名",
+    "files": "ファイル",
+    "folderName": "フォルダー名",
+    "newFile": "新規ファイル",
+    "newFileIn": "{name} に新規ファイル",
+    "newFolder": "新規フォルダー",
+    "newFolderIn": "{name} に新規フォルダー",
+    "noFileOpen": "ファイルが開かれていません",
+    "rename": "{name} の名前を変更",
+    "settings": "設定",
+    "uploadFile": "ファイルをアップロード"
+  },
   "DownloadProject": {
     "failed": "ダウンロードに失敗しました"
   },

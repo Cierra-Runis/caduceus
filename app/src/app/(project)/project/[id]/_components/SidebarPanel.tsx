@@ -10,6 +10,7 @@ import {
     Trash2Icon,
     UploadIcon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
     DragEvent,
     KeyboardEvent,
@@ -21,30 +22,16 @@ import {
 } from 'react';
 import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 
-import { AutoSavePolicy } from '@/lib/types/project';
 import { cn } from '@/lib/utils';
 import { TreeNode } from '@/lib/yjs/tree';
 
-/// Human labels for each `files.autoSave` policy, shown in the selector.
-const AUTO_SAVE_LABELS: Record<AutoSavePolicy, string> = {
-  afterDelay: 'After delay',
-  off: 'Manual (off)',
-  onFocusChange: 'On focus change',
-  onWindowChange: 'On window change',
-};
-
 export interface SidebarPanelProps {
-  /// Current auto-save policy; when set (with `onAutoSaveChange`) the panel
-  /// renders a selector for it.
-  autoSave?: AutoSavePolicy;
   /// Id of the compile entry file, marked in the list. Null if none.
   entry: null | string;
   /// Id of the file currently open in the editor.
   focus: string;
   /// Every node (files and folders); the panel builds the tree from `parent`.
   nodes: TreeNode[];
-  /// Change the auto-save policy (persisted project-wide).
-  onAutoSaveChange?: (policy: AutoSavePolicy) => void;
   /// Create a file with this name under `parent` (null = root); returns whether
   /// it succeeded (a rejected name keeps the input open).
   onCreateFile: (name: string, parent: null | string) => boolean;
@@ -69,11 +56,9 @@ type Editing =
   | { kind: 'file' | 'folder'; mode: 'create'; parent: null | string };
 
 export function SidebarPanel({
-  autoSave,
   entry,
   focus,
   nodes,
-  onAutoSaveChange,
   onCreateFile,
   onCreateFolder,
   onDelete,
@@ -83,6 +68,7 @@ export function SidebarPanel({
   onUpload,
   sidebarPanelRef,
 }: SidebarPanelProps) {
+  const t = useTranslations('Editor');
   // A folder is expanded unless it is in `collapsed`, so a fresh tree shows
   // everything. `editing` drives the single inline input (create or rename).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -158,7 +144,7 @@ export function SidebarPanel({
     const hasChildren = (childrenOf.get(node.id)?.length ?? 0) > 0;
     if (
       hasChildren &&
-      !window.confirm(`Delete “${node.name}” and everything inside it?`)
+      !window.confirm(t('confirmDelete', { name: node.name }))
     ) {
       return;
     }
@@ -179,7 +165,9 @@ export function SidebarPanel({
                 editing.kind === 'folder' ? onCreateFolder : onCreateFile;
               if (create(name, parent)) setEditing(null);
             }}
-            placeholder={editing.kind === 'folder' ? 'folder name' : 'file name'}
+            placeholder={
+              editing.kind === 'folder' ? t('folderName') : t('fileName')
+            }
           />
         </li>,
       );
@@ -252,7 +240,7 @@ export function SidebarPanel({
               )}
               <span className='truncate'>{node.name}</span>
               {node.id === entry && (
-                <span className='ml-auto text-xs opacity-50'>entry</span>
+                <span className='ml-auto text-xs opacity-50'>{t('entry')}</span>
               )}
             </button>
             <span
@@ -265,24 +253,24 @@ export function SidebarPanel({
                 <>
                   <IconButton
                     icon={<FilePlusIcon className='size-3.5' />}
-                    label={`New file in ${node.name}`}
+                    label={t('newFileIn', { name: node.name })}
                     onClick={() => startCreate(node.id, 'file')}
                   />
                   <IconButton
                     icon={<FolderPlusIcon className='size-3.5' />}
-                    label={`New folder in ${node.name}`}
+                    label={t('newFolderIn', { name: node.name })}
                     onClick={() => startCreate(node.id, 'folder')}
                   />
                 </>
               )}
               <IconButton
                 icon={<PencilIcon className='size-3.5' />}
-                label={`Rename ${node.name}`}
+                label={t('rename', { name: node.name })}
                 onClick={() => setEditing({ id: node.id, mode: 'rename' })}
               />
               <IconButton
                 icon={<Trash2Icon className='size-3.5' />}
-                label={`Delete ${node.name}`}
+                label={t('delete', { name: node.name })}
                 onClick={() => requestDelete(node)}
               />
             </span>
@@ -304,21 +292,21 @@ export function SidebarPanel({
       panelRef={sidebarPanelRef}
     >
       <div className='flex items-center justify-between px-3 py-2'>
-        <span className='text-xs font-medium opacity-60'>Files</span>
+        <span className='text-xs font-medium opacity-60'>{t('files')}</span>
         <span className='flex items-center'>
           <IconButton
             icon={<FilePlusIcon className='size-4' />}
-            label='New file'
+            label={t('newFile')}
             onClick={() => startCreate(null, 'file')}
           />
           <IconButton
             icon={<FolderPlusIcon className='size-4' />}
-            label='New folder'
+            label={t('newFolder')}
             onClick={() => startCreate(null, 'folder')}
           />
           <IconButton
             icon={<UploadIcon className='size-4' />}
-            label='Upload file'
+            label={t('uploadFile')}
             onClick={() => fileInput.current?.click()}
           />
           <input
@@ -344,25 +332,6 @@ export function SidebarPanel({
       >
         {renderChildren(null, 0)}
       </ul>
-
-      {autoSave && onAutoSaveChange && (
-        <label className='mt-auto flex items-center gap-2 border-t px-3 py-2 text-xs opacity-70'>
-          <span className='shrink-0'>Auto-save</span>
-          <select
-            className='min-w-0 flex-1 rounded-sm border bg-background px-1 py-0.5'
-            onChange={(event) =>
-              onAutoSaveChange(event.target.value as AutoSavePolicy)
-            }
-            value={autoSave}
-          >
-            {(Object.keys(AUTO_SAVE_LABELS) as AutoSavePolicy[]).map((policy) => (
-              <option key={policy} value={policy}>
-                {AUTO_SAVE_LABELS[policy]}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
     </Panel>
   );
 }

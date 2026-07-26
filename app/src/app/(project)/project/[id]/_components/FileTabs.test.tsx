@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { withIntl } from '@/test/intl';
+
 import { FileTab, FileTabs } from './FileTabs';
 
 afterEach(cleanup);
@@ -13,13 +15,15 @@ const tabs: FileTab[] = [
 
 function renderTabs(overrides: Partial<Parameters<typeof FileTabs>[0]> = {}) {
   return render(
-    <FileTabs
-      activeId='a'
-      onClose={vi.fn()}
-      onSelect={vi.fn()}
-      tabs={tabs}
-      {...overrides}
-    />,
+    withIntl(
+      <FileTabs
+        activeId='a'
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        tabs={tabs}
+        {...overrides}
+      />,
+    ),
   );
 }
 
