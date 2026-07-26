@@ -164,26 +164,37 @@ A room emptying on the last leave also force-flushes, so a final edit isn't left
 in the snapshot alone. `blobs_pending` on the room short-circuits a flush when no
 text has drifted from its recorded blob.
 
-### Idle room eviction
+### Idle room eviction + text rematerialization
 
 A room with no connections stays in memory (its `empty_since` clock starts). Once
-it sits idle past `room_idle_secs`, the manager force-flushes it and **drops it
-from memory**, reclaiming the in-memory `Y.Doc`. The next joiner rebuilds the
-room from the snapshot via `RoomState::from_snapshot` — a verbatim
-`Update::decode` + apply, so the reconstructed document is byte-for-byte the same
-CRDT state. A reconnecting client therefore still re-syncs against an *identical*
-document and nothing is duplicated.
+it sits idle past `room_idle_secs`, the manager **evicts** it: it strips the
+redundant text bytes from the resting snapshot and drops the room from memory,
+reclaiming the in-memory `Y.Doc`.
 
-> **Why the resting snapshot still carries text.** It is tempting to strip text
-> from the resting snapshot (leaving only structure) and rematerialize each
-> file's `Y.Text` from its blob on rejoin — text would then live once, in blobs.
-> But re-inserting blob bytes as fresh `Y.Text` content mints *new* CRDT items
-> (new client id / clocks), which a client holding the pre-eviction document
-> would merge alongside its own → **duplicated content** (the exact hazard that
-> keeps a live room pinned rather than re-derived from text). Doing this safely
-> needs the client to *discard* its document on a room-generation change, not a
-> transparent server rewrite — a separate, deliberate protocol change. Until
-> then, eviction reclaims RAM but the snapshot remains the authoritative text.
+- **Strip (`strip_text`).** For each text file whose overlay bytes already live
+  in its blob (the overlay hashes to the node's blob sha), the overlay content is
+  *deleted* from the doc. The resting snapshot then carries the structure and an
+  *empty* overlay per file — not the text bytes, which now live once, in the blob.
+  A file whose text hasn't settled to its blob is left intact (it keeps its bytes
+  in the snapshot this cycle). The stripped snapshot is smaller by roughly the
+  total text size.
+- **Rematerialize (`rematerialize` → `Command::ApplyRemat` → `apply_remat`).** On
+  the next join that *builds* the room, every empty overlay whose blob is
+  non-empty is refilled: the blobs are fetched off-thread and their text inserted
+  back into the overlays, then broadcast.
+
+**Why this is safe (no duplication, no generation/versioning/reload).** The strip
+is a CRDT *deletion*, so the emptied overlay carries a **tombstone** in the
+snapshot. A client that was connected before the eviction and reconnects after it
+receives that deletion on its initial sync (Yjs propagates deletes via the delete
+set, even for items the client still holds live) — so its own copy of the text is
+*removed*, and the rematerialized text (fresh items) is the only content left.
+Old copy deleted + new copy inserted = the text once, on every peer. This is the
+same invariant that lets a live room stay pinned rather than be re-derived from
+text; the tombstone is what makes re-derivation safe here.
+
+The 2× saving applies to **cold** (evicted) projects; a warm room, having
+rematerialized, snapshots the full text again until its next eviction.
 
 ### Reclaiming bytes (GC)
 

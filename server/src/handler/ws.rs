@@ -255,6 +255,13 @@ enum Command {
         project_id: ObjectId,
         blobs: Vec<(String, Blob)>,
     },
+    /// Text fetched from blobs (async) to refill a room rebuilt from a *stripped*
+    /// resting snapshot — one whose text overlays were emptied on eviction so the
+    /// bytes live only in blobs. Applied to the empty overlays and broadcast.
+    ApplyRemat {
+        project_id: ObjectId,
+        texts: Vec<(String, String)>,
+    },
     /// The result of a GC sweep (async): the blobs found orphaned this pass. The
     /// manager stores them so the *next* sweep only deletes blobs orphaned twice
     /// in a row — a grace window so a blob uploaded between passes is never
@@ -337,6 +344,10 @@ impl ProjectServer {
         let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
     }
 }
+
+/// sha256 of empty content — a file whose blob is this has no bytes to
+/// rematerialize. Matches the client's `EMPTY_SHA256`.
+const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 /// One live collaboration room: the shared CRDT document plus its connections.
 /// Lives entirely on the room-manager thread.
@@ -478,6 +489,9 @@ async fn room_manager(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(Command::Join { project_id, snapshot, seed, conn_id, out }) => {
+                        // Track whether this join *builds* the room, so a room
+                        // rebuilt from a stripped snapshot refills its text once.
+                        let fresh = !rooms.contains_key(&project_id);
                         let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
                             Some(bytes) => RoomState::from_snapshot(bytes),
                             None => RoomState::new(seed),
@@ -489,6 +503,9 @@ async fn room_manager(
                         }
                         room.conns.insert(conn_id, out);
                         room.empty_since = None; // occupied again
+                        if fresh {
+                            rematerialize(project_id, room, &store, &cmd_tx);
+                        }
                     }
                     Some(Command::Data { project_id, conn_id, data }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
@@ -533,6 +550,11 @@ async fn room_manager(
                             apply_blobs(room, blobs);
                         }
                     }
+                    Some(Command::ApplyRemat { project_id, texts }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            apply_remat(room, texts);
+                        }
+                    }
                     Some(Command::GcSwept { project_id, orphans }) => {
                         if orphans.is_empty() {
                             gc_pending.remove(&project_id);
@@ -555,10 +577,13 @@ async fn room_manager(
                 }
             }
             _ = evict_tick.tick() => {
-                // Persist and drop rooms idle (no connections) past the threshold,
-                // reclaiming their in-memory document. Safe because the next
-                // joiner rebuilds the room verbatim from the snapshot — a
-                // reconnecting client still meets a byte-identical document.
+                // Drop rooms idle (no connections) past the threshold, reclaiming
+                // their in-memory document. Before dropping, strip each text
+                // overlay whose bytes already live in its blob, so the resting
+                // snapshot no longer stores the text twice; the next joiner
+                // rematerializes it from the blobs. A reconnecting client learns
+                // the strip's deletion (a tombstone in the snapshot) and so never
+                // duplicates the rematerialized text.
                 let stale: Vec<ObjectId> = rooms
                     .iter()
                     .filter(|(_, room)| {
@@ -569,7 +594,15 @@ async fn room_manager(
                     .collect();
                 for project_id in stale {
                     if let Some(room) = rooms.get_mut(&project_id) {
-                        persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                        strip_text(room);
+                        let bytes = encode_doc(room.awareness.doc());
+                        let store = store.clone();
+                        let pid = project_id.to_hex();
+                        tokio::task::spawn_local(async move {
+                            if let Err(e) = store.put_snapshot(&pid, &bytes).await {
+                                warn!("stripped snapshot save failed in {pid}: {e:?}");
+                            }
+                        });
                     }
                     rooms.remove(&project_id);
                     gc_pending.remove(&project_id);
@@ -916,6 +949,144 @@ fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
             broadcast_all(room, &msg);
         }
+    }
+}
+
+/// Strip each text overlay whose bytes are safely in its blob (the file's text
+/// hashes to its recorded blob sha), by **deleting** the overlay's content. The
+/// deletion is a CRDT operation, so the emptied overlay carries a tombstone into
+/// the resting snapshot: the text bytes no longer sit in the snapshot (they live
+/// once, in the blob), yet a client that reconnects across the eviction learns
+/// the deletion and drops its own copy instead of merging it with the
+/// rematerialized text — no duplication. A file whose text hasn't settled to its
+/// blob is left intact (it keeps its bytes in the snapshot this cycle).
+fn strip_text(room: &mut RoomState) {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+
+    let to_strip: Vec<String> = {
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        tree.iter()
+            .filter(|n| n.is_file())
+            .filter_map(|n| {
+                let content = txn.get_text(n.id.as_str())?.get_string(&txn);
+                if content.is_empty() {
+                    return None;
+                }
+                let backed = n.blob().map(|b| b.sha256.as_str())
+                    == Some(sha256_hex(content.as_bytes()).as_str());
+                backed.then(|| n.id.clone())
+            })
+            .collect()
+    };
+    if to_strip.is_empty() {
+        return;
+    }
+
+    let mut txn = doc.transact_mut();
+    for id in to_strip {
+        if let Some(text) = txn.get_text(id.as_str()) {
+            let len = text.len(&txn);
+            if len > 0 {
+                text.remove_range(&mut txn, 0, len);
+            }
+        }
+    }
+}
+
+/// After a room is (re)built, refill any file whose text overlay is empty but
+/// whose blob is non-empty — the resting snapshot was stripped of those bytes.
+/// Fetches the blobs off-thread and applies them via [`Command::ApplyRemat`]. A
+/// cold room (full snapshot, or freshly seeded) has no empty overlays, so this
+/// is a no-op there.
+fn rematerialize(
+    project_id: ObjectId,
+    room: &RoomState,
+    store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
+) {
+    // Sync (holds the doc): (id, blob sha) for each empty-overlay file.
+    let needed: Vec<(String, String)> = {
+        let doc = room.awareness.doc();
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        tree.iter()
+            .filter(|n| n.is_file())
+            .filter_map(|n| {
+                let empty = txn
+                    .get_text(n.id.as_str())
+                    .is_none_or(|t| t.len(&txn) == 0);
+                let blob = n.blob()?;
+                (empty && blob.sha256 != EMPTY_SHA256)
+                    .then(|| (n.id.clone(), blob.sha256.clone()))
+            })
+            .collect()
+    };
+    if needed.is_empty() {
+        return;
+    }
+
+    let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        let pid = project_id.to_hex();
+        let mut texts: Vec<(String, String)> = Vec::new();
+        for (id, sha) in needed {
+            match store.get_blob(&pid, &sha).await {
+                Ok(Some(bytes)) => match String::from_utf8(bytes) {
+                    Ok(text) => texts.push((id, text)),
+                    Err(_) => warn!("remat: blob {sha} in {pid} is not UTF-8"),
+                },
+                Ok(None) => warn!("remat: blob {sha} missing in {pid}"),
+                Err(e) => warn!("remat: fetch {sha} in {pid} failed: {e:?}"),
+            }
+        }
+        if !texts.is_empty() {
+            let _ = cmd_tx.send(Command::ApplyRemat { project_id, texts });
+        }
+    });
+}
+
+/// Insert rematerialized text into still-empty overlays (see [`rematerialize`])
+/// and broadcast, so every connection gets the bytes the stripped snapshot
+/// omitted. Skips an overlay that is no longer empty (a peer already typed, or a
+/// duplicate apply). Does **not** mark the room dirty — the content came from a
+/// blob and is already durable, so re-snapshotting it would just re-bloat the
+/// resting snapshot.
+fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
+    let doc = room.awareness.doc();
+
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = doc.observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    {
+        let mut txn = doc.transact_mut();
+        for (id, text) in texts {
+            let Some(root) = txn.get_text(id.as_str()) else {
+                continue;
+            };
+            if root.len(&txn) != 0 {
+                continue;
+            }
+            root.insert(&mut txn, 0, &text);
+        }
+    }
+    drop(subscription);
+
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    for update in updates {
+        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+        broadcast_all(room, &msg);
     }
 }
 
@@ -1427,6 +1598,130 @@ mod tests {
         assert_eq!(tree.get(&key).unwrap().name, "main.typ");
         // A freshly restored, unoccupied room is again a candidate for eviction.
         assert!(restored.empty_since.is_some());
+    }
+
+    #[test]
+    fn test_strip_text_empties_only_blob_backed_overlays() {
+        let backed = ObjectId::new();
+        let unbacked = ObjectId::new();
+        let mut room = RoomState::new(vec![
+            (
+                backed,
+                "a.typ".to_string(),
+                "hello".to_string(),
+                Blob {
+                    sha256: sha256_hex(b"hello"),
+                    size: 5,
+                },
+            ),
+            // `blob()`'s sha does not match "world", so this file is not backed.
+            (unbacked, "b.typ".to_string(), "world".to_string(), blob()),
+        ]);
+
+        strip_text(&mut room);
+
+        let doc = room.awareness.doc();
+        let txn = doc.transact();
+        // The blob-backed overlay was emptied; the unbacked one kept its bytes.
+        assert_eq!(
+            txn.get_text(backed.to_hex().as_str()).unwrap().get_string(&txn),
+            ""
+        );
+        assert_eq!(
+            txn.get_text(unbacked.to_hex().as_str())
+                .unwrap()
+                .get_string(&txn),
+            "world"
+        );
+    }
+
+    #[test]
+    fn test_apply_remat_fills_empty_overlays_and_broadcasts() {
+        // Start from a stripped room (empty overlay), then rematerialize.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hello".to_string(),
+            Blob {
+                sha256: sha256_hex(b"hello"),
+                size: 5,
+            },
+        )]);
+        strip_text(&mut room);
+        let (_conn, mut rx) = insert_conn(&mut room);
+
+        apply_remat(&mut room, vec![(key.clone(), "hello".to_string())]);
+
+        let doc = room.awareness.doc();
+        let txn = doc.transact();
+        assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "hello");
+        // The refill was broadcast to every connection.
+        let received = rx.try_recv().expect("remat broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_strip_then_rematerialize_round_trips_through_a_blob() {
+        use crate::storage::InMemoryObjectStore;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let store = ProjectStore::new(Arc::new(InMemoryObjectStore::new()));
+                let project_id = ObjectId::new();
+                let pid = project_id.to_hex();
+                let file_id = ObjectId::new();
+                let key = file_id.to_hex();
+
+                // A sizable body so the storage win is unambiguous.
+                let content = "lorem ipsum ".repeat(200);
+                store.put_blob(&pid, content.as_bytes()).await.unwrap();
+                let mut room = RoomState::new(vec![(
+                    file_id,
+                    "main.typ".to_string(),
+                    content.clone(),
+                    Blob {
+                        sha256: sha256_hex(content.as_bytes()),
+                        size: content.len() as u64,
+                    },
+                )]);
+
+                // Evict: the stripped snapshot drops the text bytes but keeps the
+                // (now-empty) overlay and the tree.
+                let full = encode_doc(room.awareness.doc());
+                strip_text(&mut room);
+                let stripped = encode_doc(room.awareness.doc());
+                assert!(stripped.len() < full.len());
+
+                let mut rebuilt = RoomState::from_snapshot(&stripped);
+                {
+                    let doc = rebuilt.awareness.doc();
+                    let txn = doc.transact();
+                    assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "");
+                }
+
+                // Rejoin rematerializes the overlay from the blob.
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                rematerialize(project_id, &rebuilt, &store, &tx);
+                let texts = match rx.recv().await {
+                    Some(Command::ApplyRemat { texts, .. }) => texts,
+                    other => panic!("expected ApplyRemat, got {:?}", other.is_some()),
+                };
+                apply_remat(&mut rebuilt, texts);
+
+                let doc = rebuilt.awareness.doc();
+                let txn = doc.transact();
+                assert_eq!(
+                    txn.get_text(key.as_str()).unwrap().get_string(&txn),
+                    content
+                );
+            })
+            .await;
     }
 
     #[test]
