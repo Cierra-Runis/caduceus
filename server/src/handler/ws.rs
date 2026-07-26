@@ -526,12 +526,12 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
             broadcast(room, conn_id, &msg);
         }
-        // The authority never lets the shared tree rest with two siblings
-        // sharing a name (the one invariant honest concurrent edits can break).
-        // NOTE: reads the tree on every doc-changing frame, text edits included;
-        // it is a cheap map scan at current scale — gate it on a nodes-map
-        // observer if that ever shows up in a profile.
-        reconcile_sibling_names(room);
+        // The authority never lets the shared tree rest in an illegal state —
+        // a name clash, a cycle, or a dangling parent that concurrent edits can
+        // produce. NOTE: reads the tree on every doc-changing frame, text edits
+        // included; it is a cheap map scan at current scale — gate it on a
+        // nodes-map observer if that ever shows up in a profile.
+        reconcile_tree(room);
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -564,29 +564,22 @@ fn broadcast_all(room: &RoomState, msg: &[u8]) {
     }
 }
 
-/// Server-authoritative repair of duplicate sibling names in the shared tree.
-/// If two nodes share a `(parent, name)`, renames all but one (see
-/// [`ProjectTree::dedupe_sibling_names`]), applies the fix to the Y.Doc, and
-/// broadcasts the resulting update to every connection.
-fn reconcile_sibling_names(room: &mut RoomState) {
+/// Server-authoritative repair of the shared tree, in two passes:
+///
+/// 1. **Structural** — reparent cycle / dangling-parent victims to the root
+///    (the invariants a concurrent *move* can break, see
+///    [`ProjectTree::structural_repairs`]).
+/// 2. **Naming** — dedupe siblings that share a `(parent, name)`, on the now
+///    structurally-sound tree (see [`ProjectTree::dedupe_sibling_names`]).
+///
+/// Both passes mutate the Y.Doc; the resulting updates are captured and
+/// broadcast to *every* connection, so the client that caused the clash also
+/// snaps to the corrected state.
+fn reconcile_tree(room: &mut RoomState) {
     let doc = room.awareness.doc();
     let nodes = nodes_map(doc);
 
-    // Decide the renames from a read-only view before touching the doc.
-    let renames = {
-        let txn = doc.transact();
-        match read_tree(&txn, &nodes) {
-            Ok(tree) => tree.dedupe_sibling_names(),
-            // A node half-written mid-sync — skip; a later frame will retry.
-            Err(_) => return,
-        }
-    };
-    if renames.is_empty() {
-        return;
-    }
-
-    // Apply the corrective renames, capturing the update they produce so it can
-    // be relayed (same observer trick as `handle_data`).
+    // One observer spans both passes, capturing whatever they change to relay.
     let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = applied.clone();
     let subscription = doc.observe_update_v1(move |_txn, event| {
@@ -594,7 +587,32 @@ fn reconcile_sibling_names(room: &mut RoomState) {
             updates.push(event.update.clone());
         }
     });
-    {
+
+    // Pass 1: reparent structural victims to the root (drop their `parent`).
+    let structural = {
+        let txn = doc.transact();
+        // A node half-written mid-sync — skip; a later frame retries.
+        read_tree(&txn, &nodes)
+            .map(|tree| tree.structural_repairs())
+            .unwrap_or_default()
+    };
+    if !structural.is_empty() {
+        let mut txn = doc.transact_mut();
+        for id in structural {
+            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                node.remove(&mut txn, "parent");
+            }
+        }
+    }
+
+    // Pass 2: dedupe sibling names on the repaired tree.
+    let renames = {
+        let txn = doc.transact();
+        read_tree(&txn, &nodes)
+            .map(|tree| tree.dedupe_sibling_names())
+            .unwrap_or_default()
+    };
+    if !renames.is_empty() {
         let mut txn = doc.transact_mut();
         for (id, name) in renames {
             if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
@@ -602,12 +620,16 @@ fn reconcile_sibling_names(room: &mut RoomState) {
             }
         }
     }
+
     drop(subscription);
 
-    room.dirty = true;
-    for update in std::mem::take(&mut *applied.lock().unwrap()) {
-        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
-        broadcast_all(room, &msg);
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    if !updates.is_empty() {
+        room.dirty = true;
+        for update in updates {
+            let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+            broadcast_all(room, &msg);
+        }
     }
 }
 
@@ -921,7 +943,7 @@ mod tests {
         let (_conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
-        reconcile_sibling_names(&mut room);
+        reconcile_tree(&mut room);
 
         // The tree is unique again: the lowest id keeps the name, the other is
         // suffixed, and the result validates.
@@ -953,10 +975,51 @@ mod tests {
         )]);
         let (_conn_a, mut rx_a) = insert_conn(&mut room);
 
-        reconcile_sibling_names(&mut room);
+        reconcile_tree(&mut room);
 
         // No clash, so no correction is sent.
         assert!(rx_a.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_reconcile_breaks_a_cycle_and_broadcasts_to_all() {
+        use crate::models::tree::{Node, NodeContent, ProjectTree};
+
+        let folder = |id: &str, parent: &str| Node {
+            id: id.to_string(),
+            parent: Some(parent.to_string()),
+            name: id.to_string(),
+            content: NodeContent::Folder,
+        };
+
+        let mut room = RoomState::new(vec![]);
+        // a↔b cycle, as two peers each moving one under the other would merge to.
+        let cyclic = ProjectTree::from_nodes([folder("a", "b"), folder("b", "a")]);
+        {
+            let doc = room.awareness.doc();
+            let nodes = nodes_map(doc);
+            let mut txn = doc.transact_mut();
+            write_tree(&mut txn, &nodes, &cyclic);
+        }
+
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        reconcile_tree(&mut room);
+
+        // The cycle is broken (lowest id reparented to the root) and the tree
+        // now validates.
+        let nodes = nodes_map(room.awareness.doc());
+        let txn = room.awareness.doc().transact();
+        let tree = read_tree(&txn, &nodes).unwrap();
+        tree.validate().unwrap();
+        assert_eq!(tree.get("a").unwrap().parent, None);
+        assert_eq!(tree.get("b").unwrap().parent.as_deref(), Some("a"));
+
+        let received = rx_a.try_recv().expect("correction broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
     }
 
     #[test]

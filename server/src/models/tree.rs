@@ -295,6 +295,70 @@ impl ProjectTree {
         renames
     }
 
+    /// Ids that must be reparented to the root to make the tree acyclic and
+    /// free of dangling parents — the structural invariants a concurrent *move*
+    /// can break (move X under Y while Y is moved under X → a cycle; move X into
+    /// a folder another peer concurrently deleted → a dangling parent). For each
+    /// cycle the lowest-id member is chosen; a node whose parent id no longer
+    /// exists is itself the victim. Deterministic, and empty when the tree is
+    /// already sound.
+    ///
+    /// A non-folder parent stays unreachable — no operation changes a node's
+    /// kind — so it isn't repaired here.
+    pub fn structural_repairs(&self) -> Vec<NodeId> {
+        let mut victims: Vec<NodeId> = Vec::new();
+
+        // Dangling: a parent that isn't in the map. The node itself moves up.
+        for node in self.nodes.values() {
+            if let Some(pid) = &node.parent {
+                if !self.nodes.contains_key(pid) {
+                    victims.push(node.id.clone());
+                }
+            }
+        }
+
+        // Cycles: follow parent pointers (through existing nodes only); for each
+        // loop take the lowest-id member. `settled` avoids re-walking a chain.
+        let mut settled: HashSet<&str> = HashSet::new();
+        let mut ids: Vec<&str> = self.nodes.keys().map(String::as_str).collect();
+        ids.sort_unstable();
+        for start in ids {
+            if settled.contains(start) {
+                continue;
+            }
+            let mut walk: Vec<&str> = Vec::new();
+            let mut index: HashMap<&str, usize> = HashMap::new();
+            let mut cursor: Option<&str> = Some(start);
+            while let Some(c) = cursor {
+                if settled.contains(c) {
+                    break;
+                }
+                if let Some(&pos) = index.get(c) {
+                    // walk[pos..] are the cycle's members.
+                    let victim = walk[pos..].iter().min().unwrap().to_string();
+                    victims.push(victim);
+                    break;
+                }
+                index.insert(c, walk.len());
+                walk.push(c);
+                // Advance only through an existing parent; a dangling edge ends
+                // the chain (that node is handled above).
+                cursor = self
+                    .nodes
+                    .get(c)
+                    .and_then(|n| n.parent.as_deref())
+                    .filter(|p| self.nodes.contains_key(*p));
+            }
+            for c in walk {
+                settled.insert(c);
+            }
+        }
+
+        victims.sort_unstable();
+        victims.dedup();
+        victims
+    }
+
     /// Validate the whole tree. Enforces, for every node:
     /// - a legal `name` segment;
     /// - `parent` exists and is a folder;
@@ -516,6 +580,60 @@ mod tests {
         assert_eq!(fixed.get("1").unwrap().name, "assets");
         assert_eq!(fixed.get("2").unwrap().name, "assets (2)");
         fixed.validate().unwrap();
+    }
+
+    /// Reparent every structural victim to the root, for asserting the repair.
+    fn apply_structural(tree: &ProjectTree) -> ProjectTree {
+        let victims: HashSet<String> =
+            tree.structural_repairs().into_iter().collect();
+        ProjectTree::from_nodes(tree.iter().map(|n| {
+            let mut n = n.clone();
+            if victims.contains(&n.id) {
+                n.parent = None;
+            }
+            n
+        }))
+    }
+
+    #[test]
+    fn test_structural_repairs_leave_a_sound_tree_alone() {
+        let tree = ProjectTree::from_nodes([
+            folder("d", None, "chapters"),
+            file("f", Some("d"), "intro.typ"),
+        ]);
+        assert!(tree.structural_repairs().is_empty());
+    }
+
+    #[test]
+    fn test_structural_repairs_break_a_two_node_cycle() {
+        // a↔b cycle: the lowest-id member goes to the root, and the result is
+        // a valid tree.
+        let tree = ProjectTree::from_nodes([
+            folder("a", Some("b"), "a"),
+            folder("b", Some("a"), "b"),
+        ]);
+        assert_eq!(tree.structural_repairs(), vec!["a".to_string()]);
+        apply_structural(&tree).validate().unwrap();
+    }
+
+    #[test]
+    fn test_structural_repairs_reparent_a_dangling_node() {
+        let tree = ProjectTree::from_nodes([file("f", Some("gone"), "x.typ")]);
+        assert_eq!(tree.structural_repairs(), vec!["f".to_string()]);
+        apply_structural(&tree).validate().unwrap();
+    }
+
+    #[test]
+    fn test_structural_repairs_spare_a_pendant_hanging_off_a_cycle() {
+        // `p` dangles off the a↔b cycle; only a cycle member is a victim, and
+        // reparenting it leaves `p` correctly under `a`.
+        let tree = ProjectTree::from_nodes([
+            folder("a", Some("b"), "a"),
+            folder("b", Some("a"), "b"),
+            file("p", Some("a"), "p.typ"),
+        ]);
+        assert_eq!(tree.structural_repairs(), vec!["a".to_string()]);
+        apply_structural(&tree).validate().unwrap();
     }
 
     #[test]
