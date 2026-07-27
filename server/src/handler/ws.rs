@@ -29,8 +29,6 @@ use yrs::{
 use crate::config::WsConfig;
 use crate::crdt::snapshot::encode_doc;
 use crate::crdt::{nodes_map, read_tree, write_tree};
-#[cfg(test)]
-use crate::crdt::seed::nodes_from_files;
 use crate::models::response::ApiResponse;
 use crate::models::tree::{Node, ProjectTree};
 use crate::models::user::UserClaims;
@@ -69,15 +67,6 @@ impl ResponseError for WebSocketError {
 /// y-protocol message-type tag for awareness frames (sync is `0`). The tag is a
 /// single lib0 varint byte for values < 128, so the first byte identifies it.
 const MSG_AWARENESS: u8 = 1;
-
-/// A `(file_id, path, text, blob)` tuple used to hydrate a *fresh* room's Y.Doc
-/// (nodes + text) from stored files when there is no snapshot yet. The blob is
-/// the file's content already uploaded to the object store, so the file node
-/// references bytes that exist. Text roots are keyed by the file's **id**
-/// (stable across renames), not its path. A test-only convenience shape for
-/// [`RoomState::new`]; production cold-starts from the tree + blobs.
-#[cfg(test)]
-type SeedFile = (ObjectId, String, String, Blob);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -470,45 +459,6 @@ impl RoomState {
             conns: HashMap::new(),
             client_owner: HashMap::new(),
             dirty: true, // a fresh cold-start needs an initial snapshot
-            blobs_pending: false,
-            empty_since: Some(Instant::now()),
-        }
-    }
-
-    /// Seed a fresh room's Y.Doc from `(id, path, text, blob)` tuples: a text
-    /// root per file plus the derived `nodes` tree. A test helper for building a
-    /// populated room in one call (production cold-starts via [`from_tree`] +
-    /// rematerialization).
-    #[cfg(test)]
-    fn new(seed: Vec<SeedFile>) -> RoomState {
-        let doc = Doc::new();
-        // Create the text roots and nodes map up front — each `get_or_insert`
-        // opens its own internal txn, so it must precede the write txn below.
-        let mut roots = Vec::with_capacity(seed.len());
-        let mut node_files = Vec::with_capacity(seed.len());
-        for (id, path, text, blob) in seed {
-            let id_hex = id.to_hex();
-            roots.push((doc.get_or_insert_text(id_hex.as_str()), text));
-            node_files.push((id_hex, path, blob));
-        }
-        let nodes = nodes_map(&doc);
-        let tree = ProjectTree::from_nodes(nodes_from_files(node_files));
-        {
-            let mut txn = doc.transact_mut();
-            for (root, text) in &roots {
-                if !text.is_empty() {
-                    root.insert(&mut txn, 0, text);
-                }
-            }
-            write_tree(&mut txn, &nodes, &tree);
-        }
-        RoomState {
-            awareness: Awareness::new(doc),
-            conns: HashMap::new(),
-            client_owner: HashMap::new(),
-            dirty: true, // a fresh seed needs an initial snapshot
-            // Seed blobs already match their seeded text; nothing to flush until
-            // an edit drifts a file from its blob.
             blobs_pending: false,
             empty_since: Some(Instant::now()),
         }
@@ -1315,9 +1265,40 @@ mod tests {
         }
     }
 
+    /// Build a populated room for tests from flat root files
+    /// `(id, name, text, blob)`: each becomes a file node at the tree root with
+    /// its text overlay seeded. Equivalent to a cold-start (`from_tree`) plus the
+    /// rematerialization that would refill the overlays from blobs, collapsed
+    /// into one call. Text roots are keyed by the file **id** (as in production),
+    /// not the name.
+    fn seed_room(files: Vec<(ObjectId, String, String, Blob)>) -> RoomState {
+        let nodes = files
+            .iter()
+            .map(|(id, name, _text, blob)| Node {
+                id: id.to_hex(),
+                parent: None,
+                name: name.clone(),
+                content: crate::models::tree::NodeContent::File { blob: blob.clone() },
+            })
+            .collect::<Vec<_>>();
+        let room = RoomState::from_tree(&ProjectTree::from_nodes(nodes));
+        {
+            let doc = room.awareness.doc();
+            let mut txn = doc.transact_mut();
+            for (id, _name, text, _blob) in &files {
+                if !text.is_empty() {
+                    if let Some(root) = txn.get_text(id.to_hex().as_str()) {
+                        root.insert(&mut txn, 0, text);
+                    }
+                }
+            }
+        }
+        room
+    }
+
     #[test]
     fn room_info_reports_aggregate_state() {
-        let mut room = RoomState::new(vec![
+        let mut room = seed_room(vec![
             (ObjectId::new(), "main.typ".to_string(), "hello".to_string(), blob()),
             // A file with no text bytes: its overlay exists but is empty, so it
             // must not be counted as a live text overlay.
@@ -1336,7 +1317,7 @@ mod tests {
 
     #[test]
     fn room_info_reports_idle_seconds_when_empty() {
-        let room = RoomState::new(vec![]);
+        let room = seed_room(vec![]);
         // Freshly built, unoccupied: empty_since is set, so empty_secs is Some.
         let info = room_info(ObjectId::new(), &room);
         assert_eq!(info.conns, 0);
@@ -1344,41 +1325,37 @@ mod tests {
     }
 
     #[test]
-    fn test_room_state_new_seeds_text_and_nodes() {
+    fn seed_room_keys_text_by_id_and_builds_nodes() {
         let id_a = ObjectId::new();
         let id_b = ObjectId::new();
-        let room = RoomState::new(vec![
+        let room = seed_room(vec![
             (id_a, "main.typ".to_string(), "hello".to_string(), blob()),
-            (id_b, "chapters/intro.typ".to_string(), String::new(), blob()),
+            (id_b, "intro.typ".to_string(), String::new(), blob()),
         ]);
 
         let nodes = nodes_map(room.awareness.doc());
         let txn = room.awareness.doc().transact();
 
-        // Text roots are keyed by the file id (hex), not the path.
+        // Text roots are keyed by the file id (hex), not the name.
         assert_eq!(
             txn.get_text(id_a.to_hex().as_str()).unwrap().get_string(&txn),
             "hello"
         );
-        // Empty seed text still declares the root type, but inserts nothing.
+        // An empty seed still declares the root type, but inserts nothing.
         assert_eq!(
             txn.get_text(id_b.to_hex().as_str()).unwrap().get_string(&txn),
             ""
         );
 
-        // The nodes map holds both files plus the derived `chapters` folder.
         let tree = read_tree(&txn, &nodes).unwrap();
         tree.validate().unwrap();
         assert_eq!(tree.path_of(&id_a.to_hex()).unwrap(), "main.typ");
-        assert_eq!(
-            tree.path_of(&id_b.to_hex()).unwrap(),
-            "chapters/intro.typ"
-        );
+        assert_eq!(tree.path_of(&id_b.to_hex()).unwrap(), "intro.typ");
     }
 
     #[test]
     fn test_handle_data_broadcasts_doc_update_to_others_not_sender() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1399,7 +1376,7 @@ mod tests {
     #[test]
     fn test_handle_data_sync_reply_goes_to_sender_only() {
         let mut room =
-            RoomState::new(vec![(ObjectId::new(), "a.typ".to_string(), "hi".to_string(), blob())]);
+            seed_room(vec![(ObjectId::new(), "a.typ".to_string(), "hi".to_string(), blob())]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1417,7 +1394,7 @@ mod tests {
 
     #[test]
     fn test_handle_data_awareness_updates_client_owner_and_broadcasts() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1432,7 +1409,7 @@ mod tests {
 
     #[test]
     fn test_handle_data_no_broadcast_for_a_redundant_update() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1454,7 +1431,7 @@ mod tests {
         // the SV, so an SV diff would drop it and peers would never see it.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "a.typ".to_string(),
             "hello".to_string(),
@@ -1503,7 +1480,7 @@ mod tests {
     fn test_reconcile_renames_a_duplicate_sibling_and_broadcasts_to_all() {
         use crate::models::tree::{Node, NodeContent, ProjectTree};
 
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         // Two files share "notes.typ" at the root, as two clients each creating
         // it concurrently would produce once their updates merge.
         let dup = ProjectTree::from_nodes([
@@ -1554,7 +1531,7 @@ mod tests {
 
     #[test]
     fn test_reconcile_is_a_noop_for_a_unique_tree() {
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             ObjectId::new(),
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1574,7 +1551,7 @@ mod tests {
         // freshly-uploaded sha/size and broadcasts to every connection.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1617,7 +1594,7 @@ mod tests {
             content: NodeContent::Folder,
         };
 
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         // a↔b cycle, as two peers each moving one under the other would merge to.
         let cyclic = ProjectTree::from_nodes([folder("a", "b"), folder("b", "a")]);
         {
@@ -1651,7 +1628,7 @@ mod tests {
     fn test_apply_blobs_is_a_noop_when_the_blob_is_unchanged() {
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1682,7 +1659,7 @@ mod tests {
                     sha256: sha256_hex(b"hi"),
                     size: 2,
                 };
-                let room = RoomState::new(vec![(
+                let room = seed_room(vec![(
                     file_id,
                     "main.typ".to_string(),
                     "hi".to_string(),
@@ -1721,7 +1698,7 @@ mod tests {
         // CRDT re-inserting — and duplicating — content.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let room = RoomState::new(vec![(
+        let room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hello".to_string(),
@@ -1750,7 +1727,7 @@ mod tests {
     fn test_strip_text_empties_only_blob_backed_overlays() {
         let backed = ObjectId::new();
         let unbacked = ObjectId::new();
-        let mut room = RoomState::new(vec![
+        let mut room = seed_room(vec![
             (
                 backed,
                 "a.typ".to_string(),
@@ -1786,7 +1763,7 @@ mod tests {
         // Start from a stripped room (empty overlay), then rematerialize.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hello".to_string(),
@@ -1827,7 +1804,7 @@ mod tests {
                 // A sizable body so the storage win is unambiguous.
                 let content = "lorem ipsum ".repeat(200);
                 store.put_blob(&pid, content.as_bytes()).await.unwrap();
-                let mut room = RoomState::new(vec![(
+                let mut room = seed_room(vec![(
                     file_id,
                     "main.typ".to_string(),
                     content.clone(),
@@ -1872,7 +1849,7 @@ mod tests {
 
     #[test]
     fn test_retract_connection_removes_owned_awareness_and_returns_retraction() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, _rx_a) = insert_conn(&mut room);
         let (_conn_b, _rx_b) = insert_conn(&mut room);
 
@@ -1899,7 +1876,7 @@ mod tests {
 
     #[test]
     fn test_retract_connection_none_when_connection_owns_nothing() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, _rx_a) = insert_conn(&mut room);
         let (conn_b, _rx_b) = insert_conn(&mut room);
 
