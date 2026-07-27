@@ -16,6 +16,8 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                 .wrap(JwtMiddleware::new(jwt_secret.clone()))
                 .route("/team", web::post().to(handler::team::create))
                 .route("/team/projects", web::get().to(handler::team::projects))
+                // Operator introspection: a read-only view of live rooms.
+                .route("/admin/rooms", web::get().to(handler::ws::rooms))
                 .route("/project", web::post().to(handler::project::create))
                 .service(
                     web::scope("/project/{id}")

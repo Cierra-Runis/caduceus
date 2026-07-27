@@ -20,7 +20,8 @@ pub struct WsConfig {
     /// Seconds of silence before a client is considered timed out.
     #[serde(default = "WsConfig::default_client_timeout_secs")]
     pub client_timeout_secs: u64,
-    /// Seconds between CRDT-to-MongoDB persistence flushes.
+    /// Seconds between room persistence ticks (Y.Doc snapshot to MinIO + tree
+    /// projection to Mongo). Blob materialization is separate and client-driven.
     #[serde(default = "WsConfig::default_persist_interval_secs")]
     pub persist_interval_secs: u64,
     /// Seconds between orphaned-blob garbage-collection sweeps. Much larger than

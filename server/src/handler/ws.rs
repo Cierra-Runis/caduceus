@@ -14,6 +14,7 @@ use derive_more::Display;
 use futures_util::StreamExt as _;
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::oneshot,
     task::LocalSet,
     time::{Instant, interval},
 };
@@ -28,8 +29,6 @@ use yrs::{
 use crate::config::WsConfig;
 use crate::crdt::snapshot::encode_doc;
 use crate::crdt::{nodes_map, read_tree, write_tree};
-#[cfg(test)]
-use crate::crdt::seed::nodes_from_files;
 use crate::models::response::ApiResponse;
 use crate::models::tree::{Node, ProjectTree};
 use crate::models::user::UserClaims;
@@ -68,15 +67,6 @@ impl ResponseError for WebSocketError {
 /// y-protocol message-type tag for awareness frames (sync is `0`). The tag is a
 /// single lib0 varint byte for values < 128, so the first byte identifies it.
 const MSG_AWARENESS: u8 = 1;
-
-/// A `(file_id, path, text, blob)` tuple used to hydrate a *fresh* room's Y.Doc
-/// (nodes + text) from stored files when there is no snapshot yet. The blob is
-/// the file's content already uploaded to the object store, so the file node
-/// references bytes that exist. Text roots are keyed by the file's **id**
-/// (stable across renames), not its path. A test-only convenience shape for
-/// [`RoomState::new`]; production cold-starts from the tree + blobs.
-#[cfg(test)]
-type SeedFile = (ObjectId, String, String, Blob);
 
 /// Handshake and start WebSocket handler with heartbeats.
 pub async fn ws(
@@ -144,6 +134,20 @@ pub async fn ws(
     Ok(res)
 }
 
+/// `GET /api/admin/rooms` — a read-only snapshot of every live collaboration
+/// room's state (connection counts, dirty/idle flags, node counts). Aggregate
+/// data only, no document content. Behind the same JWT auth as the rest of
+/// `/api`; `_user` proves the caller is authenticated. Meant for operator
+/// introspection — turning "what are the rooms doing?" into a live query
+/// instead of a recompile-with-a-print.
+pub async fn rooms(
+    project_server: web::Data<ProjectServer>,
+    _user: UserClaims,
+) -> HttpResponse {
+    let rooms = project_server.inspect().await;
+    HttpResponse::Ok().json(ApiResponse::success("Live rooms", rooms))
+}
+
 /// Per-connection loop. Bridges this WebSocket to the single-threaded room
 /// manager: client frames are forwarded as [`Command::Data`], and messages the
 /// manager routes back (initial sync, peers' updates, awareness) arrive on
@@ -165,7 +169,7 @@ async fn handle_ws(
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     project_server.join(project_id, snapshot, tree, conn_id, out_tx);
-    info!("WS handler: joined project {}", project_id.to_hex());
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection opened");
 
     let mut msg_stream = msg_stream
         .max_frame_size(1024 * 1024)
@@ -215,7 +219,7 @@ async fn handle_ws(
     };
 
     project_server.leave(project_id, conn_id);
-    info!("WS handler: left project {}", project_id.to_hex());
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection closed");
     let _ = session.close(close_reason).await;
 }
 
@@ -271,6 +275,34 @@ enum Command {
         project_id: ObjectId,
         orphans: HashSet<String>,
     },
+    /// A read-only snapshot of every live room's state, for operator
+    /// introspection (`GET /api/admin/rooms`). The manager fills `reply` with a
+    /// [`RoomInfo`] per room; sent over a oneshot so the async handler can await
+    /// it off the manager thread.
+    Inspect {
+        reply: oneshot::Sender<Vec<RoomInfo>>,
+    },
+}
+
+/// A read-only view of one live room, safe to send off the manager thread
+/// (`Send`, no `yrs` handles). Aggregate state only — ids and counts, never
+/// document content — so it is cheap to expose to an authenticated operator.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoomInfo {
+    /// Project id (hex) this room serves.
+    pub project_id: String,
+    /// Live WebSocket connections.
+    pub conns: usize,
+    /// Whether the Y.Doc changed since the last snapshot.
+    pub dirty: bool,
+    /// Whether some file's text has drifted from its recorded blob.
+    pub blobs_pending: bool,
+    /// Seconds the room has sat with no connections, or `null` while occupied.
+    pub empty_secs: Option<u64>,
+    /// Nodes (files + folders) in the tree.
+    pub nodes: usize,
+    /// Files that currently carry a non-empty text overlay in the doc.
+    pub text_overlays: usize,
 }
 
 /// Handle to the collaboration subsystem, stored in actix app data. Cheap to
@@ -343,6 +375,16 @@ impl ProjectServer {
     /// Fire-and-forget: the room manager force-flushes on its own thread.
     pub fn flush(&self, project_id: ObjectId) {
         let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
+    }
+
+    /// A read-only snapshot of every live room's state. Returns an empty list if
+    /// the manager thread has gone away (send fails or the reply is dropped).
+    pub async fn inspect(&self) -> Vec<RoomInfo> {
+        let (reply, rx) = oneshot::channel();
+        if self.cmd_tx.send(Command::Inspect { reply }).is_err() {
+            return Vec::new();
+        }
+        rx.await.unwrap_or_default()
     }
 }
 
@@ -421,45 +463,6 @@ impl RoomState {
             empty_since: Some(Instant::now()),
         }
     }
-
-    /// Seed a fresh room's Y.Doc from `(id, path, text, blob)` tuples: a text
-    /// root per file plus the derived `nodes` tree. A test helper for building a
-    /// populated room in one call (production cold-starts via [`from_tree`] +
-    /// rematerialization).
-    #[cfg(test)]
-    fn new(seed: Vec<SeedFile>) -> RoomState {
-        let doc = Doc::new();
-        // Create the text roots and nodes map up front — each `get_or_insert`
-        // opens its own internal txn, so it must precede the write txn below.
-        let mut roots = Vec::with_capacity(seed.len());
-        let mut node_files = Vec::with_capacity(seed.len());
-        for (id, path, text, blob) in seed {
-            let id_hex = id.to_hex();
-            roots.push((doc.get_or_insert_text(id_hex.as_str()), text));
-            node_files.push((id_hex, path, blob));
-        }
-        let nodes = nodes_map(&doc);
-        let tree = ProjectTree::from_nodes(nodes_from_files(node_files));
-        {
-            let mut txn = doc.transact_mut();
-            for (root, text) in &roots {
-                if !text.is_empty() {
-                    root.insert(&mut txn, 0, text);
-                }
-            }
-            write_tree(&mut txn, &nodes, &tree);
-        }
-        RoomState {
-            awareness: Awareness::new(doc),
-            conns: HashMap::new(),
-            client_owner: HashMap::new(),
-            dirty: true, // a fresh seed needs an initial snapshot
-            // Seed blobs already match their seeded text; nothing to flush until
-            // an edit drifts a file from its blob.
-            blobs_pending: false,
-            empty_since: Some(Instant::now()),
-        }
-    }
 }
 
 /// Retract a leaving connection's orphaned awareness state (cursor, presence)
@@ -486,8 +489,42 @@ fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>
         .map(|update| YMessage::Awareness(update).encode_v1())
 }
 
+/// Derive a [`RoomInfo`] from a live room. Reads the doc once for the node and
+/// text-overlay counts (`nodes_map` before opening the read txn, per the yrs
+/// borrow rules).
+fn room_info(project_id: ObjectId, room: &RoomState) -> RoomInfo {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+    let txn = doc.transact();
+    let (node_count, text_overlays) = match read_tree(&txn, &nodes) {
+        Ok(tree) => {
+            let count = tree.iter().count();
+            let overlays = tree
+                .iter()
+                .filter(|n| n.is_file())
+                .filter(|n| {
+                    txn.get_text(n.id.as_str())
+                        .is_some_and(|t| t.len(&txn) > 0)
+                })
+                .count();
+            (count, overlays)
+        }
+        Err(_) => (0, 0),
+    };
+    RoomInfo {
+        project_id: project_id.to_hex(),
+        conns: room.conns.len(),
+        dirty: room.dirty,
+        blobs_pending: room.blobs_pending,
+        empty_secs: room.empty_since.map(|since| since.elapsed().as_secs()),
+        nodes: node_count,
+        text_overlays,
+    }
+}
+
 /// Single-threaded owner of every room. Serves commands and periodically
-/// flushes text to MongoDB.
+/// persists each room (Y.Doc snapshot to MinIO, tree projection to Mongo),
+/// sweeps orphaned blobs, and evicts idle rooms.
 async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
     cmd_tx: UnboundedSender<Command>,
@@ -515,6 +552,8 @@ async fn room_manager(
                         // built from a stripped snapshot or cold-started from the
                         // tree refills its text from blobs once.
                         let fresh = !rooms.contains_key(&project_id);
+                        // Only meaningful when `fresh` — how the room was built.
+                        let source = if snapshot.is_some() { "snapshot" } else { "cold-tree" };
                         let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
                             Some(bytes) => RoomState::from_snapshot(bytes),
                             None => RoomState::from_tree(&tree),
@@ -526,6 +565,13 @@ async fn room_manager(
                         }
                         room.conns.insert(conn_id, out);
                         room.empty_since = None; // occupied again
+                        info!(
+                            project = %project_id.to_hex(),
+                            conn = %conn_id.to_hex(),
+                            conns = room.conns.len(),
+                            source = if fresh { source } else { "existing" },
+                            "room join",
+                        );
                         if fresh {
                             rematerialize(project_id, room, &store, &cmd_tx);
                         }
@@ -560,6 +606,19 @@ async fn room_manager(
                                 // settle will catch the final edits).
                                 room.empty_since = Some(Instant::now());
                                 persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                                info!(
+                                    project = %project_id.to_hex(),
+                                    conn = %conn_id.to_hex(),
+                                    idle_threshold_secs = room_idle.as_secs(),
+                                    "room emptied; idle eviction clock started",
+                                );
+                            } else {
+                                debug!(
+                                    project = %project_id.to_hex(),
+                                    conn = %conn_id.to_hex(),
+                                    conns = room.conns.len(),
+                                    "room leave",
+                                );
                             }
                         }
                     }
@@ -584,6 +643,13 @@ async fn room_manager(
                         } else {
                             gc_pending.insert(project_id, orphans);
                         }
+                    }
+                    Some(Command::Inspect { reply }) => {
+                        let infos = rooms
+                            .iter()
+                            .map(|(id, room)| room_info(*id, room))
+                            .collect();
+                        let _ = reply.send(infos);
                     }
                     None => break,
                 }
@@ -617,10 +683,17 @@ async fn room_manager(
                     .collect();
                 for project_id in stale {
                     if let Some(room) = rooms.get_mut(&project_id) {
+                        // Idle seconds as a number, not the raw monotonic
+                        // `Instant` (whose Debug is an opaque clock base).
+                        let idle_secs = room
+                            .empty_since
+                            .map(|since| since.elapsed().as_secs())
+                            .unwrap_or(0);
                         strip_text(room);
                         let bytes = encode_doc(room.awareness.doc());
                         let store = store.clone();
                         let pid = project_id.to_hex();
+                        info!(project = %pid, idle_secs, snapshot_bytes = bytes.len(), "evicting idle room");
                         tokio::task::spawn_local(async move {
                             if let Err(e) = store.put_snapshot(&pid, &bytes).await {
                                 warn!("stripped snapshot save failed in {pid}: {e:?}");
@@ -635,36 +708,48 @@ async fn room_manager(
     }
 }
 
+/// Run `f` against the room's [`Awareness`], capturing every Y.Doc update it
+/// produces so the caller can relay them. Returns `f`'s result alongside the
+/// captured updates (encoded, ready to broadcast); the observer is torn down
+/// before returning, so the doc is free to be touched again.
+///
+/// We capture via `observe_update_v1` rather than diffing the state vector
+/// before/after: a deletion only adds tombstones and does *not* advance the
+/// state vector, so an SV diff silently drops deletes (they would reach peers
+/// only piggy-backed on a later insertion). The observer fires for inserts and
+/// deletes alike, and only when a transaction actually changed something, so a
+/// redundant update stays a no-op. The `Arc<Mutex<_>>` satisfies the observer's
+/// `Send + Sync` bound; everything here runs on the single room-manager thread,
+/// so it never contends.
+fn capture_doc_updates<R>(
+    awareness: &mut Awareness,
+    f: impl FnOnce(&mut Awareness) -> R,
+) -> (R, Vec<Vec<u8>>) {
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = awareness.doc().observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    if let Err(e) = &subscription {
+        warn!("failed to observe doc updates: {e:?}");
+    }
+    let result = f(awareness);
+    drop(subscription); // stop observing before the doc is touched again
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    (result, updates)
+}
+
 /// Apply one client frame to the room's document and fan the result out.
 fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let is_awareness = data.first() == Some(&MSG_AWARENESS);
 
-    // Capture the exact update(s) applied to the shared document while the
-    // protocol runs, so we can relay them verbatim. We must NOT diff the state
-    // vector before/after to detect changes: a deletion only adds tombstones and
-    // does *not* advance the state vector, so an SV diff silently drops deletes
-    // (they would reach peers only when piggy-backed on a later insertion).
-    // `observe_update_v1` fires for inserts and deletes alike, and only when the
-    // transaction actually changed something — so a redundant update stays a
-    // no-op. The `Arc<Mutex<_>>` is to satisfy the observer's `Send + Sync`
-    // bound; this all runs on the single room-manager thread, so it never
-    // contends.
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = room
-        .awareness
-        .doc()
-        .observe_update_v1(move |_txn, event| {
-            if let Ok(mut updates) = sink.lock() {
-                updates.push(event.update.clone());
-            }
-        });
-    if let Err(e) = &subscription {
-        warn!("WS: failed to observe doc updates: {e:?}");
-    }
-
-    let replies = DefaultProtocol.handle(&mut room.awareness, &data);
-    drop(subscription); // stop observing before the doc is touched again
+    // Run the protocol against the doc, capturing whatever it changes so the
+    // result can be relayed verbatim (see `capture_doc_updates`).
+    let (replies, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        DefaultProtocol.handle(awareness, &data)
+    });
 
     // Sync replies (e.g. the sync step 2 carrying current content) go back to
     // the sender only.
@@ -681,7 +766,6 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
 
     // Applied document changes (inserts and deletes) and awareness frames go to
     // everyone else.
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         // Mark that some file may have drifted from its blob, so the next forced
@@ -744,54 +828,46 @@ fn broadcast_all(room: &RoomState, msg: &[u8]) {
 /// broadcast to *every* connection, so the client that caused the clash also
 /// snaps to the corrected state.
 fn reconcile_tree(room: &mut RoomState) {
-    let doc = room.awareness.doc();
-    let nodes = nodes_map(doc);
+    let nodes = nodes_map(room.awareness.doc());
 
     // One observer spans both passes, capturing whatever they change to relay.
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let doc = awareness.doc();
+
+        // Pass 1: reparent structural victims to the root (drop their `parent`).
+        let structural = {
+            let txn = doc.transact();
+            // A node half-written mid-sync — skip; a later frame retries.
+            read_tree(&txn, &nodes)
+                .map(|tree| tree.structural_repairs())
+                .unwrap_or_default()
+        };
+        if !structural.is_empty() {
+            let mut txn = doc.transact_mut();
+            for id in structural {
+                if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                    node.remove(&mut txn, "parent");
+                }
+            }
+        }
+
+        // Pass 2: dedupe sibling names on the repaired tree.
+        let renames = {
+            let txn = doc.transact();
+            read_tree(&txn, &nodes)
+                .map(|tree| tree.dedupe_sibling_names())
+                .unwrap_or_default()
+        };
+        if !renames.is_empty() {
+            let mut txn = doc.transact_mut();
+            for (id, name) in renames {
+                if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                    node.insert(&mut txn, "name", name);
+                }
+            }
         }
     });
 
-    // Pass 1: reparent structural victims to the root (drop their `parent`).
-    let structural = {
-        let txn = doc.transact();
-        // A node half-written mid-sync — skip; a later frame retries.
-        read_tree(&txn, &nodes)
-            .map(|tree| tree.structural_repairs())
-            .unwrap_or_default()
-    };
-    if !structural.is_empty() {
-        let mut txn = doc.transact_mut();
-        for id in structural {
-            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
-                node.remove(&mut txn, "parent");
-            }
-        }
-    }
-
-    // Pass 2: dedupe sibling names on the repaired tree.
-    let renames = {
-        let txn = doc.transact();
-        read_tree(&txn, &nodes)
-            .map(|tree| tree.dedupe_sibling_names())
-            .unwrap_or_default()
-    };
-    if !renames.is_empty() {
-        let mut txn = doc.transact_mut();
-        for (id, name) in renames {
-            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
-                node.insert(&mut txn, "name", name);
-            }
-        }
-    }
-
-    drop(subscription);
-
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         for update in updates {
@@ -801,11 +877,10 @@ fn reconcile_tree(room: &mut RoomState) {
     }
 }
 
-/// Persist the room's Y.Doc if it changed since the last snapshot. Dual-write:
-/// the whole doc (nodes + text) goes to a MinIO snapshot (the CRDT authority),
-/// the derived tree projection to Mongo (the listing cache), and each changed
-/// file's text back to Mongo `files` (so REST loads keep working during the
-/// migration).
+/// Persist the room's Y.Doc if it changed since the last snapshot: the whole
+/// doc (nodes + text) goes to a MinIO snapshot (the CRDT authority) and the
+/// derived tree projection to Mongo (the listing cache). There is no inline
+/// text written to Mongo — bytes live once, in content-addressed blobs.
 ///
 /// Content-addressed blobs are materialized only on a **forced flush**
 /// (`force_flush`): a client's `files.autoSave` policy firing (via
@@ -915,18 +990,10 @@ fn persist_room(
 /// is left untouched (no spurious update). Runs on the room thread in response
 /// to a [`Command::FlushBlobs`].
 fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
-    let doc = room.awareness.doc();
-    let nodes = nodes_map(doc);
+    let nodes = nodes_map(room.awareness.doc());
 
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
-        }
-    });
-    {
-        let mut txn = doc.transact_mut();
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let mut txn = awareness.doc().transact_mut();
         for (id, blob) in blobs {
             let Some(Out::YMap(node)) = nodes.get(&txn, &id) else {
                 continue;
@@ -943,10 +1010,8 @@ fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
             node.insert(&mut txn, "sha256", blob.sha256);
             node.insert(&mut txn, "size", blob.size as i64);
         }
-    }
-    drop(subscription);
+    });
 
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         for update in updates {
@@ -1064,17 +1129,8 @@ fn rematerialize(
 /// blob and is already durable, so re-snapshotting it would just re-bloat the
 /// resting snapshot.
 fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
-    let doc = room.awareness.doc();
-
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
-        }
-    });
-    {
-        let mut txn = doc.transact_mut();
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let mut txn = awareness.doc().transact_mut();
         for (id, text) in texts {
             let Some(root) = txn.get_text(id.as_str()) else {
                 continue;
@@ -1084,10 +1140,8 @@ fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
             }
             root.insert(&mut txn, 0, &text);
         }
-    }
-    drop(subscription);
+    });
 
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     for update in updates {
         let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
         broadcast_all(room, &msg);
@@ -1144,10 +1198,20 @@ fn gc_room(
             .into_iter()
             .filter(|sha| !referenced.contains(sha))
             .collect();
+        let mut deleted = 0usize;
         for sha in orphans.intersection(&prev) {
-            if let Err(e) = store.delete_blob(&pid, sha).await {
-                warn!("gc delete failed in {pid}: {e:?}");
+            match store.delete_blob(&pid, sha).await {
+                Ok(()) => deleted += 1,
+                Err(e) => warn!("gc delete failed in {pid}: {e:?}"),
             }
+        }
+        if deleted > 0 || !orphans.is_empty() {
+            debug!(
+                project = %pid,
+                orphans = orphans.len(),
+                deleted,
+                "gc sweep",
+            );
         }
         let _ = cmd_tx.send(Command::GcSwept {
             project_id,
@@ -1201,42 +1265,97 @@ mod tests {
         }
     }
 
+    /// Build a populated room for tests from flat root files
+    /// `(id, name, text, blob)`: each becomes a file node at the tree root with
+    /// its text overlay seeded. Equivalent to a cold-start (`from_tree`) plus the
+    /// rematerialization that would refill the overlays from blobs, collapsed
+    /// into one call. Text roots are keyed by the file **id** (as in production),
+    /// not the name.
+    fn seed_room(files: Vec<(ObjectId, String, String, Blob)>) -> RoomState {
+        let nodes = files
+            .iter()
+            .map(|(id, name, _text, blob)| Node {
+                id: id.to_hex(),
+                parent: None,
+                name: name.clone(),
+                content: crate::models::tree::NodeContent::File { blob: blob.clone() },
+            })
+            .collect::<Vec<_>>();
+        let room = RoomState::from_tree(&ProjectTree::from_nodes(nodes));
+        {
+            let doc = room.awareness.doc();
+            let mut txn = doc.transact_mut();
+            for (id, _name, text, _blob) in &files {
+                if !text.is_empty() {
+                    if let Some(root) = txn.get_text(id.to_hex().as_str()) {
+                        root.insert(&mut txn, 0, text);
+                    }
+                }
+            }
+        }
+        room
+    }
+
     #[test]
-    fn test_room_state_new_seeds_text_and_nodes() {
+    fn room_info_reports_aggregate_state() {
+        let mut room = seed_room(vec![
+            (ObjectId::new(), "main.typ".to_string(), "hello".to_string(), blob()),
+            // A file with no text bytes: its overlay exists but is empty, so it
+            // must not be counted as a live text overlay.
+            (ObjectId::new(), "empty.typ".to_string(), String::new(), blob()),
+        ]);
+        let (_conn, _rx) = insert_conn(&mut room);
+        room.empty_since = None; // occupied
+
+        let info = room_info(ObjectId::new(), &room);
+        assert_eq!(info.conns, 1);
+        assert_eq!(info.nodes, 2, "two root files, no folders");
+        assert_eq!(info.text_overlays, 1, "only main.typ carries text");
+        assert!(info.empty_secs.is_none(), "occupied room has no idle clock");
+        assert!(room.dirty, "a freshly seeded room needs an initial snapshot");
+    }
+
+    #[test]
+    fn room_info_reports_idle_seconds_when_empty() {
+        let room = seed_room(vec![]);
+        // Freshly built, unoccupied: empty_since is set, so empty_secs is Some.
+        let info = room_info(ObjectId::new(), &room);
+        assert_eq!(info.conns, 0);
+        assert!(info.empty_secs.is_some());
+    }
+
+    #[test]
+    fn seed_room_keys_text_by_id_and_builds_nodes() {
         let id_a = ObjectId::new();
         let id_b = ObjectId::new();
-        let room = RoomState::new(vec![
+        let room = seed_room(vec![
             (id_a, "main.typ".to_string(), "hello".to_string(), blob()),
-            (id_b, "chapters/intro.typ".to_string(), String::new(), blob()),
+            (id_b, "intro.typ".to_string(), String::new(), blob()),
         ]);
 
         let nodes = nodes_map(room.awareness.doc());
         let txn = room.awareness.doc().transact();
 
-        // Text roots are keyed by the file id (hex), not the path.
+        // Text roots are keyed by the file id (hex), not the name.
         assert_eq!(
             txn.get_text(id_a.to_hex().as_str()).unwrap().get_string(&txn),
             "hello"
         );
-        // Empty seed text still declares the root type, but inserts nothing.
+        // An empty seed still declares the root type, but inserts nothing.
         assert_eq!(
             txn.get_text(id_b.to_hex().as_str()).unwrap().get_string(&txn),
             ""
         );
 
-        // The nodes map holds both files plus the derived `chapters` folder.
         let tree = read_tree(&txn, &nodes).unwrap();
         tree.validate().unwrap();
         assert_eq!(tree.path_of(&id_a.to_hex()).unwrap(), "main.typ");
-        assert_eq!(
-            tree.path_of(&id_b.to_hex()).unwrap(),
-            "chapters/intro.typ"
-        );
+        assert_eq!(tree.path_of(&id_b.to_hex()).unwrap(), "intro.typ");
     }
 
     #[test]
     fn test_handle_data_broadcasts_doc_update_to_others_not_sender() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1257,7 +1376,7 @@ mod tests {
     #[test]
     fn test_handle_data_sync_reply_goes_to_sender_only() {
         let mut room =
-            RoomState::new(vec![(ObjectId::new(), "a.typ".to_string(), "hi".to_string(), blob())]);
+            seed_room(vec![(ObjectId::new(), "a.typ".to_string(), "hi".to_string(), blob())]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1275,7 +1394,7 @@ mod tests {
 
     #[test]
     fn test_handle_data_awareness_updates_client_owner_and_broadcasts() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1290,7 +1409,7 @@ mod tests {
 
     #[test]
     fn test_handle_data_no_broadcast_for_a_redundant_update() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, mut rx_a) = insert_conn(&mut room);
         let (_conn_b, mut rx_b) = insert_conn(&mut room);
 
@@ -1312,7 +1431,7 @@ mod tests {
         // the SV, so an SV diff would drop it and peers would never see it.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "a.typ".to_string(),
             "hello".to_string(),
@@ -1361,7 +1480,7 @@ mod tests {
     fn test_reconcile_renames_a_duplicate_sibling_and_broadcasts_to_all() {
         use crate::models::tree::{Node, NodeContent, ProjectTree};
 
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         // Two files share "notes.typ" at the root, as two clients each creating
         // it concurrently would produce once their updates merge.
         let dup = ProjectTree::from_nodes([
@@ -1412,7 +1531,7 @@ mod tests {
 
     #[test]
     fn test_reconcile_is_a_noop_for_a_unique_tree() {
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             ObjectId::new(),
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1432,7 +1551,7 @@ mod tests {
         // freshly-uploaded sha/size and broadcasts to every connection.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1475,7 +1594,7 @@ mod tests {
             content: NodeContent::Folder,
         };
 
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         // a↔b cycle, as two peers each moving one under the other would merge to.
         let cyclic = ProjectTree::from_nodes([folder("a", "b"), folder("b", "a")]);
         {
@@ -1509,7 +1628,7 @@ mod tests {
     fn test_apply_blobs_is_a_noop_when_the_blob_is_unchanged() {
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hi".to_string(),
@@ -1540,7 +1659,7 @@ mod tests {
                     sha256: sha256_hex(b"hi"),
                     size: 2,
                 };
-                let room = RoomState::new(vec![(
+                let room = seed_room(vec![(
                     file_id,
                     "main.typ".to_string(),
                     "hi".to_string(),
@@ -1579,7 +1698,7 @@ mod tests {
         // CRDT re-inserting — and duplicating — content.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let room = RoomState::new(vec![(
+        let room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hello".to_string(),
@@ -1608,7 +1727,7 @@ mod tests {
     fn test_strip_text_empties_only_blob_backed_overlays() {
         let backed = ObjectId::new();
         let unbacked = ObjectId::new();
-        let mut room = RoomState::new(vec![
+        let mut room = seed_room(vec![
             (
                 backed,
                 "a.typ".to_string(),
@@ -1644,7 +1763,7 @@ mod tests {
         // Start from a stripped room (empty overlay), then rematerialize.
         let file_id = ObjectId::new();
         let key = file_id.to_hex();
-        let mut room = RoomState::new(vec![(
+        let mut room = seed_room(vec![(
             file_id,
             "main.typ".to_string(),
             "hello".to_string(),
@@ -1685,7 +1804,7 @@ mod tests {
                 // A sizable body so the storage win is unambiguous.
                 let content = "lorem ipsum ".repeat(200);
                 store.put_blob(&pid, content.as_bytes()).await.unwrap();
-                let mut room = RoomState::new(vec![(
+                let mut room = seed_room(vec![(
                     file_id,
                     "main.typ".to_string(),
                     content.clone(),
@@ -1730,7 +1849,7 @@ mod tests {
 
     #[test]
     fn test_retract_connection_removes_owned_awareness_and_returns_retraction() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, _rx_a) = insert_conn(&mut room);
         let (_conn_b, _rx_b) = insert_conn(&mut room);
 
@@ -1757,7 +1876,7 @@ mod tests {
 
     #[test]
     fn test_retract_connection_none_when_connection_owns_nothing() {
-        let mut room = RoomState::new(vec![]);
+        let mut room = seed_room(vec![]);
         let (conn_a, _rx_a) = insert_conn(&mut room);
         let (conn_b, _rx_b) = insert_conn(&mut room);
 

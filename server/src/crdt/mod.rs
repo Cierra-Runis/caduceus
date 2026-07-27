@@ -19,7 +19,6 @@ use yrs::{Any, Doc, Map, MapPrelim, MapRef, Out, ReadTxn, TransactionMut};
 use crate::models::tree::{Node, NodeContent, ProjectTree};
 use crate::storage::Blob;
 
-pub mod seed;
 pub mod snapshot;
 
 /// Name of the top-level nodes map in a project's Y.Doc.
