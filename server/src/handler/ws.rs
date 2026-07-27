@@ -635,36 +635,48 @@ async fn room_manager(
     }
 }
 
+/// Run `f` against the room's [`Awareness`], capturing every Y.Doc update it
+/// produces so the caller can relay them. Returns `f`'s result alongside the
+/// captured updates (encoded, ready to broadcast); the observer is torn down
+/// before returning, so the doc is free to be touched again.
+///
+/// We capture via `observe_update_v1` rather than diffing the state vector
+/// before/after: a deletion only adds tombstones and does *not* advance the
+/// state vector, so an SV diff silently drops deletes (they would reach peers
+/// only piggy-backed on a later insertion). The observer fires for inserts and
+/// deletes alike, and only when a transaction actually changed something, so a
+/// redundant update stays a no-op. The `Arc<Mutex<_>>` satisfies the observer's
+/// `Send + Sync` bound; everything here runs on the single room-manager thread,
+/// so it never contends.
+fn capture_doc_updates<R>(
+    awareness: &mut Awareness,
+    f: impl FnOnce(&mut Awareness) -> R,
+) -> (R, Vec<Vec<u8>>) {
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = awareness.doc().observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    if let Err(e) = &subscription {
+        warn!("failed to observe doc updates: {e:?}");
+    }
+    let result = f(awareness);
+    drop(subscription); // stop observing before the doc is touched again
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    (result, updates)
+}
+
 /// Apply one client frame to the room's document and fan the result out.
 fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let is_awareness = data.first() == Some(&MSG_AWARENESS);
 
-    // Capture the exact update(s) applied to the shared document while the
-    // protocol runs, so we can relay them verbatim. We must NOT diff the state
-    // vector before/after to detect changes: a deletion only adds tombstones and
-    // does *not* advance the state vector, so an SV diff silently drops deletes
-    // (they would reach peers only when piggy-backed on a later insertion).
-    // `observe_update_v1` fires for inserts and deletes alike, and only when the
-    // transaction actually changed something — so a redundant update stays a
-    // no-op. The `Arc<Mutex<_>>` is to satisfy the observer's `Send + Sync`
-    // bound; this all runs on the single room-manager thread, so it never
-    // contends.
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = room
-        .awareness
-        .doc()
-        .observe_update_v1(move |_txn, event| {
-            if let Ok(mut updates) = sink.lock() {
-                updates.push(event.update.clone());
-            }
-        });
-    if let Err(e) = &subscription {
-        warn!("WS: failed to observe doc updates: {e:?}");
-    }
-
-    let replies = DefaultProtocol.handle(&mut room.awareness, &data);
-    drop(subscription); // stop observing before the doc is touched again
+    // Run the protocol against the doc, capturing whatever it changes so the
+    // result can be relayed verbatim (see `capture_doc_updates`).
+    let (replies, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        DefaultProtocol.handle(awareness, &data)
+    });
 
     // Sync replies (e.g. the sync step 2 carrying current content) go back to
     // the sender only.
@@ -681,7 +693,6 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
 
     // Applied document changes (inserts and deletes) and awareness frames go to
     // everyone else.
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         // Mark that some file may have drifted from its blob, so the next forced
@@ -744,54 +755,46 @@ fn broadcast_all(room: &RoomState, msg: &[u8]) {
 /// broadcast to *every* connection, so the client that caused the clash also
 /// snaps to the corrected state.
 fn reconcile_tree(room: &mut RoomState) {
-    let doc = room.awareness.doc();
-    let nodes = nodes_map(doc);
+    let nodes = nodes_map(room.awareness.doc());
 
     // One observer spans both passes, capturing whatever they change to relay.
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let doc = awareness.doc();
+
+        // Pass 1: reparent structural victims to the root (drop their `parent`).
+        let structural = {
+            let txn = doc.transact();
+            // A node half-written mid-sync — skip; a later frame retries.
+            read_tree(&txn, &nodes)
+                .map(|tree| tree.structural_repairs())
+                .unwrap_or_default()
+        };
+        if !structural.is_empty() {
+            let mut txn = doc.transact_mut();
+            for id in structural {
+                if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                    node.remove(&mut txn, "parent");
+                }
+            }
+        }
+
+        // Pass 2: dedupe sibling names on the repaired tree.
+        let renames = {
+            let txn = doc.transact();
+            read_tree(&txn, &nodes)
+                .map(|tree| tree.dedupe_sibling_names())
+                .unwrap_or_default()
+        };
+        if !renames.is_empty() {
+            let mut txn = doc.transact_mut();
+            for (id, name) in renames {
+                if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
+                    node.insert(&mut txn, "name", name);
+                }
+            }
         }
     });
 
-    // Pass 1: reparent structural victims to the root (drop their `parent`).
-    let structural = {
-        let txn = doc.transact();
-        // A node half-written mid-sync — skip; a later frame retries.
-        read_tree(&txn, &nodes)
-            .map(|tree| tree.structural_repairs())
-            .unwrap_or_default()
-    };
-    if !structural.is_empty() {
-        let mut txn = doc.transact_mut();
-        for id in structural {
-            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
-                node.remove(&mut txn, "parent");
-            }
-        }
-    }
-
-    // Pass 2: dedupe sibling names on the repaired tree.
-    let renames = {
-        let txn = doc.transact();
-        read_tree(&txn, &nodes)
-            .map(|tree| tree.dedupe_sibling_names())
-            .unwrap_or_default()
-    };
-    if !renames.is_empty() {
-        let mut txn = doc.transact_mut();
-        for (id, name) in renames {
-            if let Some(Out::YMap(node)) = nodes.get(&txn, &id) {
-                node.insert(&mut txn, "name", name);
-            }
-        }
-    }
-
-    drop(subscription);
-
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         for update in updates {
@@ -915,18 +918,10 @@ fn persist_room(
 /// is left untouched (no spurious update). Runs on the room thread in response
 /// to a [`Command::FlushBlobs`].
 fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
-    let doc = room.awareness.doc();
-    let nodes = nodes_map(doc);
+    let nodes = nodes_map(room.awareness.doc());
 
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
-        }
-    });
-    {
-        let mut txn = doc.transact_mut();
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let mut txn = awareness.doc().transact_mut();
         for (id, blob) in blobs {
             let Some(Out::YMap(node)) = nodes.get(&txn, &id) else {
                 continue;
@@ -943,10 +938,8 @@ fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
             node.insert(&mut txn, "sha256", blob.sha256);
             node.insert(&mut txn, "size", blob.size as i64);
         }
-    }
-    drop(subscription);
+    });
 
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
         for update in updates {
@@ -1064,17 +1057,8 @@ fn rematerialize(
 /// blob and is already durable, so re-snapshotting it would just re-bloat the
 /// resting snapshot.
 fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
-    let doc = room.awareness.doc();
-
-    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
-    let sink = applied.clone();
-    let subscription = doc.observe_update_v1(move |_txn, event| {
-        if let Ok(mut updates) = sink.lock() {
-            updates.push(event.update.clone());
-        }
-    });
-    {
-        let mut txn = doc.transact_mut();
+    let (_, updates) = capture_doc_updates(&mut room.awareness, |awareness| {
+        let mut txn = awareness.doc().transact_mut();
         for (id, text) in texts {
             let Some(root) = txn.get_text(id.as_str()) else {
                 continue;
@@ -1084,10 +1068,8 @@ fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
             }
             root.insert(&mut txn, 0, &text);
         }
-    }
-    drop(subscription);
+    });
 
-    let updates = std::mem::take(&mut *applied.lock().unwrap());
     for update in updates {
         let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
         broadcast_all(room, &msg);
