@@ -165,6 +165,10 @@ async fn handle_ws(
     let client_timeout = Duration::from_secs(ws_config.client_timeout_secs);
     let mut last_heartbeat = Instant::now();
     let mut interval = interval(heartbeat_interval);
+    // Application-level keepalive, sent on the heartbeat cadence (see the tick
+    // branch). Built once; empty only if encoding ever fails, in which case it
+    // is never sent.
+    let keepalive = keepalive_frame();
 
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -211,6 +215,21 @@ async fn handle_ws(
                 if Instant::now().duration_since(last_heartbeat) > client_timeout {
                     break None;
                 }
+                // Keep the client's y-websocket alive with an application-level
+                // frame *before* the protocol ping. The browser answers a WS
+                // ping/pong itself, at the protocol layer, so those frames never
+                // surface to y-websocket's `onmessage` and never reset its
+                // `messageReconnectTimeout` (30s of no *message* ⇒ it force-closes
+                // and reconnects). A lone client that neither receives peers'
+                // updates (broadcasts skip the sender) nor a server push within
+                // that window would otherwise reconnect every ~30s — dropping the
+                // room to zero connections and back. The keepalive is a no-op
+                // awareness frame, so it refreshes that clock without touching the
+                // document or presence. The protocol ping still runs, driving the
+                // server-side dead-client check above via the client's pong.
+                if !keepalive.is_empty() && session.binary(keepalive.clone()).await.is_err() {
+                    break None;
+                }
                 let _ = session.ping(b"").await;
             }
 
@@ -221,6 +240,26 @@ async fn handle_ws(
     project_server.leave(project_id, conn_id);
     debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection closed");
     let _ = session.close(close_reason).await;
+}
+
+/// A no-op y-awareness frame the server sends on the heartbeat cadence to keep a
+/// client's y-websocket `messageReconnectTimeout` from firing (see the tick
+/// branch in [`handle_ws`]). It carries *zero* awareness clients, so the client
+/// decodes it, resets its "last message received" clock, and changes nothing —
+/// no presence added, updated, or removed, and the document is untouched. Built
+/// from a throwaway awareness because `handle_ws` runs off the room-manager
+/// thread and so has no access to the live doc; the frame is content-free, so a
+/// throwaway is equivalent. Returns an empty vec only if encoding fails (not
+/// expected for an empty client set), in which case no keepalive is sent.
+fn keepalive_frame() -> Vec<u8> {
+    let awareness = Awareness::new(Doc::new());
+    match awareness.update_with_clients(Vec::<ClientID>::new()) {
+        Ok(update) => YMessage::Awareness(update).encode_v1(),
+        Err(e) => {
+            warn!("failed to encode keepalive frame: {e:?}");
+            Vec::new()
+        }
+    }
 }
 
 /// Commands sent from connection handlers (any worker thread) to the
@@ -1294,6 +1333,31 @@ mod tests {
             }
         }
         room
+    }
+
+    #[test]
+    fn keepalive_frame_is_a_no_op_awareness_update() {
+        let frame = keepalive_frame();
+        assert!(!frame.is_empty(), "keepalive frame must encode");
+        // It must be a well-formed awareness message carrying no clients, so a
+        // client decodes it, refreshes its reconnect clock, and changes nothing.
+        match YMessage::decode_v1(&frame) {
+            Ok(YMessage::Awareness(update)) => assert!(
+                update.clients.is_empty(),
+                "keepalive must carry zero awareness clients"
+            ),
+            other => panic!("expected an empty Awareness frame, got {other:?}"),
+        }
+        // Applying it to a peer's awareness adds no participant (the no-op).
+        let mut peer = Awareness::new(Doc::new());
+        if let Ok(YMessage::Awareness(update)) = YMessage::decode_v1(&frame) {
+            peer.apply_update(update).expect("apply keepalive update");
+        }
+        assert_eq!(
+            peer.iter().count(),
+            0,
+            "keepalive must not register any awareness client on a peer"
+        );
     }
 
     #[test]
