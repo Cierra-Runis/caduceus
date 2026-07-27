@@ -72,6 +72,16 @@
     "noFileOpen": "未打开文件",
     "rename": "重命名 {name}",
     "settings": "设置",
+    "status": {
+      "collaborators": "{count, plural, =0 {仅你自己} other {# 位协作者}}",
+      "live": "已连接",
+      "offline": "离线",
+      "reconnecting": "重连中…",
+      "saved": "已保存",
+      "syncing": "同步中…",
+      "typst": "Typst",
+      "unsaved": "{count, plural, other {# 个文件未保存}}"
+    },
     "upload": {
       "choose": "选择文件",
       "chooseFolder": "选择文件夹",

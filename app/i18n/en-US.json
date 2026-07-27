@@ -72,6 +72,16 @@
     "noFileOpen": "No file open",
     "rename": "Rename {name}",
     "settings": "Settings",
+    "status": {
+      "collaborators": "{count, plural, =0 {Just you} =1 {1 collaborator} other {# collaborators}}",
+      "live": "Live",
+      "offline": "Offline",
+      "reconnecting": "Reconnecting…",
+      "saved": "Saved",
+      "syncing": "Syncing…",
+      "typst": "Typst",
+      "unsaved": "{count, plural, =1 {1 unsaved file} other {# unsaved files}}"
+    },
     "upload": {
       "choose": "Choose files",
       "chooseFolder": "Choose folder",
