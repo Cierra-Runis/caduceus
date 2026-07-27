@@ -1,9 +1,11 @@
-//! Building an id-keyed [`Node`] tree from the legacy path-keyed file list.
+//! Building an id-keyed [`Node`] tree from a flat path-keyed file list.
 //!
-//! A room cold-starts from its snapshot; when there is none yet (a project that
-//! predates the CRDT tree), it is seeded from the Mongo `files` — a flat list of
-//! full paths like `chapters/intro.typ`. This module turns that into explicit
-//! nodes: a file node per file, plus the folder nodes its path implies.
+//! **Test-only.** This once cold-started a room from the old flat Mongo `files`
+//! list (full paths like `chapters/intro.typ`) before that source was retired
+//! by the `files → tree` migration; production now cold-starts from
+//! `Project.tree` via [`ProjectTree::from_nodes`](crate::models::tree::ProjectTree::from_nodes).
+//! It survives as a convenience for building a populated tree from paths in
+//! tests: a file node per file, plus the folder nodes its path implies.
 //!
 //! Every node id is opaque (files keep their real id; folders get a freshly
 //! generated one) — a folder's *path* is derived like everything else, never its

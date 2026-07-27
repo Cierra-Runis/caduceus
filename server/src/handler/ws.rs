@@ -487,7 +487,8 @@ fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>
 }
 
 /// Single-threaded owner of every room. Serves commands and periodically
-/// flushes text to MongoDB.
+/// persists each room (Y.Doc snapshot to MinIO, tree projection to Mongo),
+/// sweeps orphaned blobs, and evicts idle rooms.
 async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
     cmd_tx: UnboundedSender<Command>,
@@ -804,11 +805,10 @@ fn reconcile_tree(room: &mut RoomState) {
     }
 }
 
-/// Persist the room's Y.Doc if it changed since the last snapshot. Dual-write:
-/// the whole doc (nodes + text) goes to a MinIO snapshot (the CRDT authority),
-/// the derived tree projection to Mongo (the listing cache), and each changed
-/// file's text back to Mongo `files` (so REST loads keep working during the
-/// migration).
+/// Persist the room's Y.Doc if it changed since the last snapshot: the whole
+/// doc (nodes + text) goes to a MinIO snapshot (the CRDT authority) and the
+/// derived tree projection to Mongo (the listing cache). There is no inline
+/// text written to Mongo — bytes live once, in content-addressed blobs.
 ///
 /// Content-addressed blobs are materialized only on a **forced flush**
 /// (`force_flush`): a client's `files.autoSave` policy firing (via
