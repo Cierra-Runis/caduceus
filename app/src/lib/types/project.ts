@@ -8,6 +8,10 @@ export const ProjectSchema = z.object({
   name: z.string().trim(),
   owner_id: z.string().trim(),
   owner_type: z.enum(['team', 'user']),
+  // The pinned Typst version (a semver string) the server compiles this
+  // project with; null means "follow the server default". Routes to a
+  // tinymist worker binary server-side.
+  pinned_version: z.string().trim().nullish(),
   updated_at: z.string().trim().transform((str) => new Date(str)),
 });
 
