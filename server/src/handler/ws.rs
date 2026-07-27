@@ -14,6 +14,7 @@ use derive_more::Display;
 use futures_util::StreamExt as _;
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::oneshot,
     task::LocalSet,
     time::{Instant, interval},
 };
@@ -144,6 +145,20 @@ pub async fn ws(
     Ok(res)
 }
 
+/// `GET /api/admin/rooms` — a read-only snapshot of every live collaboration
+/// room's state (connection counts, dirty/idle flags, node counts). Aggregate
+/// data only, no document content. Behind the same JWT auth as the rest of
+/// `/api`; `_user` proves the caller is authenticated. Meant for operator
+/// introspection — turning "what are the rooms doing?" into a live query
+/// instead of a recompile-with-a-print.
+pub async fn rooms(
+    project_server: web::Data<ProjectServer>,
+    _user: UserClaims,
+) -> HttpResponse {
+    let rooms = project_server.inspect().await;
+    HttpResponse::Ok().json(ApiResponse::success("Live rooms", rooms))
+}
+
 /// Per-connection loop. Bridges this WebSocket to the single-threaded room
 /// manager: client frames are forwarded as [`Command::Data`], and messages the
 /// manager routes back (initial sync, peers' updates, awareness) arrive on
@@ -271,6 +286,34 @@ enum Command {
         project_id: ObjectId,
         orphans: HashSet<String>,
     },
+    /// A read-only snapshot of every live room's state, for operator
+    /// introspection (`GET /api/admin/rooms`). The manager fills `reply` with a
+    /// [`RoomInfo`] per room; sent over a oneshot so the async handler can await
+    /// it off the manager thread.
+    Inspect {
+        reply: oneshot::Sender<Vec<RoomInfo>>,
+    },
+}
+
+/// A read-only view of one live room, safe to send off the manager thread
+/// (`Send`, no `yrs` handles). Aggregate state only — ids and counts, never
+/// document content — so it is cheap to expose to an authenticated operator.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoomInfo {
+    /// Project id (hex) this room serves.
+    pub project_id: String,
+    /// Live WebSocket connections.
+    pub conns: usize,
+    /// Whether the Y.Doc changed since the last snapshot.
+    pub dirty: bool,
+    /// Whether some file's text has drifted from its recorded blob.
+    pub blobs_pending: bool,
+    /// Seconds the room has sat with no connections, or `null` while occupied.
+    pub empty_secs: Option<u64>,
+    /// Nodes (files + folders) in the tree.
+    pub nodes: usize,
+    /// Files that currently carry a non-empty text overlay in the doc.
+    pub text_overlays: usize,
 }
 
 /// Handle to the collaboration subsystem, stored in actix app data. Cheap to
@@ -343,6 +386,16 @@ impl ProjectServer {
     /// Fire-and-forget: the room manager force-flushes on its own thread.
     pub fn flush(&self, project_id: ObjectId) {
         let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
+    }
+
+    /// A read-only snapshot of every live room's state. Returns an empty list if
+    /// the manager thread has gone away (send fails or the reply is dropped).
+    pub async fn inspect(&self) -> Vec<RoomInfo> {
+        let (reply, rx) = oneshot::channel();
+        if self.cmd_tx.send(Command::Inspect { reply }).is_err() {
+            return Vec::new();
+        }
+        rx.await.unwrap_or_default()
     }
 }
 
@@ -486,6 +539,39 @@ fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>
         .map(|update| YMessage::Awareness(update).encode_v1())
 }
 
+/// Derive a [`RoomInfo`] from a live room. Reads the doc once for the node and
+/// text-overlay counts (`nodes_map` before opening the read txn, per the yrs
+/// borrow rules).
+fn room_info(project_id: ObjectId, room: &RoomState) -> RoomInfo {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+    let txn = doc.transact();
+    let (node_count, text_overlays) = match read_tree(&txn, &nodes) {
+        Ok(tree) => {
+            let count = tree.iter().count();
+            let overlays = tree
+                .iter()
+                .filter(|n| n.is_file())
+                .filter(|n| {
+                    txn.get_text(n.id.as_str())
+                        .is_some_and(|t| t.len(&txn) > 0)
+                })
+                .count();
+            (count, overlays)
+        }
+        Err(_) => (0, 0),
+    };
+    RoomInfo {
+        project_id: project_id.to_hex(),
+        conns: room.conns.len(),
+        dirty: room.dirty,
+        blobs_pending: room.blobs_pending,
+        empty_secs: room.empty_since.map(|since| since.elapsed().as_secs()),
+        nodes: node_count,
+        text_overlays,
+    }
+}
+
 /// Single-threaded owner of every room. Serves commands and periodically
 /// persists each room (Y.Doc snapshot to MinIO, tree projection to Mongo),
 /// sweeps orphaned blobs, and evicts idle rooms.
@@ -607,6 +693,13 @@ async fn room_manager(
                         } else {
                             gc_pending.insert(project_id, orphans);
                         }
+                    }
+                    Some(Command::Inspect { reply }) => {
+                        let infos = rooms
+                            .iter()
+                            .map(|(id, room)| room_info(*id, room))
+                            .collect();
+                        let _ = reply.send(infos);
                     }
                     None => break,
                 }
@@ -1220,6 +1313,34 @@ mod tests {
             sha256: "a".repeat(64),
             size: 0,
         }
+    }
+
+    #[test]
+    fn room_info_reports_aggregate_state() {
+        let mut room = RoomState::new(vec![
+            (ObjectId::new(), "main.typ".to_string(), "hello".to_string(), blob()),
+            // A file with no text bytes: its overlay exists but is empty, so it
+            // must not be counted as a live text overlay.
+            (ObjectId::new(), "empty.typ".to_string(), String::new(), blob()),
+        ]);
+        let (_conn, _rx) = insert_conn(&mut room);
+        room.empty_since = None; // occupied
+
+        let info = room_info(ObjectId::new(), &room);
+        assert_eq!(info.conns, 1);
+        assert_eq!(info.nodes, 2, "two root files, no folders");
+        assert_eq!(info.text_overlays, 1, "only main.typ carries text");
+        assert!(info.empty_secs.is_none(), "occupied room has no idle clock");
+        assert!(room.dirty, "a freshly seeded room needs an initial snapshot");
+    }
+
+    #[test]
+    fn room_info_reports_idle_seconds_when_empty() {
+        let room = RoomState::new(vec![]);
+        // Freshly built, unoccupied: empty_since is set, so empty_secs is Some.
+        let info = room_info(ObjectId::new(), &room);
+        assert_eq!(info.conns, 0);
+        assert!(info.empty_secs.is_some());
     }
 
     #[test]
