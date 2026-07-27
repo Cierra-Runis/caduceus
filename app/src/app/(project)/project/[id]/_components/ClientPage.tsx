@@ -39,6 +39,7 @@ import { PreviewPanel } from './PreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Sidebar, SidebarView } from './Sidebar';
 import { SidebarPanel } from './SidebarPanel';
+import { StatusBar } from './StatusBar';
 import { UploadDialog } from './UploadDialog';
 
 export function ClientPage({ project }: { project: ProjectDetail }) {
@@ -379,8 +380,17 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
     prevFocus.current = focus;
   }, [autoSave, focus, flush]);
 
+  // Ambient state for the status bar: how many open files carry unflushed
+  // edits, and the entry file's own name (derived from its path).
+  const dirtyCount = useMemo(
+    () => Object.values(dirty).filter(Boolean).length,
+    [dirty],
+  );
+  const entryName = entry ? (entry.split('/').pop() ?? entry) : null;
+
   return (
-    <div className='relative flex h-screen'>
+    <div className='flex h-screen flex-col'>
+      <div className='relative flex min-h-0 flex-1'>
       <div className='absolute top-2 right-2 z-10'>
         <PresenceBar me={localUser} provider={provider} />
       </div>
@@ -433,6 +443,14 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
           previewPanelRef={previewPanelRef}
         />
       </Group>
+      </div>
+      <StatusBar
+        autoSave={autoSave}
+        dirtyCount={dirtyCount}
+        entryName={entryName}
+        meId={localUser?.id ?? null}
+        provider={provider}
+      />
       <UploadDialog
         onOpenChange={setUploadOpen}
         onUploaded={createUploadedNode}
