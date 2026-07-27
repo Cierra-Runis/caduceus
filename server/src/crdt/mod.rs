@@ -19,6 +19,12 @@ use yrs::{Any, Doc, Map, MapPrelim, MapRef, Out, ReadTxn, TransactionMut};
 use crate::models::tree::{Node, NodeContent, ProjectTree};
 use crate::storage::Blob;
 
+// The path-keyed seed builder (`nodes_from_files`) existed to cold-start a room
+// from the old flat Mongo `files` list. The `files → tree` migration retired
+// that source — production now cold-starts from `Project.tree` via
+// `ProjectTree::from_nodes`. The only remaining caller is the `RoomState::new`
+// test builder, so the module is test-only and stays out of the release binary.
+#[cfg(test)]
 pub mod seed;
 pub mod snapshot;
 
