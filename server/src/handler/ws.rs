@@ -165,7 +165,7 @@ async fn handle_ws(
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     project_server.join(project_id, snapshot, tree, conn_id, out_tx);
-    info!("WS handler: joined project {}", project_id.to_hex());
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection opened");
 
     let mut msg_stream = msg_stream
         .max_frame_size(1024 * 1024)
@@ -215,7 +215,7 @@ async fn handle_ws(
     };
 
     project_server.leave(project_id, conn_id);
-    info!("WS handler: left project {}", project_id.to_hex());
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection closed");
     let _ = session.close(close_reason).await;
 }
 
@@ -516,6 +516,8 @@ async fn room_manager(
                         // built from a stripped snapshot or cold-started from the
                         // tree refills its text from blobs once.
                         let fresh = !rooms.contains_key(&project_id);
+                        // Only meaningful when `fresh` — how the room was built.
+                        let source = if snapshot.is_some() { "snapshot" } else { "cold-tree" };
                         let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
                             Some(bytes) => RoomState::from_snapshot(bytes),
                             None => RoomState::from_tree(&tree),
@@ -527,6 +529,13 @@ async fn room_manager(
                         }
                         room.conns.insert(conn_id, out);
                         room.empty_since = None; // occupied again
+                        info!(
+                            project = %project_id.to_hex(),
+                            conn = %conn_id.to_hex(),
+                            conns = room.conns.len(),
+                            source = if fresh { source } else { "existing" },
+                            "room join",
+                        );
                         if fresh {
                             rematerialize(project_id, room, &store, &cmd_tx);
                         }
@@ -561,6 +570,19 @@ async fn room_manager(
                                 // settle will catch the final edits).
                                 room.empty_since = Some(Instant::now());
                                 persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                                info!(
+                                    project = %project_id.to_hex(),
+                                    conn = %conn_id.to_hex(),
+                                    idle_threshold_secs = room_idle.as_secs(),
+                                    "room emptied; idle eviction clock started",
+                                );
+                            } else {
+                                debug!(
+                                    project = %project_id.to_hex(),
+                                    conn = %conn_id.to_hex(),
+                                    conns = room.conns.len(),
+                                    "room leave",
+                                );
                             }
                         }
                     }
@@ -618,10 +640,17 @@ async fn room_manager(
                     .collect();
                 for project_id in stale {
                     if let Some(room) = rooms.get_mut(&project_id) {
+                        // Idle seconds as a number, not the raw monotonic
+                        // `Instant` (whose Debug is an opaque clock base).
+                        let idle_secs = room
+                            .empty_since
+                            .map(|since| since.elapsed().as_secs())
+                            .unwrap_or(0);
                         strip_text(room);
                         let bytes = encode_doc(room.awareness.doc());
                         let store = store.clone();
                         let pid = project_id.to_hex();
+                        info!(project = %pid, idle_secs, snapshot_bytes = bytes.len(), "evicting idle room");
                         tokio::task::spawn_local(async move {
                             if let Err(e) = store.put_snapshot(&pid, &bytes).await {
                                 warn!("stripped snapshot save failed in {pid}: {e:?}");
@@ -1126,10 +1155,20 @@ fn gc_room(
             .into_iter()
             .filter(|sha| !referenced.contains(sha))
             .collect();
+        let mut deleted = 0usize;
         for sha in orphans.intersection(&prev) {
-            if let Err(e) = store.delete_blob(&pid, sha).await {
-                warn!("gc delete failed in {pid}: {e:?}");
+            match store.delete_blob(&pid, sha).await {
+                Ok(()) => deleted += 1,
+                Err(e) => warn!("gc delete failed in {pid}: {e:?}"),
             }
+        }
+        if deleted > 0 || !orphans.is_empty() {
+            debug!(
+                project = %pid,
+                orphans = orphans.len(),
+                deleted,
+                "gc sweep",
+            );
         }
         let _ = cmd_tx.send(Command::GcSwept {
             project_id,
