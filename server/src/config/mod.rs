@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use actix_cors::Cors;
 use serde::Deserialize;
 mod cors;
@@ -92,6 +94,62 @@ impl StorageConfig {
     }
 }
 
+/// Server-side Typst compilation via tinymist workers (LSP + diagnostics).
+/// Optional so a checkout runs without any tinymist binaries: absent disables
+/// the feature entirely. tinymist is obtained as a **subprocess** binary — the
+/// crate is not usable as a library dependency (it builds only against a
+/// patched Typst fork), and crates.io ships no binary — so each supported Typst
+/// version maps to a `tinymist` binary built and staged out of band (see
+/// `scripts/build-tinymist.sh`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct LspConfig {
+    /// Supported Typst versions and the tinymist binary that compiles each. A
+    /// project routes to the worker for its pinned version.
+    pub versions: Vec<TinymistVersion>,
+    /// Version used when a project pins nothing, or pins an unsupported one.
+    pub default_version: String,
+    /// Directory under which each room's worker gets a staging root (binary
+    /// blobs materialized from MinIO, package cache) for `#image`/`#read`.
+    pub workspace_root: PathBuf,
+    /// Optional shared, read-only package cache (`@preview/*`) across workers.
+    #[serde(default)]
+    pub package_cache: Option<PathBuf>,
+}
+
+/// One supported Typst version and the tinymist binary that compiles it. Each
+/// tinymist release compiles exactly one Typst version (reported at runtime),
+/// so version routing is binary selection.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TinymistVersion {
+    /// The Typst version this binary compiles, e.g. `"0.13.1"`.
+    pub typst_version: String,
+    /// Absolute path to the tinymist binary for this version.
+    pub binary: PathBuf,
+}
+
+impl LspConfig {
+    /// Resolve the tinymist binary for a requested version, falling back to the
+    /// configured default. `None` when neither the request nor the default is
+    /// among the supported versions (a misconfiguration).
+    pub fn binary_for(&self, version: Option<&str>) -> Option<&Path> {
+        let requested = version.unwrap_or(&self.default_version);
+        self.lookup(requested)
+            .or_else(|| self.lookup(&self.default_version))
+    }
+
+    /// Whether a Typst version has a configured worker binary.
+    pub fn is_supported(&self, version: &str) -> bool {
+        self.versions.iter().any(|v| v.typst_version == version)
+    }
+
+    fn lookup(&self, version: &str) -> Option<&Path> {
+        self.versions
+            .iter()
+            .find(|v| v.typst_version == version)
+            .map(|v| v.binary.as_path())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     cors: Option<CorsConfig>,
@@ -103,6 +161,8 @@ pub struct Config {
     pub ws: WsConfig,
     #[serde(default)]
     pub storage: Option<StorageConfig>,
+    #[serde(default)]
+    pub lsp: Option<LspConfig>,
 }
 
 impl Config {
@@ -185,6 +245,7 @@ mod tests {
             jwt_secret: "secret".to_string(),
             ws: WsConfig::default(),
             storage: None,
+            lsp: None,
         };
 
         let app = test::init_service(
@@ -262,5 +323,69 @@ mod tests {
                 .map(|v| v.to_str().unwrap()),
             Some("http://localhost:3000")
         );
+    }
+}
+
+// A separate test module so it does not inherit `mod tests`'s
+// `use actix_web::test`, which shadows the built-in `#[test]` attribute.
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod lsp_tests {
+    use super::*;
+
+    fn lsp_config() -> LspConfig {
+        LspConfig {
+            versions: vec![
+                TinymistVersion {
+                    typst_version: "0.12.0".to_string(),
+                    binary: PathBuf::from("/opt/tinymist/0.12.0/tinymist"),
+                },
+                TinymistVersion {
+                    typst_version: "0.13.1".to_string(),
+                    binary: PathBuf::from("/opt/tinymist/0.13.1/tinymist"),
+                },
+            ],
+            default_version: "0.13.1".to_string(),
+            workspace_root: PathBuf::from("/var/lib/caduceus/lsp"),
+            package_cache: None,
+        }
+    }
+
+    #[test]
+    fn binary_for_resolves_the_requested_version() {
+        let cfg = lsp_config();
+        assert_eq!(
+            cfg.binary_for(Some("0.12.0")),
+            Some(Path::new("/opt/tinymist/0.12.0/tinymist"))
+        );
+    }
+
+    #[test]
+    fn binary_for_falls_back_to_default_when_unpinned_or_unsupported() {
+        let cfg = lsp_config();
+        // No pin → default.
+        assert_eq!(
+            cfg.binary_for(None),
+            Some(Path::new("/opt/tinymist/0.13.1/tinymist"))
+        );
+        // Pinned to an unsupported version → default, not None.
+        assert_eq!(
+            cfg.binary_for(Some("9.9.9")),
+            Some(Path::new("/opt/tinymist/0.13.1/tinymist"))
+        );
+    }
+
+    #[test]
+    fn binary_for_is_none_when_even_the_default_is_missing() {
+        let mut cfg = lsp_config();
+        cfg.default_version = "9.9.9".to_string();
+        assert_eq!(cfg.binary_for(Some("8.8.8")), None);
+    }
+
+    #[test]
+    fn is_supported_reflects_configured_versions() {
+        let cfg = lsp_config();
+        assert!(cfg.is_supported("0.12.0"));
+        assert!(!cfg.is_supported("0.99.0"));
     }
 }
