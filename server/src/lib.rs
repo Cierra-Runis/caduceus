@@ -4,6 +4,7 @@ pub mod config;
 pub mod crdt;
 pub mod database;
 pub mod handler;
+pub mod lsp;
 pub mod middleware;
 pub mod models;
 pub mod repo;
