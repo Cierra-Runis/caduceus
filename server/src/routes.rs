@@ -21,11 +21,17 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                     web::scope("/project/{id}")
                         .route("", web::get().to(handler::project::find_by_id))
                         .route("", web::put().to(handler::project::update))
-                        .route(
-                            "/file/{file_id}",
-                            web::put().to(handler::project::update_file),
-                        )
-                        .route("/duplicate", web::post().to(handler::project::duplicate)),
+                        .route("/settings", web::put().to(handler::project::update_settings))
+                        // Client auto-save trigger: force a blob flush for the room.
+                        .route("/flush", web::post().to(handler::project::flush))
+                        .route("/duplicate", web::post().to(handler::project::duplicate))
+                        // Binary blobs (images, fonts). The upload body is raw
+                        // bytes; the default extractor cap is 256 KiB. For now
+                        // we don't cap uploads (revisit before production — an
+                        // unbounded in-memory body is a DoS foot-gun).
+                        .app_data(web::PayloadConfig::new(usize::MAX))
+                        .route("/blobs", web::post().to(handler::blob::upload))
+                        .route("/blobs/{sha}", web::get().to(handler::blob::download)),
                 )
                 .service(
                     web::scope("/user")

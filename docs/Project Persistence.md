@@ -105,10 +105,13 @@ flowchart TB
 - **`projects/{id}/ydoc`** is the source of truth for **CRDT state** (the tree
   structure, and later the text overlay). The in-memory room Doc is the live
   copy; snapshots are its durable form.
-- **MongoDB projection** is a **derived cache** — a list of `NodeProjection`
-  (id, parent, name, derived path, blob) so REST listings and access checks
-  don't have to load and decode a Y.Doc. It can be rebuilt from the snapshot at
-  any time and is never authoritative.
+- **MongoDB `Project.tree`** is the id-keyed projection (id → parent, name,
+  derived path, blob ref) so REST payloads and access checks don't have to load
+  and decode a Y.Doc. It is refreshed from the snapshot on persist; it is also
+  the **structure source for a cold start** (a project with no snapshot yet):
+  the room is built from `tree` and its text rematerialized from blobs. There is
+  no longer any inline-text `files` array — bytes live once, in blobs; structure
+  lives in `tree`; the CRDT snapshot is the live/warm form of both.
 
 ## End-to-end flow
 
@@ -137,6 +140,64 @@ Cheap listings skip steps 1–4 and read the Mongo projection directly.
 2. Only then is the hash recorded on the node (`NodeContent::File { blob }`) in
    the Doc. A crash between the two leaves an unreferenced (GC-able) blob, never
    a node pointing at bytes that were never written.
+
+### When a text file's blob is (re)flushed — `files.autoSave`
+
+Every keystroke is already synced to the room over the CRDT and captured by the
+periodic snapshot, so text is durable regardless of blob state. Minting a fresh
+content-addressed **blob** from that text is a *separate*, coarser event, and
+uploading one on every persist tick while someone types would spray a new MinIO
+object per keystroke-burst (each immediately superseded and left for GC).
+
+So the blob flush is **client-driven**, governed by a project-level
+`files.autoSave` policy (mirroring VS Code) stored on `Project.settings`:
+
+| Policy | Client flushes when… |
+| --- | --- |
+| `off` | only on a manual save (Ctrl/Cmd+S) |
+| `afterDelay` | a debounce (`autoSaveDelay` ms) after the last edit |
+| `onFocusChange` *(default)* | the focused file changes |
+| `onWindowChange` | the window/tab loses focus |
+
+The client detects the moment (only it knows about editor/window focus and
+keystroke timing) and calls `POST /project/{id}/flush`, which sends the room a
+forced flush (`Command::FlushRoom` → `persist_room(force_flush = true)`). The
+plain persist tick never mints a blob; it only writes the snapshot + projection.
+A room emptying on the last leave also force-flushes, so a final edit isn't left
+in the snapshot alone. `blobs_pending` on the room short-circuits a flush when no
+text has drifted from its recorded blob.
+
+### Idle room eviction + text rematerialization
+
+A room with no connections stays in memory (its `empty_since` clock starts). Once
+it sits idle past `room_idle_secs`, the manager **evicts** it: it strips the
+redundant text bytes from the resting snapshot and drops the room from memory,
+reclaiming the in-memory `Y.Doc`.
+
+- **Strip (`strip_text`).** For each text file whose overlay bytes already live
+  in its blob (the overlay hashes to the node's blob sha), the overlay content is
+  *deleted* from the doc. The resting snapshot then carries the structure and an
+  *empty* overlay per file — not the text bytes, which now live once, in the blob.
+  A file whose text hasn't settled to its blob is left intact (it keeps its bytes
+  in the snapshot this cycle). The stripped snapshot is smaller by roughly the
+  total text size.
+- **Rematerialize (`rematerialize` → `Command::ApplyRemat` → `apply_remat`).** On
+  the next join that *builds* the room, every empty overlay whose blob is
+  non-empty is refilled: the blobs are fetched off-thread and their text inserted
+  back into the overlays, then broadcast.
+
+**Why this is safe (no duplication, no generation/versioning/reload).** The strip
+is a CRDT *deletion*, so the emptied overlay carries a **tombstone** in the
+snapshot. A client that was connected before the eviction and reconnects after it
+receives that deletion on its initial sync (Yjs propagates deletes via the delete
+set, even for items the client still holds live) — so its own copy of the text is
+*removed*, and the rematerialized text (fresh items) is the only content left.
+Old copy deleted + new copy inserted = the text once, on every peer. This is the
+same invariant that lets a live room stay pinned rather than be re-derived from
+text; the tombstone is what makes re-derivation safe here.
+
+The 2× saving applies to **cold** (evicted) projects; a warm room, having
+rematerialized, snapshots the full text again until its next eviction.
 
 ### Reclaiming bytes (GC)
 

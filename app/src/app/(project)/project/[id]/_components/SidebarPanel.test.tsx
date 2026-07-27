@@ -4,6 +4,7 @@ import { type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TreeNode } from '@/lib/yjs/tree';
+import { withIntl } from '@/test/intl';
 
 import { SidebarPanel } from './SidebarPanel';
 
@@ -35,19 +36,22 @@ function renderPanel(
   overrides: Partial<Parameters<typeof SidebarPanel>[0]> = {},
 ) {
   return render(
-    <SidebarPanel
-      entry={null}
-      focus=''
-      nodes={nodes}
-      onCreateFile={vi.fn(() => true)}
-      onCreateFolder={vi.fn(() => true)}
-      onDelete={vi.fn()}
-      onMove={vi.fn()}
-      onRename={vi.fn(() => true)}
-      onSelect={vi.fn()}
-      sidebarPanelRef={{ current: null }}
-      {...overrides}
-    />,
+    withIntl(
+      <SidebarPanel
+        entry={null}
+        focus=''
+        nodes={nodes}
+        onCreateFile={vi.fn(() => true)}
+        onCreateFolder={vi.fn(() => true)}
+        onDelete={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn(() => true)}
+        onSelect={vi.fn()}
+        onUpload={vi.fn()}
+        sidebarPanelRef={{ current: null }}
+        {...overrides}
+      />,
+    ),
   );
 }
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -19,7 +19,7 @@ use tokio::{
 };
 use tracing::{debug, info, warn};
 use yrs::{
-    ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
+    Any, ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
     sync::{Awareness, DefaultProtocol, Message as YMessage, Protocol, SyncMessage},
     updates::decoder::Decode as _,
     updates::encoder::{Encode, Encoder, EncoderV1},
@@ -27,13 +27,14 @@ use yrs::{
 
 use crate::config::WsConfig;
 use crate::crdt::snapshot::encode_doc;
-use crate::crdt::{nodes_map, read_tree, seed::nodes_from_files, write_tree};
-use crate::models::project::FileContent;
+use crate::crdt::{nodes_map, read_tree, write_tree};
+#[cfg(test)]
+use crate::crdt::seed::nodes_from_files;
 use crate::models::response::ApiResponse;
-use crate::models::tree::ProjectTree;
+use crate::models::tree::{Node, ProjectTree};
 use crate::models::user::UserClaims;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
-use crate::storage::{Blob, ProjectStore};
+use crate::storage::{Blob, ProjectStore, sha256_hex};
 
 #[derive(Debug, Display)]
 pub enum WebSocketError {
@@ -72,7 +73,9 @@ const MSG_AWARENESS: u8 = 1;
 /// (nodes + text) from stored files when there is no snapshot yet. The blob is
 /// the file's content already uploaded to the object store, so the file node
 /// references bytes that exist. Text roots are keyed by the file's **id**
-/// (stable across renames), not its path.
+/// (stable across renames), not its path. A test-only convenience shape for
+/// [`RoomState::new`]; production cold-starts from the tree + blobs.
+#[cfg(test)]
 type SeedFile = (ObjectId, String, String, Blob);
 
 /// Handshake and start WebSocket handler with heartbeats.
@@ -109,22 +112,19 @@ pub async fn ws(
 
     // Only the *first* connection to a project hydrates the room; later joiners
     // sync against the already-live document. Prefer restoring from the last
-    // Y.Doc snapshot; otherwise seed a fresh doc from the stored files, uploading
-    // each text as a blob first so its file node references bytes that exist.
+    // Y.Doc snapshot; otherwise cold-start from the stored tree (structure), and
+    // the room rematerializes each file's text from its blob after building.
+    // Blobs already exist (create seeds them, edits flush them) — nothing is
+    // uploaded here.
     let store: &ProjectStore = store.get_ref();
     let project_hex = project_id.to_hex();
     let snapshot = store.get_snapshot(&project_hex).await.ok().flatten();
-    let mut seed: Vec<SeedFile> = Vec::new();
-    if snapshot.is_none() {
-        for file in project.files {
-            if let FileContent::Text { text } = file.content {
-                match store.put_blob(&project_hex, text.as_bytes()).await {
-                    Ok(blob) => seed.push((file.id, file.path, text, blob)),
-                    Err(e) => warn!("seed blob upload failed for {}: {e:?}", file.id.to_hex()),
-                }
-            }
-        }
-    }
+    let tree = ProjectTree::from_nodes(project.tree.into_iter().map(|(id, entry)| Node {
+        id,
+        parent: entry.parent,
+        name: entry.name,
+        content: entry.content,
+    }));
 
     let (res, session, stream) = match actix_ws::handle(&req, stream) {
         Ok(tuple) => tuple,
@@ -135,7 +135,7 @@ pub async fn ws(
         project_server.as_ref().clone(),
         project_id,
         snapshot,
-        seed,
+        tree,
         session,
         stream,
         ws_config.as_ref().clone(),
@@ -152,7 +152,7 @@ async fn handle_ws(
     project_server: ProjectServer,
     project_id: ObjectId,
     snapshot: Option<Vec<u8>>,
-    seed: Vec<SeedFile>,
+    tree: ProjectTree,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
     ws_config: WsConfig,
@@ -164,7 +164,7 @@ async fn handle_ws(
 
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    project_server.join(project_id, snapshot, seed, conn_id, out_tx);
+    project_server.join(project_id, snapshot, tree, conn_id, out_tx);
     info!("WS handler: joined project {}", project_id.to_hex());
 
     let mut msg_stream = msg_stream
@@ -227,8 +227,9 @@ enum Command {
         project_id: ObjectId,
         /// Prior Y.Doc snapshot bytes, if any — restores the room directly.
         snapshot: Option<Vec<u8>>,
-        /// Fallback seed (from Mongo files) used only when there is no snapshot.
-        seed: Vec<SeedFile>,
+        /// The stored tree (structure), used to cold-start when there is no
+        /// snapshot; the room then rematerializes text from blobs.
+        tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     },
@@ -240,6 +241,35 @@ enum Command {
     Leave {
         project_id: ObjectId,
         conn_id: ObjectId,
+    },
+    /// A client asked to save now (its `files.autoSave` policy fired). Force a
+    /// blob flush for the room so the current text is materialized, regardless
+    /// of the settle cadence. Missing room = nothing to flush.
+    FlushRoom {
+        project_id: ObjectId,
+    },
+    /// A persist cycle uploaded changed file text as blobs (async, off the room
+    /// thread); this brings the result back so the room can update each file
+    /// node's `blob` (sha256 / size) in the Y.Doc and broadcast it — keeping the
+    /// node's blob reference current with its edited text.
+    FlushBlobs {
+        project_id: ObjectId,
+        blobs: Vec<(String, Blob)>,
+    },
+    /// Text fetched from blobs (async) to refill a room rebuilt from a *stripped*
+    /// resting snapshot — one whose text overlays were emptied on eviction so the
+    /// bytes live only in blobs. Applied to the empty overlays and broadcast.
+    ApplyRemat {
+        project_id: ObjectId,
+        texts: Vec<(String, String)>,
+    },
+    /// The result of a GC sweep (async): the blobs found orphaned this pass. The
+    /// manager stores them so the *next* sweep only deletes blobs orphaned twice
+    /// in a row — a grace window so a blob uploaded between passes is never
+    /// swept before its `FlushBlobs` records it on a node.
+    GcSwept {
+        project_id: ObjectId,
+        orphans: HashSet<String>,
     },
 }
 
@@ -260,14 +290,19 @@ impl ProjectServer {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         // The room manager owns all `yrs` state on a dedicated thread running a
         // current-thread runtime + LocalSet, so the `!Send` documents never have
-        // to cross threads.
+        // to cross threads. It keeps a `cmd_tx` clone so a persist task can send
+        // itself the blob-flush result once the async upload finishes.
+        let manager_tx = cmd_tx.clone();
         thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("build room-manager runtime");
             let local = LocalSet::new();
-            local.block_on(&rt, room_manager(cmd_rx, project_repo, ws_config, store));
+            local.block_on(
+                &rt,
+                room_manager(cmd_rx, manager_tx, project_repo, ws_config, store),
+            );
         });
         ProjectServer { cmd_tx }
     }
@@ -276,14 +311,14 @@ impl ProjectServer {
         &self,
         project_id: ObjectId,
         snapshot: Option<Vec<u8>>,
-        seed: Vec<SeedFile>,
+        tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     ) {
         let _ = self.cmd_tx.send(Command::Join {
             project_id,
             snapshot,
-            seed,
+            tree,
             conn_id,
             out,
         });
@@ -303,7 +338,17 @@ impl ProjectServer {
             conn_id,
         });
     }
+
+    /// Request an immediate blob flush for a room (a client's auto-save fired).
+    /// Fire-and-forget: the room manager force-flushes on its own thread.
+    pub fn flush(&self, project_id: ObjectId) {
+        let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
+    }
 }
+
+/// sha256 of empty content — a file whose blob is this has no bytes to
+/// rematerialize. Matches the client's `EMPTY_SHA256`.
+const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 /// One live collaboration room: the shared CRDT document plus its connections.
 /// Lives entirely on the room-manager thread.
@@ -314,13 +359,19 @@ struct RoomState {
     /// connection's cursor/presence can be retracted when it leaves instead
     /// of lingering as a ghost participant (see `handle_data`/`Leave`).
     client_owner: HashMap<ClientID, ObjectId>,
-    /// Last text persisted per text-root key (file id hex), to skip unchanged
-    /// files. The file id list itself is derived from the `nodes` map at
-    /// persist time, not tracked here.
-    last: HashMap<String, String>,
     /// Whether the Y.Doc changed since the last snapshot, so persist can skip
     /// re-snapshotting an unchanged room.
     dirty: bool,
+    /// Whether some file's text has drifted from its recorded blob since the
+    /// last blob flush, so a forced flush (client auto-save, or leave) still has
+    /// blobs to upload. Set on each text edit, cleared once the blobs flush. The
+    /// periodic persist tick never flushes on its own — the client's
+    /// `files.autoSave` policy decides *when* via `ProjectServer::flush`.
+    blobs_pending: bool,
+    /// When the room fell to zero connections, or `None` while occupied. A room
+    /// idle past `room_idle_secs` is evicted from memory (freeing RAM); the next
+    /// joiner rebuilds it verbatim from the snapshot.
+    empty_since: Option<Instant>,
 }
 
 impl RoomState {
@@ -339,15 +390,43 @@ impl RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
             client_owner: HashMap::new(),
-            last: HashMap::new(),
             dirty: false, // the snapshot we loaded is already durable
+            blobs_pending: false,
+            empty_since: Some(Instant::now()),
         }
     }
 
-    /// Seed a fresh room's Y.Doc from stored files: a text root per file (keyed
-    /// by id) plus the derived `nodes` tree. Used only when a project has no
-    /// snapshot yet. The server is authoritative on cold start; clients connect
-    /// empty and sync against this, avoiding duplicated initial content.
+    /// Cold-start a room's Y.Doc from the stored tree (structure only): the
+    /// `nodes` map plus an empty text root per file. The text is refilled from
+    /// blobs by [`rematerialize`] once the room is built. Used when a project has
+    /// no snapshot; clients connect empty and sync against this.
+    fn from_tree(tree: &ProjectTree) -> RoomState {
+        let doc = Doc::new();
+        // Empty text root per file — `get_or_insert_text` opens its own txn, so
+        // it must precede the write txn below.
+        for node in tree.iter().filter(|n| n.is_file()) {
+            doc.get_or_insert_text(node.id.as_str());
+        }
+        let nodes = nodes_map(&doc);
+        {
+            let mut txn = doc.transact_mut();
+            write_tree(&mut txn, &nodes, tree);
+        }
+        RoomState {
+            awareness: Awareness::new(doc),
+            conns: HashMap::new(),
+            client_owner: HashMap::new(),
+            dirty: true, // a fresh cold-start needs an initial snapshot
+            blobs_pending: false,
+            empty_since: Some(Instant::now()),
+        }
+    }
+
+    /// Seed a fresh room's Y.Doc from `(id, path, text, blob)` tuples: a text
+    /// root per file plus the derived `nodes` tree. A test helper for building a
+    /// populated room in one call (production cold-starts via [`from_tree`] +
+    /// rematerialization).
+    #[cfg(test)]
     fn new(seed: Vec<SeedFile>) -> RoomState {
         let doc = Doc::new();
         // Create the text roots and nodes map up front — each `get_or_insert`
@@ -374,8 +453,11 @@ impl RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
             client_owner: HashMap::new(),
-            last: HashMap::new(),
             dirty: true, // a fresh seed needs an initial snapshot
+            // Seed blobs already match their seeded text; nothing to flush until
+            // an edit drifts a file from its blob.
+            blobs_pending: false,
+            empty_since: Some(Instant::now()),
         }
     }
 }
@@ -408,21 +490,34 @@ fn retract_connection(room: &mut RoomState, conn_id: ObjectId) -> Option<Vec<u8>
 /// flushes text to MongoDB.
 async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
+    cmd_tx: UnboundedSender<Command>,
     repo: MongoProjectRepo,
     ws_config: WsConfig,
     store: ProjectStore,
 ) {
     let mut rooms: HashMap<ObjectId, RoomState> = HashMap::new();
+    // Blobs seen orphaned in the previous GC sweep, per project — deleted next
+    // sweep only if still orphaned (a two-pass grace window).
+    let mut gc_pending: HashMap<ObjectId, HashSet<String>> = HashMap::new();
     let mut persist_tick = interval(Duration::from_secs(ws_config.persist_interval_secs));
+    let mut gc_tick = interval(Duration::from_secs(ws_config.gc_interval_secs));
+    let room_idle = Duration::from_secs(ws_config.room_idle_secs);
+    // Check for idle, evictable rooms on the GC cadence (both are lazy space/RAM
+    // reclamation, so they can share a slow tick).
+    let mut evict_tick = interval(Duration::from_secs(ws_config.gc_interval_secs));
 
     loop {
         tokio::select! {
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(Command::Join { project_id, snapshot, seed, conn_id, out }) => {
+                    Some(Command::Join { project_id, snapshot, tree, conn_id, out }) => {
+                        // Track whether this join *builds* the room, so a room
+                        // built from a stripped snapshot or cold-started from the
+                        // tree refills its text from blobs once.
+                        let fresh = !rooms.contains_key(&project_id);
                         let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
                             Some(bytes) => RoomState::from_snapshot(bytes),
-                            None => RoomState::new(seed),
+                            None => RoomState::from_tree(&tree),
                         });
                         // Send the initial sync step 1 + awareness state.
                         let mut encoder = EncoderV1::new();
@@ -430,6 +525,10 @@ async fn room_manager(
                             let _ = out.send(encoder.to_vec());
                         }
                         room.conns.insert(conn_id, out);
+                        room.empty_since = None; // occupied again
+                        if fresh {
+                            rematerialize(project_id, room, &store, &cmd_tx);
+                        }
                     }
                     Some(Command::Data { project_id, conn_id, data }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
@@ -450,15 +549,40 @@ async fn room_manager(
                             }
 
                             if room.conns.is_empty() {
-                                // Keep the room (and its CRDT document) in memory
-                                // even with no connections. Re-deriving the doc
-                                // from text on every (re)join produces independent
-                                // insertions of the same characters, which the CRDT
-                                // merges into DUPLICATED content. A reconnecting
-                                // client must re-sync against the SAME document.
-                                // Just persist now.
-                                persist_room(project_id, room, &repo, &store);
+                                // The room stays in memory for now; only after it
+                                // sits idle past `room_idle_secs` is it evicted
+                                // (see the evict tick). Until then a reconnecting
+                                // client re-syncs against the SAME live document —
+                                // re-deriving a doc from text would re-insert the
+                                // same characters and the CRDT would merge them
+                                // into DUPLICATED content. Mark the idle clock and
+                                // persist now, forcing a blob flush (no later
+                                // settle will catch the final edits).
+                                room.empty_since = Some(Instant::now());
+                                persist_room(project_id, room, &repo, &store, &cmd_tx, true);
                             }
+                        }
+                    }
+                    Some(Command::FlushRoom { project_id }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            persist_room(project_id, room, &repo, &store, &cmd_tx, true);
+                        }
+                    }
+                    Some(Command::FlushBlobs { project_id, blobs }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            apply_blobs(room, blobs);
+                        }
+                    }
+                    Some(Command::ApplyRemat { project_id, texts }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            apply_remat(room, texts);
+                        }
+                    }
+                    Some(Command::GcSwept { project_id, orphans }) => {
+                        if orphans.is_empty() {
+                            gc_pending.remove(&project_id);
+                        } else {
+                            gc_pending.insert(project_id, orphans);
                         }
                     }
                     None => break,
@@ -466,7 +590,45 @@ async fn room_manager(
             }
             _ = persist_tick.tick() => {
                 for (project_id, room) in rooms.iter_mut() {
-                    persist_room(*project_id, room, &repo, &store);
+                    persist_room(*project_id, room, &repo, &store, &cmd_tx, false);
+                }
+            }
+            _ = gc_tick.tick() => {
+                for (project_id, room) in rooms.iter() {
+                    let prev = gc_pending.get(project_id).cloned().unwrap_or_default();
+                    gc_room(*project_id, room, &store, &cmd_tx, prev);
+                }
+            }
+            _ = evict_tick.tick() => {
+                // Drop rooms idle (no connections) past the threshold, reclaiming
+                // their in-memory document. Before dropping, strip each text
+                // overlay whose bytes already live in its blob, so the resting
+                // snapshot no longer stores the text twice; the next joiner
+                // rematerializes it from the blobs. A reconnecting client learns
+                // the strip's deletion (a tombstone in the snapshot) and so never
+                // duplicates the rematerialized text.
+                let stale: Vec<ObjectId> = rooms
+                    .iter()
+                    .filter(|(_, room)| {
+                        room.empty_since
+                            .is_some_and(|since| since.elapsed() >= room_idle)
+                    })
+                    .map(|(id, _)| *id)
+                    .collect();
+                for project_id in stale {
+                    if let Some(room) = rooms.get_mut(&project_id) {
+                        strip_text(room);
+                        let bytes = encode_doc(room.awareness.doc());
+                        let store = store.clone();
+                        let pid = project_id.to_hex();
+                        tokio::task::spawn_local(async move {
+                            if let Err(e) = store.put_snapshot(&pid, &bytes).await {
+                                warn!("stripped snapshot save failed in {pid}: {e:?}");
+                            }
+                        });
+                    }
+                    rooms.remove(&project_id);
+                    gc_pending.remove(&project_id);
                 }
             }
         }
@@ -522,6 +684,12 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let updates = std::mem::take(&mut *applied.lock().unwrap());
     if !updates.is_empty() {
         room.dirty = true;
+        // Mark that some file may have drifted from its blob, so the next forced
+        // flush (client auto-save, or leave) re-uploads it. This over-
+        // approximates: a pure structural edit (no text change) sets it too, but
+        // the flush then finds nothing stale and clears it — cheaper than
+        // distinguishing text from structure here.
+        room.blobs_pending = true;
         for update in updates {
             let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
             broadcast(room, conn_id, &msg);
@@ -637,77 +805,354 @@ fn reconcile_tree(room: &mut RoomState) {
 /// the whole doc (nodes + text) goes to a MinIO snapshot (the CRDT authority),
 /// the derived tree projection to Mongo (the listing cache), and each changed
 /// file's text back to Mongo `files` (so REST loads keep working during the
-/// migration). All the `!Send` doc work happens synchronously up front; only the
-/// IO is spawned onto this thread's LocalSet.
+/// migration).
+///
+/// Content-addressed blobs are materialized only on a **forced flush**
+/// (`force_flush`): a client's `files.autoSave` policy firing (via
+/// `ProjectServer::flush`), or the room emptying on leave. The periodic tick
+/// never mints a blob on its own — uploading a fresh blob on every tick while
+/// someone is mid-edit would spray a new MinIO object per keystroke-burst, each
+/// superseded moments later and left for GC. The client owns the *when* (it
+/// alone knows about editor / window focus and keystroke timing).
+///
+/// All the `!Send` doc work happens synchronously up front; only the IO is
+/// spawned onto this thread's LocalSet.
 fn persist_room(
     project_id: ObjectId,
     room: &mut RoomState,
     repo: &MongoProjectRepo,
     store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
+    force_flush: bool,
 ) {
-    if !room.dirty {
+    // Only a forced flush materializes blobs; the plain tick just snapshots.
+    let do_flush = force_flush && room.blobs_pending;
+
+    // Nothing to snapshot and no blobs to flush — skip entirely.
+    if !room.dirty && !do_flush {
         return;
+    }
+    let snapshot_dirty = room.dirty;
+    room.dirty = false;
+    if do_flush {
+        room.blobs_pending = false;
     }
 
     // Phase 1 (sync, holds the doc): encode the snapshot, derive the projection,
-    // and read each file's current text. Outputs are owned/`Send`.
-    let (snapshot_bytes, projection, file_texts) = {
+    // and — only when flushing — the files whose text has drifted from their
+    // recorded blob. Outputs are owned/`Send`.
+    let (snapshot_bytes, projection, blob_stale) = {
         let doc = room.awareness.doc();
         let snapshot_bytes = encode_doc(doc);
         let nodes = nodes_map(doc);
         let txn = doc.transact();
         let tree = read_tree(&txn, &nodes).ok();
         let projection = tree.as_ref().and_then(|t| t.projection().ok());
-        let file_texts: Vec<(String, String)> = tree
-            .as_ref()
-            .map(|t| {
-                t.iter()
-                    .filter(|n| n.is_file())
-                    .filter_map(|n| {
-                        txn.get_text(n.id.as_str())
-                            .map(|txt| (n.id.clone(), txt.get_string(&txn)))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        (snapshot_bytes, projection, file_texts)
+
+        let mut blob_stale: Vec<(String, String)> = Vec::new();
+        if do_flush {
+            if let Some(tree) = tree.as_ref() {
+                for node in tree.iter().filter(|n| n.is_file()) {
+                    // A binary file has no text overlay; skip it (its blob is set
+                    // at upload and must never be flushed over with empty text).
+                    let Some(text) = txn
+                        .get_text(node.id.as_str())
+                        .map(|txt| txt.get_string(&txn))
+                    else {
+                        continue;
+                    };
+                    // A file whose current text hashes to something other than
+                    // its recorded blob sha needs re-uploading.
+                    let fresh = sha256_hex(text.as_bytes());
+                    let recorded = node.blob().map(|b| b.sha256.as_str());
+                    if recorded != Some(fresh.as_str()) {
+                        blob_stale.push((node.id.clone(), text));
+                    }
+                }
+            }
+        }
+        (snapshot_bytes, projection, blob_stale)
     };
 
-    // Dedup text against what was last persisted (sync; mutates room.last).
-    let mut changed = Vec::new();
-    for (id_hex, text) in file_texts {
-        if room.last.get(&id_hex).is_some_and(|prev| prev == &text) {
-            continue;
-        }
-        room.last.insert(id_hex.clone(), text.clone());
-        if let Ok(file_id) = ObjectId::parse_str(&id_hex) {
-            changed.push((file_id, text));
-        }
-    }
-    room.dirty = false;
-
-    // Phase 2 (async, no doc borrow): write to the durable stores.
+    // Phase 2 (async, no doc borrow): write to the durable stores. The snapshot
+    // and projection go only when the doc actually changed; blobs are uploaded
+    // (write-before-reference) and their hashes sent back as `FlushBlobs` so each
+    // node's blob reference catches up.
     let repo = repo.clone();
     let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
     tokio::task::spawn_local(async move {
         let pid = project_id.to_hex();
-        if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
-            warn!("snapshot save failed in {pid}: {e:?}");
-        }
-        if let Some(projection) = projection {
-            if let Err(e) = repo.update_tree(project_id, projection).await {
-                warn!("projection update failed in {pid}: {e:?}");
+        if snapshot_dirty {
+            if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
+                warn!("snapshot save failed in {pid}: {e:?}");
+            }
+            if let Some(projection) = projection {
+                if let Err(e) = repo.update_tree(project_id, projection).await {
+                    warn!("projection update failed in {pid}: {e:?}");
+                }
             }
         }
-        for (file_id, text) in changed {
-            let size = text.len() as i64;
-            if let Err(e) = repo
-                .update_file_content(project_id, file_id, FileContent::Text { text }, size)
-                .await
-            {
-                warn!("text persist failed in {pid}: {e:?}");
+        let mut flushed: Vec<(String, Blob)> = Vec::new();
+        for (id_hex, text) in blob_stale {
+            match store.put_blob(&pid, text.as_bytes()).await {
+                Ok(blob) => flushed.push((id_hex, blob)),
+                Err(e) => warn!("blob flush failed in {pid}: {e:?}"),
             }
         }
+        if !flushed.is_empty() {
+            let _ = cmd_tx.send(Command::FlushBlobs {
+                project_id,
+                blobs: flushed,
+            });
+        }
+    });
+}
+
+/// Update each named file node's `blob` (sha256 / size) in the Y.Doc to the
+/// freshly-flushed value, so the node reference tracks its edited text, and
+/// broadcast the change to every connection. A node whose blob already matches
+/// is left untouched (no spurious update). Runs on the room thread in response
+/// to a [`Command::FlushBlobs`].
+fn apply_blobs(room: &mut RoomState, blobs: Vec<(String, Blob)>) {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = doc.observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    {
+        let mut txn = doc.transact_mut();
+        for (id, blob) in blobs {
+            let Some(Out::YMap(node)) = nodes.get(&txn, &id) else {
+                continue;
+            };
+            // Skip if the node already carries this blob — avoids re-broadcasting
+            // the converged state on later persist cycles.
+            let unchanged = matches!(
+                node.get(&txn, "sha256"),
+                Some(Out::Any(Any::String(s))) if s.as_ref() == blob.sha256.as_str()
+            );
+            if unchanged {
+                continue;
+            }
+            node.insert(&mut txn, "sha256", blob.sha256);
+            node.insert(&mut txn, "size", blob.size as i64);
+        }
+    }
+    drop(subscription);
+
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    if !updates.is_empty() {
+        room.dirty = true;
+        for update in updates {
+            let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+            broadcast_all(room, &msg);
+        }
+    }
+}
+
+/// Strip each text overlay whose bytes are safely in its blob (the file's text
+/// hashes to its recorded blob sha), by **deleting** the overlay's content. The
+/// deletion is a CRDT operation, so the emptied overlay carries a tombstone into
+/// the resting snapshot: the text bytes no longer sit in the snapshot (they live
+/// once, in the blob), yet a client that reconnects across the eviction learns
+/// the deletion and drops its own copy instead of merging it with the
+/// rematerialized text — no duplication. A file whose text hasn't settled to its
+/// blob is left intact (it keeps its bytes in the snapshot this cycle).
+fn strip_text(room: &mut RoomState) {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+
+    let to_strip: Vec<String> = {
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        tree.iter()
+            .filter(|n| n.is_file())
+            .filter_map(|n| {
+                let content = txn.get_text(n.id.as_str())?.get_string(&txn);
+                if content.is_empty() {
+                    return None;
+                }
+                let backed = n.blob().map(|b| b.sha256.as_str())
+                    == Some(sha256_hex(content.as_bytes()).as_str());
+                backed.then(|| n.id.clone())
+            })
+            .collect()
+    };
+    if to_strip.is_empty() {
+        return;
+    }
+
+    let mut txn = doc.transact_mut();
+    for id in to_strip {
+        if let Some(text) = txn.get_text(id.as_str()) {
+            let len = text.len(&txn);
+            if len > 0 {
+                text.remove_range(&mut txn, 0, len);
+            }
+        }
+    }
+}
+
+/// After a room is (re)built, refill any file whose text overlay is empty but
+/// whose blob is non-empty — the resting snapshot was stripped of those bytes.
+/// Fetches the blobs off-thread and applies them via [`Command::ApplyRemat`]. A
+/// cold room (full snapshot, or freshly seeded) has no empty overlays, so this
+/// is a no-op there.
+fn rematerialize(
+    project_id: ObjectId,
+    room: &RoomState,
+    store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
+) {
+    // Sync (holds the doc): (id, blob sha) for each empty-overlay file.
+    let needed: Vec<(String, String)> = {
+        let doc = room.awareness.doc();
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        tree.iter()
+            .filter(|n| n.is_file())
+            .filter_map(|n| {
+                let empty = txn
+                    .get_text(n.id.as_str())
+                    .is_none_or(|t| t.len(&txn) == 0);
+                let blob = n.blob()?;
+                (empty && blob.sha256 != EMPTY_SHA256)
+                    .then(|| (n.id.clone(), blob.sha256.clone()))
+            })
+            .collect()
+    };
+    if needed.is_empty() {
+        return;
+    }
+
+    let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        let pid = project_id.to_hex();
+        let mut texts: Vec<(String, String)> = Vec::new();
+        for (id, sha) in needed {
+            match store.get_blob(&pid, &sha).await {
+                Ok(Some(bytes)) => match String::from_utf8(bytes) {
+                    Ok(text) => texts.push((id, text)),
+                    Err(_) => warn!("remat: blob {sha} in {pid} is not UTF-8"),
+                },
+                Ok(None) => warn!("remat: blob {sha} missing in {pid}"),
+                Err(e) => warn!("remat: fetch {sha} in {pid} failed: {e:?}"),
+            }
+        }
+        if !texts.is_empty() {
+            let _ = cmd_tx.send(Command::ApplyRemat { project_id, texts });
+        }
+    });
+}
+
+/// Insert rematerialized text into still-empty overlays (see [`rematerialize`])
+/// and broadcast, so every connection gets the bytes the stripped snapshot
+/// omitted. Skips an overlay that is no longer empty (a peer already typed, or a
+/// duplicate apply). Does **not** mark the room dirty — the content came from a
+/// blob and is already durable, so re-snapshotting it would just re-bloat the
+/// resting snapshot.
+fn apply_remat(room: &mut RoomState, texts: Vec<(String, String)>) {
+    let doc = room.awareness.doc();
+
+    let applied: Arc<Mutex<Vec<Vec<u8>>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = applied.clone();
+    let subscription = doc.observe_update_v1(move |_txn, event| {
+        if let Ok(mut updates) = sink.lock() {
+            updates.push(event.update.clone());
+        }
+    });
+    {
+        let mut txn = doc.transact_mut();
+        for (id, text) in texts {
+            let Some(root) = txn.get_text(id.as_str()) else {
+                continue;
+            };
+            if root.len(&txn) != 0 {
+                continue;
+            }
+            root.insert(&mut txn, 0, &text);
+        }
+    }
+    drop(subscription);
+
+    let updates = std::mem::take(&mut *applied.lock().unwrap());
+    for update in updates {
+        let msg = YMessage::Sync(SyncMessage::Update(update)).encode_v1();
+        broadcast_all(room, &msg);
+    }
+}
+
+/// Sweep orphaned blobs for one project. The reference set is every file node's
+/// current blob sha *plus* the sha of every file's current text — the latter
+/// covers the window between a text upload and the [`Command::FlushBlobs`] that
+/// records its hash on the node, so an in-flight blob is never mistaken for an
+/// orphan. Combined with the two-pass grace (`prev`), a blob is deleted only
+/// when it was orphaned across two consecutive sweeps. The sweep result is
+/// reported back via [`Command::GcSwept`].
+fn gc_room(
+    project_id: ObjectId,
+    room: &RoomState,
+    store: &ProjectStore,
+    cmd_tx: &UnboundedSender<Command>,
+    prev: HashSet<String>,
+) {
+    // Sync (holds the doc): the shas the live doc references right now.
+    let referenced: HashSet<String> = {
+        let doc = room.awareness.doc();
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        let Ok(tree) = read_tree(&txn, &nodes) else {
+            return;
+        };
+        let mut set: HashSet<String> = tree
+            .iter()
+            .filter_map(|n| n.blob().map(|b| b.sha256.clone()))
+            .collect();
+        for node in tree.iter().filter(|n| n.is_file()) {
+            if let Some(text) = txn.get_text(node.id.as_str()) {
+                set.insert(sha256_hex(text.get_string(&txn).as_bytes()));
+            }
+        }
+        set
+    };
+
+    // Async: list stored blobs, delete those orphaned two sweeps running.
+    let store = store.clone();
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        let pid = project_id.to_hex();
+        let stored = match store.list_blobs(&pid).await {
+            Ok(stored) => stored,
+            Err(e) => {
+                warn!("gc list failed in {pid}: {e:?}");
+                return;
+            }
+        };
+        let orphans: HashSet<String> = stored
+            .into_iter()
+            .filter(|sha| !referenced.contains(sha))
+            .collect();
+        for sha in orphans.intersection(&prev) {
+            if let Err(e) = store.delete_blob(&pid, sha).await {
+                warn!("gc delete failed in {pid}: {e:?}");
+            }
+        }
+        let _ = cmd_tx.send(Command::GcSwept {
+            project_id,
+            orphans,
+        });
     });
 }
 
@@ -982,6 +1427,44 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_blobs_updates_node_blob_and_broadcasts() {
+        // A file seeded with the stale placeholder blob; a flush bumps it to the
+        // freshly-uploaded sha/size and broadcasts to every connection.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hi".to_string(),
+            blob(),
+        )]);
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        let fresh = Blob {
+            sha256: "b".repeat(64),
+            size: 5,
+        };
+        apply_blobs(&mut room, vec![(key.clone(), fresh)]);
+
+        let nodes = nodes_map(room.awareness.doc());
+        let txn = room.awareness.doc().transact();
+        let node_blob = read_tree(&txn, &nodes).unwrap().get(&key).unwrap().blob().cloned();
+        assert_eq!(
+            node_blob,
+            Some(Blob {
+                sha256: "b".repeat(64),
+                size: 5
+            })
+        );
+
+        let received = rx_a.try_recv().expect("flush broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
+    }
+
+    #[test]
     fn test_reconcile_breaks_a_cycle_and_broadcasts_to_all() {
         use crate::models::tree::{Node, NodeContent, ProjectTree};
 
@@ -1020,6 +1503,229 @@ mod tests {
             YMessage::decode_v1(&received),
             Ok(YMessage::Sync(SyncMessage::Update(_)))
         ));
+    }
+
+    #[test]
+    fn test_apply_blobs_is_a_noop_when_the_blob_is_unchanged() {
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hi".to_string(),
+            blob(),
+        )]);
+        let (_conn_a, mut rx_a) = insert_conn(&mut room);
+
+        // The node already carries `blob()`, so re-applying it changes nothing.
+        apply_blobs(&mut room, vec![(key, blob())]);
+        assert!(rx_a.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_gc_sweeps_a_blob_orphaned_across_two_passes() {
+        use crate::storage::{InMemoryObjectStore, sha256_hex};
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let store = ProjectStore::new(Arc::new(InMemoryObjectStore::new()));
+                let project_id = ObjectId::new();
+                let pid = project_id.to_hex();
+                let file_id = ObjectId::new();
+
+                // A room with one file `main.typ` = "hi"; its node references the
+                // "hi" blob. Store that blob plus an unreferenced orphan.
+                let hi = Blob {
+                    sha256: sha256_hex(b"hi"),
+                    size: 2,
+                };
+                let room = RoomState::new(vec![(
+                    file_id,
+                    "main.typ".to_string(),
+                    "hi".to_string(),
+                    hi.clone(),
+                )]);
+                store.put_blob(&pid, b"hi").await.unwrap();
+                let orphan = store.put_blob(&pid, b"garbage").await.unwrap();
+
+                let (tx, mut rx) = mpsc::unbounded_channel();
+
+                // Pass 1 (no prior candidates): the orphan is only *reported*,
+                // not deleted — the two-pass grace.
+                gc_room(project_id, &room, &store, &tx, HashSet::new());
+                let prev = match rx.recv().await {
+                    Some(Command::GcSwept { orphans, .. }) => orphans,
+                    other => panic!("expected GcSwept, got {:?}", other.is_some()),
+                };
+                assert!(prev.contains(&orphan.sha256));
+                assert!(store.get_blob(&pid, &orphan.sha256).await.unwrap().is_some());
+
+                // Pass 2 (orphan was pending): now it is deleted, and the
+                // referenced blob survives.
+                gc_room(project_id, &room, &store, &tx, prev);
+                let _ = rx.recv().await;
+                assert_eq!(store.get_blob(&pid, &orphan.sha256).await.unwrap(), None);
+                assert!(store.get_blob(&pid, &hi.sha256).await.unwrap().is_some());
+            })
+            .await;
+    }
+
+    #[test]
+    fn test_snapshot_round_trip_rebuilds_the_same_document() {
+        // Idle eviction persists a snapshot and drops the room; a rejoin
+        // rebuilds it via `from_snapshot`. The rebuild must be the *same*
+        // document (text + tree), so a reconnecting client re-syncs without the
+        // CRDT re-inserting — and duplicating — content.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hello".to_string(),
+            blob(),
+        )]);
+
+        let snapshot = encode_doc(room.awareness.doc());
+        let restored = RoomState::from_snapshot(&snapshot);
+
+        let doc = restored.awareness.doc();
+        // `nodes_map` opens its own transaction, so resolve it *before* holding
+        // the read txn below — grabbing both at once would deadlock the doc.
+        let nodes = nodes_map(doc);
+        let txn = doc.transact();
+        assert_eq!(
+            txn.get_text(key.as_str()).unwrap().get_string(&txn),
+            "hello"
+        );
+        let tree = read_tree(&txn, &nodes).unwrap();
+        assert_eq!(tree.get(&key).unwrap().name, "main.typ");
+        // A freshly restored, unoccupied room is again a candidate for eviction.
+        assert!(restored.empty_since.is_some());
+    }
+
+    #[test]
+    fn test_strip_text_empties_only_blob_backed_overlays() {
+        let backed = ObjectId::new();
+        let unbacked = ObjectId::new();
+        let mut room = RoomState::new(vec![
+            (
+                backed,
+                "a.typ".to_string(),
+                "hello".to_string(),
+                Blob {
+                    sha256: sha256_hex(b"hello"),
+                    size: 5,
+                },
+            ),
+            // `blob()`'s sha does not match "world", so this file is not backed.
+            (unbacked, "b.typ".to_string(), "world".to_string(), blob()),
+        ]);
+
+        strip_text(&mut room);
+
+        let doc = room.awareness.doc();
+        let txn = doc.transact();
+        // The blob-backed overlay was emptied; the unbacked one kept its bytes.
+        assert_eq!(
+            txn.get_text(backed.to_hex().as_str()).unwrap().get_string(&txn),
+            ""
+        );
+        assert_eq!(
+            txn.get_text(unbacked.to_hex().as_str())
+                .unwrap()
+                .get_string(&txn),
+            "world"
+        );
+    }
+
+    #[test]
+    fn test_apply_remat_fills_empty_overlays_and_broadcasts() {
+        // Start from a stripped room (empty overlay), then rematerialize.
+        let file_id = ObjectId::new();
+        let key = file_id.to_hex();
+        let mut room = RoomState::new(vec![(
+            file_id,
+            "main.typ".to_string(),
+            "hello".to_string(),
+            Blob {
+                sha256: sha256_hex(b"hello"),
+                size: 5,
+            },
+        )]);
+        strip_text(&mut room);
+        let (_conn, mut rx) = insert_conn(&mut room);
+
+        apply_remat(&mut room, vec![(key.clone(), "hello".to_string())]);
+
+        let doc = room.awareness.doc();
+        let txn = doc.transact();
+        assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "hello");
+        // The refill was broadcast to every connection.
+        let received = rx.try_recv().expect("remat broadcast");
+        assert!(matches!(
+            YMessage::decode_v1(&received),
+            Ok(YMessage::Sync(SyncMessage::Update(_)))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_strip_then_rematerialize_round_trips_through_a_blob() {
+        use crate::storage::InMemoryObjectStore;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let store = ProjectStore::new(Arc::new(InMemoryObjectStore::new()));
+                let project_id = ObjectId::new();
+                let pid = project_id.to_hex();
+                let file_id = ObjectId::new();
+                let key = file_id.to_hex();
+
+                // A sizable body so the storage win is unambiguous.
+                let content = "lorem ipsum ".repeat(200);
+                store.put_blob(&pid, content.as_bytes()).await.unwrap();
+                let mut room = RoomState::new(vec![(
+                    file_id,
+                    "main.typ".to_string(),
+                    content.clone(),
+                    Blob {
+                        sha256: sha256_hex(content.as_bytes()),
+                        size: content.len() as u64,
+                    },
+                )]);
+
+                // Evict: the stripped snapshot drops the text bytes but keeps the
+                // (now-empty) overlay and the tree.
+                let full = encode_doc(room.awareness.doc());
+                strip_text(&mut room);
+                let stripped = encode_doc(room.awareness.doc());
+                assert!(stripped.len() < full.len());
+
+                let mut rebuilt = RoomState::from_snapshot(&stripped);
+                {
+                    let doc = rebuilt.awareness.doc();
+                    let txn = doc.transact();
+                    assert_eq!(txn.get_text(key.as_str()).unwrap().get_string(&txn), "");
+                }
+
+                // Rejoin rematerializes the overlay from the blob.
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                rematerialize(project_id, &rebuilt, &store, &tx);
+                let texts = match rx.recv().await {
+                    Some(Command::ApplyRemat { texts, .. }) => texts,
+                    other => panic!("expected ApplyRemat, got {:?}", other.is_some()),
+                };
+                apply_remat(&mut rebuilt, texts);
+
+                let doc = rebuilt.awareness.doc();
+                let txn = doc.transact();
+                assert_eq!(
+                    txn.get_text(key.as_str()).unwrap().get_string(&txn),
+                    content
+                );
+            })
+            .await;
     }
 
     #[test]

@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import {
+  createBinaryFile,
   createFile,
   createFolder,
+  createTextFile,
   deleteNode,
+  ensureFolderPath,
   fileEntries,
+  isBinaryFile,
+  isBinaryPath,
   isValidSegment,
   moveNode,
+  readFileBlob,
   readNodes,
   renameNode,
   TreeNode,
@@ -216,6 +222,86 @@ describe('deleteNode', () => {
     // Only the file outside the folder survives; the subtree's text is gone.
     expect(readNodes(doc).map((n) => n.id)).toEqual([outside]);
     expect(doc.getText(nested).toString()).toBe('');
+  });
+});
+
+describe('isBinaryPath', () => {
+  it('recognises image and font extensions, case-insensitively', () => {
+    for (const p of ['logo.png', 'a/b/pic.JPG', 'font.woff2', 'doc.pdf']) {
+      expect(isBinaryPath(p)).toBe(true);
+    }
+  });
+
+  it('treats source files as text', () => {
+    for (const p of ['main.typ', 'refs.bib', 'notes', 'a.svg']) {
+      expect(isBinaryPath(p)).toBe(false);
+    }
+  });
+});
+
+describe('createBinaryFile', () => {
+  it('creates a file node with the blob but no text root', () => {
+    const doc = new Y.Doc();
+    const id = createBinaryFile(doc, 'logo.png', null, 'f'.repeat(64), 1234);
+    expect(fileEntries(readNodes(doc))).toEqual([{ id, path: 'logo.png' }]);
+    expect(readFileBlob(doc, id)).toEqual({ sha256: 'f'.repeat(64), size: 1234 });
+    // No text overlay was declared — the id is not a top-level shared type.
+    expect(doc.share.has(id)).toBe(false);
+  });
+
+  it('rejects a name that collides with a sibling', () => {
+    const doc = new Y.Doc();
+    createFile(doc, 'logo.png', null);
+    expect(() => createBinaryFile(doc, 'logo.png', null, 'a'.repeat(64), 1)).toThrow();
+  });
+});
+
+describe('createTextFile', () => {
+  it('creates an editable text file seeded with its content', () => {
+    const doc = new Y.Doc();
+    const id = createTextFile(doc, 'refs.bib', null, '@book{x}', 'a'.repeat(64), 8);
+    expect(fileEntries(readNodes(doc))).toEqual([{ id, path: 'refs.bib' }]);
+    expect(doc.getText(id).toString()).toBe('@book{x}');
+    expect(readFileBlob(doc, id)).toEqual({ sha256: 'a'.repeat(64), size: 8 });
+  });
+});
+
+describe('isBinaryFile', () => {
+  it('is true for a blob file and false for a text file', () => {
+    const doc = new Y.Doc();
+    const bin = createBinaryFile(doc, 'logo.png', null, 'f'.repeat(64), 1);
+    const txt = createTextFile(doc, 'a.typ', null, 'hi', 'a'.repeat(64), 2);
+    const empty = createFile(doc, 'b.typ', null);
+    expect(isBinaryFile(doc, bin)).toBe(true);
+    expect(isBinaryFile(doc, txt)).toBe(false);
+    expect(isBinaryFile(doc, empty)).toBe(false);
+  });
+});
+
+describe('ensureFolderPath', () => {
+  it('creates missing folders and returns the deepest id', () => {
+    const doc = new Y.Doc();
+    const id = ensureFolderPath(doc, ['assets', 'img']);
+    const nodes = readNodes(doc);
+    expect(nodes.find((n) => n.id === id)?.name).toBe('img');
+    const file = createFile(doc, 'logo.svg', id);
+    expect(fileEntries(readNodes(doc))).toContainEqual({
+      id: file,
+      path: 'assets/img/logo.svg',
+    });
+  });
+
+  it('reuses existing folders instead of duplicating them', () => {
+    const doc = new Y.Doc();
+    const first = ensureFolderPath(doc, ['assets']);
+    const second = ensureFolderPath(doc, ['assets', 'img']);
+    // The shared `assets` folder was reused, not recreated.
+    expect(readNodes(doc).filter((n) => n.name === 'assets')).toHaveLength(1);
+    expect(readNodes(doc).find((n) => n.id === second)?.parent).toBe(first);
+  });
+
+  it('returns null for an empty path (the root)', () => {
+    expect(ensureFolderPath(new Y.Doc(), [])).toBeNull();
   });
 });
 

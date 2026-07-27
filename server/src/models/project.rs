@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bson::oid::ObjectId;
 use bson::serde_helpers::time_0_3_offsetdatetime_as_bson_datetime;
 use derive_more::Display;
@@ -7,12 +9,62 @@ use time::OffsetDateTime;
 
 use time::serde::rfc3339;
 
+use crate::models::tree::{NodeId, ProjectionEntry};
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Display)]
 pub enum OwnerType {
     #[serde(rename = "user")]
     User,
     #[serde(rename = "team")]
     Team,
+}
+
+/// When the editor materializes a file's live text into a durable
+/// content-addressed blob — mirroring VS Code's `files.autoSave`. Note this
+/// governs *blob materialization*, not durability: every keystroke is already
+/// streamed to the server over the CRDT and snapshotted, so `Off` never risks
+/// losing synced text — it only defers minting a blob until an explicit save.
+/// The trigger itself is detected on the client (only it knows about editor /
+/// window focus and keystroke timing); the server just flushes on request.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum AutoSavePolicy {
+    /// Never flush automatically; the user saves by hand (e.g. Ctrl/Cmd+S).
+    Off,
+    /// Flush a short debounce after the last edit (see `auto_save_delay`).
+    AfterDelay,
+    /// Flush when focus leaves the edited file (switching tabs, blurring).
+    #[default]
+    OnFocusChange,
+    /// Flush when the browser window / tab loses focus.
+    OnWindowChange,
+}
+
+/// Project-level editor settings, shared by every collaborator. Every field is
+/// `#[serde(default)]` so a project document written before this existed still
+/// deserializes (missing settings become the defaults).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    #[serde(default)]
+    pub auto_save: AutoSavePolicy,
+    /// Debounce in milliseconds for `AutoSavePolicy::AfterDelay` (VS Code's
+    /// `files.autoSaveDelay`). Ignored by the other policies.
+    #[serde(default = "default_auto_save_delay")]
+    pub auto_save_delay: u32,
+}
+
+fn default_auto_save_delay() -> u32 {
+    1000
+}
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            auto_save: AutoSavePolicy::default(),
+            auto_save_delay: default_auto_save_delay(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,7 +75,6 @@ pub struct Project {
     pub owner_id: ObjectId,
     pub owner_type: OwnerType,
     pub creator_id: ObjectId,
-    pub files: Vec<ProjectFile>,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
@@ -36,84 +87,21 @@ pub struct Project {
     /// awareness channel, never in this document.
     pub entry: Option<ObjectId>,
     pub pinned_version: Option<Version>,
+    /// Editor settings shared by every collaborator (e.g. the auto-save
+    /// policy). Defaulted when absent from an older stored document.
+    #[serde(default)]
+    pub settings: ProjectSettings,
+    /// The id-keyed projection of the CRDT file tree — a rebuildable cache the
+    /// collaboration room refreshes on persist (see `ProjectTree::projection`).
+    /// The authoritative structure is the Y.Doc snapshot; this mirrors it for
+    /// cheap metadata reads. Defaulted (empty) when absent from an older
+    /// document, and rebuilt on the next persist.
+    #[serde(default)]
+    pub tree: HashMap<NodeId, ProjectionEntry>,
 }
 
-/// A single node in the project's virtual file system.
-///
-/// The compiler never sees "a string" — it sees a file tree, because Typst
-/// source resolves `#import "chapter.typ"`, `#image("logo.png")`, etc. against
-/// the set of files. Therefore the key is [`ProjectFile::path`], not a flat
-/// name.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ProjectFile {
-    #[serde(rename = "_id")]
-    pub id: ObjectId,
-    /// Virtual-FS path used by the compiler to resolve imports/assets, e.g.
-    /// `main.typ` or `chapters/intro.typ`. This is the file's primary key
-    /// within the project, not a display label.
-    pub path: String,
-    /// The file's bytes — either inline UTF-8 source, or a pointer to a binary
-    /// asset stored outside the document. See [`FileContent`].
-    pub content: FileContent,
-    /// Size in bytes. Primarily meaningful for binary assets; for inline text
-    /// it is derivable from the content and kept for cheap listing/quotas.
-    pub size: i64,
-    pub version: i32,
-    #[serde(with = "time_0_3_offsetdatetime_as_bson_datetime")]
-    pub updated_at: OffsetDateTime,
-}
-
-const DEFAULT_MAIN_TYP: &str = "= Untitled\n\nStart writing Typst here.\n";
-impl Default for ProjectFile {
-    fn default() -> Self {
-        Self {
-            id: ObjectId::new(),
-            path: "main.typ".to_string(),
-            content: FileContent::Text {
-                text: DEFAULT_MAIN_TYP.to_string(),
-            },
-            size: DEFAULT_MAIN_TYP.len() as i64,
-            version: 0,
-            updated_at: OffsetDateTime::now_utc(),
-        }
-    }
-}
-
-/// The content of a [`ProjectFile`]. Text and binary are split at the type
-/// level so that M3 (image/asset upload) does not have to reshape the core
-/// model: text lives inline in the Mongo document, binaries live elsewhere and
-/// are referenced by key.
-///
-/// Reserved for M5 (real-time collaboration): a `Crdt { state: Bson binary }`
-/// variant holding a Yjs/yrs snapshot. The tagged shape leaves room for it
-/// without breaking stored documents.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum FileContent {
-    /// UTF-8 source stored inline in the document (`.typ`, `.bib`, `.csl`, …).
-    Text { text: String },
-    /// A binary asset (image, font, …) stored outside the document — in GridFS
-    /// or object storage — and referenced here by its storage key.
-    Binary { storage_key: ObjectId },
-}
-
-impl FileContent {
-    /// Discriminator exposed to the API so clients can pick an icon / decide
-    /// whether to fetch text without downloading the whole payload.
-    pub fn kind(&self) -> FileKind {
-        match self {
-            FileContent::Text { .. } => FileKind::Text,
-            FileContent::Binary { .. } => FileKind::Binary,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum FileKind {
-    Text,
-    Binary,
-}
+/// The Typst source seeded into a new project's entry file (`main.typ`).
+pub const DEFAULT_MAIN_TYP: &str = "= Untitled\n\nStart writing Typst here.\n";
 
 #[derive(Serialize)]
 pub struct ProjectPayload {
@@ -122,27 +110,12 @@ pub struct ProjectPayload {
     pub owner_id: String,
     pub owner_type: OwnerType,
     pub creator_id: String,
-    pub files: Vec<ProjectFilePayload>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
     pub entry: Option<String>,
     pub pinned_version: Option<Version>,
-}
-
-/// File metadata for listings. Deliberately does NOT inline `content`: the
-/// directory/tree view only needs path + kind, and the body is fetched
-/// per-file when a tab is opened.
-#[derive(Serialize)]
-pub struct ProjectFilePayload {
-    pub id: String,
-    pub path: String,
-    pub kind: FileKind,
-    pub size: i64,
-    pub version: i32,
-    #[serde(with = "rfc3339")]
-    pub updated_at: OffsetDateTime,
 }
 
 impl From<Project> for ProjectPayload {
@@ -152,11 +125,6 @@ impl From<Project> for ProjectPayload {
             name: project.name,
             owner_id: project.owner_id.to_hex(),
             owner_type: project.owner_type,
-            files: project
-                .files
-                .into_iter()
-                .map(ProjectFilePayload::from)
-                .collect(),
             creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
@@ -166,24 +134,10 @@ impl From<Project> for ProjectPayload {
     }
 }
 
-impl From<ProjectFile> for ProjectFilePayload {
-    fn from(file: ProjectFile) -> Self {
-        ProjectFilePayload {
-            id: file.id.to_hex(),
-            path: file.path,
-            kind: file.content.kind(),
-            size: file.size,
-            version: file.version,
-            updated_at: file.updated_at,
-        }
-    }
-}
-
-/// Editor-facing payload for opening a single project. Unlike [`ProjectPayload`]
-/// (used by the list endpoints), this inlines text file content: the Typst
-/// compiler resolves `#import`/`#image` across the *entire* file tree, not just
-/// the focused tab, so the client needs the whole virtual FS up front. Lazy
-/// per-file loading would not serve the preview.
+/// Editor-facing payload for opening a single project. Carries the file **tree**
+/// (structure + blob refs), id-keyed — it does **not** inline text: the editor
+/// reads text from the CRDT, and other consumers (e.g. project download) fetch
+/// the referenced blobs on demand.
 #[derive(Serialize)]
 pub struct ProjectDetailPayload {
     pub id: String,
@@ -191,87 +145,17 @@ pub struct ProjectDetailPayload {
     pub owner_id: String,
     pub owner_type: OwnerType,
     pub creator_id: String,
-    pub files: Vec<ProjectFileDetailPayload>,
+    pub tree: HashMap<NodeId, ProjectionEntry>,
     #[serde(with = "rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "rfc3339")]
     pub updated_at: OffsetDateTime,
     /// The compile entry, as the file's id (hex). The client resolves it to a
-    /// path against `files` — id is the stable key, path can be renamed.
+    /// path against `tree` — id is the stable key, path can be renamed.
     pub entry: Option<String>,
     pub pinned_version: Option<Version>,
-}
-
-/// A single file with its content inlined, for the editor's initial load.
-#[derive(Serialize)]
-pub struct ProjectFileDetailPayload {
-    pub id: String,
-    pub path: String,
-    pub content: FileContentPayload,
-    pub size: i64,
-    pub version: i32,
-    #[serde(with = "rfc3339")]
-    pub updated_at: OffsetDateTime,
-}
-
-/// Wire form of [`FileContent`]. Text is inlined so the compiler can use it
-/// immediately; a binary stays a reference (`storageKey`) — its bytes are
-/// served separately once asset delivery lands (M3).
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum FileContentPayload {
-    Text {
-        text: String,
-    },
-    Binary {
-        #[serde(rename = "storageKey")]
-        storage_key: String,
-    },
-}
-
-impl From<FileContent> for FileContentPayload {
-    fn from(content: FileContent) -> Self {
-        match content {
-            FileContent::Text { text } => FileContentPayload::Text { text },
-            FileContent::Binary { storage_key } => FileContentPayload::Binary {
-                storage_key: storage_key.to_hex(),
-            },
-        }
-    }
-}
-
-impl From<ProjectFile> for ProjectFileDetailPayload {
-    fn from(file: ProjectFile) -> Self {
-        ProjectFileDetailPayload {
-            id: file.id.to_hex(),
-            path: file.path,
-            content: file.content.into(),
-            size: file.size,
-            version: file.version,
-            updated_at: file.updated_at,
-        }
-    }
-}
-
-/// Returned after a file content save. Just the freshly bumped version and
-/// timestamp — enough for the client to track save state / optimistic
-/// concurrency without echoing the text it just sent.
-#[derive(Serialize)]
-pub struct UpdateFilePayload {
-    pub id: String,
-    pub version: i32,
-    #[serde(with = "rfc3339")]
-    pub updated_at: OffsetDateTime,
-}
-
-impl From<ProjectFile> for UpdateFilePayload {
-    fn from(file: ProjectFile) -> Self {
-        UpdateFilePayload {
-            id: file.id.to_hex(),
-            version: file.version,
-            updated_at: file.updated_at,
-        }
-    }
+    /// Project-level editor settings (auto-save policy, …).
+    pub settings: ProjectSettings,
 }
 
 impl From<Project> for ProjectDetailPayload {
@@ -281,16 +165,13 @@ impl From<Project> for ProjectDetailPayload {
             name: project.name,
             owner_id: project.owner_id.to_hex(),
             owner_type: project.owner_type,
-            files: project
-                .files
-                .into_iter()
-                .map(ProjectFileDetailPayload::from)
-                .collect(),
+            tree: project.tree,
             creator_id: project.creator_id.to_hex(),
             created_at: project.created_at,
             updated_at: project.updated_at,
             entry: project.entry.map(|id| id.to_hex()),
             pinned_version: project.pinned_version,
+            settings: project.settings,
         }
     }
 }

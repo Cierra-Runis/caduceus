@@ -8,7 +8,9 @@ import {
     FolderPlusIcon,
     PencilIcon,
     Trash2Icon,
+    UploadIcon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
     DragEvent,
     KeyboardEvent,
@@ -42,6 +44,8 @@ export interface SidebarPanelProps {
   /// Rename the node with this id; returns whether it succeeded.
   onRename: (id: string, name: string) => boolean;
   onSelect: (id: string) => void;
+  /// Open the upload dialog to add binary files.
+  onUpload: () => void;
   sidebarPanelRef: RefObject<null | PanelImperativeHandle>;
 }
 
@@ -61,8 +65,10 @@ export function SidebarPanel({
   onMove,
   onRename,
   onSelect,
+  onUpload,
   sidebarPanelRef,
 }: SidebarPanelProps) {
+  const t = useTranslations('Editor');
   // A folder is expanded unless it is in `collapsed`, so a fresh tree shows
   // everything. `editing` drives the single inline input (create or rename).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -137,7 +143,7 @@ export function SidebarPanel({
     const hasChildren = (childrenOf.get(node.id)?.length ?? 0) > 0;
     if (
       hasChildren &&
-      !window.confirm(`Delete “${node.name}” and everything inside it?`)
+      !window.confirm(t('confirmDelete', { name: node.name }))
     ) {
       return;
     }
@@ -158,7 +164,9 @@ export function SidebarPanel({
                 editing.kind === 'folder' ? onCreateFolder : onCreateFile;
               if (create(name, parent)) setEditing(null);
             }}
-            placeholder={editing.kind === 'folder' ? 'folder name' : 'file name'}
+            placeholder={
+              editing.kind === 'folder' ? t('folderName') : t('fileName')
+            }
           />
         </li>,
       );
@@ -231,7 +239,7 @@ export function SidebarPanel({
               )}
               <span className='truncate'>{node.name}</span>
               {node.id === entry && (
-                <span className='ml-auto text-xs opacity-50'>entry</span>
+                <span className='ml-auto text-xs opacity-50'>{t('entry')}</span>
               )}
             </button>
             <span
@@ -244,24 +252,24 @@ export function SidebarPanel({
                 <>
                   <IconButton
                     icon={<FilePlusIcon className='size-3.5' />}
-                    label={`New file in ${node.name}`}
+                    label={t('newFileIn', { name: node.name })}
                     onClick={() => startCreate(node.id, 'file')}
                   />
                   <IconButton
                     icon={<FolderPlusIcon className='size-3.5' />}
-                    label={`New folder in ${node.name}`}
+                    label={t('newFolderIn', { name: node.name })}
                     onClick={() => startCreate(node.id, 'folder')}
                   />
                 </>
               )}
               <IconButton
                 icon={<PencilIcon className='size-3.5' />}
-                label={`Rename ${node.name}`}
+                label={t('rename', { name: node.name })}
                 onClick={() => setEditing({ id: node.id, mode: 'rename' })}
               />
               <IconButton
                 icon={<Trash2Icon className='size-3.5' />}
-                label={`Delete ${node.name}`}
+                label={t('delete', { name: node.name })}
                 onClick={() => requestDelete(node)}
               />
             </span>
@@ -283,17 +291,22 @@ export function SidebarPanel({
       panelRef={sidebarPanelRef}
     >
       <div className='flex items-center justify-between px-3 py-2'>
-        <span className='text-xs font-medium opacity-60'>Files</span>
+        <span className='text-xs font-medium opacity-60'>{t('files')}</span>
         <span className='flex items-center'>
           <IconButton
             icon={<FilePlusIcon className='size-4' />}
-            label='New file'
+            label={t('newFile')}
             onClick={() => startCreate(null, 'file')}
           />
           <IconButton
             icon={<FolderPlusIcon className='size-4' />}
-            label='New folder'
+            label={t('newFolder')}
             onClick={() => startCreate(null, 'folder')}
+          />
+          <IconButton
+            icon={<UploadIcon className='size-4' />}
+            label={t('uploadFile')}
+            onClick={onUpload}
           />
         </span>
       </div>

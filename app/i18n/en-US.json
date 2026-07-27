@@ -41,6 +41,47 @@
   "DownloadProject": {
     "failed": "Download Failed"
   },
+  "Editor": {
+    "autoSave": {
+      "afterDelay": "After delay",
+      "label": "Auto-save",
+      "off": "Manual (off)",
+      "onFocusChange": "On focus change",
+      "onWindowChange": "On window change"
+    },
+    "closeTab": "Close {name}",
+    "confirmDelete": "Delete “{name}” and everything inside it?",
+    "delete": "Delete {name}",
+    "entry": "entry",
+    "errors": {
+      "autoSave": "Could not update auto-save",
+      "createFile": "Could not create file",
+      "createFolder": "Could not create folder",
+      "delete": "Could not delete",
+      "move": "Could not move",
+      "rename": "Could not rename",
+      "upload": "Could not upload file"
+    },
+    "fileName": "file name",
+    "files": "Files",
+    "folderName": "folder name",
+    "newFile": "New file",
+    "newFileIn": "New file in {name}",
+    "newFolder": "New folder",
+    "newFolderIn": "New folder in {name}",
+    "noFileOpen": "No file open",
+    "rename": "Rename {name}",
+    "settings": "Settings",
+    "upload": {
+      "choose": "Choose files",
+      "chooseFolder": "Choose folder",
+      "empty": "No files selected",
+      "remove": "Remove {name}",
+      "start": "Upload",
+      "title": "Upload files"
+    },
+    "uploadFile": "Upload file"
+  },
   "Home": {
     "caduceus": "Caduceus",
     "description": "An open-source alternative to <typstApp>Typst App</typstApp>",

@@ -10,6 +10,8 @@ use actix_web::{
     dev::{Service, ServiceResponse},
     test, web,
 };
+use std::sync::Arc;
+
 use bson::oid::ObjectId;
 use server::{
     AppState,
@@ -17,6 +19,7 @@ use server::{
     repo::{project::MongoProjectRepo, team::MongoTeamRepo, user::MongoUserRepo},
     routes,
     services::{project::ProjectService, team::TeamService, user::UserService},
+    storage::{InMemoryObjectStore, ProjectStore},
 };
 
 async fn test_app() -> (
@@ -58,10 +61,16 @@ async fn test_app() -> (
         },
     });
 
+    // `create`/`duplicate` seed and copy blobs through the object store, so the
+    // router needs a `ProjectStore` registered just like the real app. Tests
+    // don't need MinIO here — an in-memory backend keeps the blobs local.
+    let store = ProjectStore::new(Arc::new(InMemoryObjectStore::new()));
+
     let jwt_secret = config.jwt_secret.clone();
     let app = test::init_service(
         App::new()
             .app_data(data)
+            .app_data(web::Data::new(store))
             .configure(move |cfg| routes::configure(cfg, jwt_secret.clone())),
     )
     .await;
@@ -186,7 +195,9 @@ async fn test_project_crud_flow() {
         "created project must appear in /user/projects"
     );
 
-    // Detail payload carries the seeded entry file with inlined text content.
+    // Detail payload carries the seeded entry as a node in the `tree`, keyed by
+    // its file id, referencing the default `main.typ` blob. Text is no longer
+    // inlined — it lives in the blob (and, live, in the CRDT).
     let req = test::TestRequest::get()
         .uri(&format!("/api/project/{project_id}"))
         .cookie(cookie.clone())
@@ -195,34 +206,14 @@ async fn test_project_crud_flow() {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
     let entry = body["payload"]["entry"].as_str().unwrap().to_string();
-    let files = body["payload"]["files"].as_array().unwrap();
-    let entry_file = files.iter().find(|f| f["id"] == entry.as_str()).unwrap();
-    assert_eq!(entry_file["content"]["kind"], "text");
-    let initial_version = entry_file["version"].as_i64().unwrap();
-
-    // Update the entry file: version bumps.
-    let req = test::TestRequest::put()
-        .uri(&format!("/api/project/{project_id}/file/{entry}"))
-        .cookie(cookie.clone())
-        .set_json(serde_json::json!({ "text": "= Updated" }))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["payload"]["version"], initial_version + 1);
-
-    // Nonexistent file id in a real project → 404 (regression guard for the
-    // array_filters bug fixed in repo::project).
-    let req = test::TestRequest::put()
-        .uri(&format!(
-            "/api/project/{project_id}/file/{}",
-            ObjectId::new().to_hex()
-        ))
-        .cookie(cookie.clone())
-        .set_json(serde_json::json!({ "text": "x" }))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 404);
+    let tree = body["payload"]["tree"].as_object().unwrap();
+    let entry_node = &tree[&entry];
+    assert_eq!(entry_node["kind"], "file");
+    assert_eq!(entry_node["name"], "main.typ");
+    assert!(
+        entry_node["blob"]["sha256"].is_string(),
+        "seeded entry file must reference a blob"
+    );
 
     // Duplicate: fresh id, derived name.
     let req = test::TestRequest::post()

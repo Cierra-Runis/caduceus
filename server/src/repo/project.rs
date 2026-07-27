@@ -5,7 +5,7 @@ use mongodb::options::ReturnDocument;
 
 use std::collections::HashMap;
 
-use crate::models::project::{FileContent, OwnerType, Project};
+use crate::models::project::{OwnerType, Project, ProjectSettings};
 use crate::models::tree::{NodeId, ProjectionEntry};
 
 #[async_trait::async_trait]
@@ -17,17 +17,6 @@ pub trait ProjectRepo {
         owner_id: ObjectId,
         owner_type: OwnerType,
     ) -> Result<Vec<Project>>;
-    /// Replace one file's content, bump its version and `updated_at` (and the
-    /// project's), and return the updated project. `None` if the project or the
-    /// file does not exist. The file is addressed by its stable id, not path,
-    /// so a concurrent rename does not misroute the write.
-    async fn update_file_content(
-        &self,
-        project_id: ObjectId,
-        file_id: ObjectId,
-        content: FileContent,
-        size: i64,
-    ) -> Result<Option<Project>>;
     /// Update a project's metadata (name + ownership), bump `updated_at`, and
     /// return the updated project. `None` if the project does not exist.
     async fn update_metadata(
@@ -37,10 +26,18 @@ pub trait ProjectRepo {
         owner_id: ObjectId,
         owner_type: OwnerType,
     ) -> Result<Option<Project>>;
-    /// Overwrite a project's stored tree projection — the id-keyed cache of the
-    /// CRDT file tree, refreshed by the room on persist. The authoritative
-    /// structure lives in the Y.Doc snapshot; this is only the listing cache, so
-    /// it deliberately does not bump `updated_at`.
+    /// Overwrite a project's editor settings (auto-save policy, …), bump
+    /// `updated_at`, and return the updated project. `None` if it does not
+    /// exist.
+    async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        settings: ProjectSettings,
+    ) -> Result<Option<Project>>;
+    /// Overwrite a project's stored tree projection (`Project::tree`) — the
+    /// id-keyed cache of the CRDT file tree, refreshed by the room on persist.
+    /// The authoritative structure lives in the Y.Doc snapshot; this is only the
+    /// listing cache, so it deliberately does not bump `updated_at`.
     async fn update_tree(
         &self,
         project_id: ObjectId,
@@ -85,41 +82,6 @@ impl ProjectRepo for MongoProjectRepo {
         Ok(projects)
     }
 
-    async fn update_file_content(
-        &self,
-        project_id: ObjectId,
-        file_id: ObjectId,
-        content: FileContent,
-        size: i64,
-    ) -> Result<Option<Project>> {
-        let content_bson = bson::to_bson(&content)?;
-        let now = bson::DateTime::now();
-        let update = bson::doc! {
-            "$set": {
-                "files.$[f].content": content_bson,
-                "files.$[f].size": size,
-                "files.$[f].updated_at": now,
-                "updated_at": now,
-            },
-            "$inc": { "files.$[f].version": 1 },
-        };
-
-        let updated = self
-            .collection
-            .find_one_and_update(bson::doc! { "_id": project_id }, update)
-            .array_filters(vec![bson::doc! { "f._id": file_id }])
-            .return_document(ReturnDocument::After)
-            .await?;
-
-        // `array_filters` matching zero elements is not an error: the update
-        // still applies to the document (bumping the top-level `updated_at`
-        // above) and `find_one_and_update` still returns `Some`, even though
-        // nothing in `files` actually changed. Filter that case out here so a
-        // nonexistent `file_id` in an existing project is reported as `None`,
-        // same as a nonexistent project, per this method's contract.
-        Ok(updated.filter(|project| project.files.iter().any(|f| f.id == file_id)))
-    }
-
     async fn update_metadata(
         &self,
         project_id: ObjectId,
@@ -132,6 +94,24 @@ impl ProjectRepo for MongoProjectRepo {
                 "name": name,
                 "owner_id": owner_id,
                 "owner_type": bson::to_bson(&owner_type)?,
+                "updated_at": bson::DateTime::now(),
+            },
+        };
+
+        self.collection
+            .find_one_and_update(bson::doc! { "_id": project_id }, update)
+            .return_document(ReturnDocument::After)
+            .await
+    }
+
+    async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        settings: ProjectSettings,
+    ) -> Result<Option<Project>> {
+        let update = bson::doc! {
+            "$set": {
+                "settings": bson::to_bson(&settings)?,
                 "updated_at": bson::DateTime::now(),
             },
         };
@@ -195,27 +175,6 @@ pub mod tests {
             Ok(filtered_projects)
         }
 
-        async fn update_file_content(
-            &self,
-            project_id: ObjectId,
-            file_id: ObjectId,
-            content: FileContent,
-            size: i64,
-        ) -> Result<Option<Project>> {
-            let mut projects = self.projects.lock().unwrap();
-            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
-                return Ok(None);
-            };
-            let Some(file) = project.files.iter_mut().find(|f| f.id == file_id) else {
-                return Ok(None);
-            };
-            file.content = content;
-            file.size = size;
-            file.version += 1;
-            file.updated_at = OffsetDateTime::now_utc();
-            project.updated_at = OffsetDateTime::now_utc();
-            Ok(Some(project.clone()))
-        }
 
         async fn update_metadata(
             &self,
@@ -235,17 +194,59 @@ pub mod tests {
             Ok(Some(project.clone()))
         }
 
+        async fn update_settings(
+            &self,
+            project_id: ObjectId,
+            settings: ProjectSettings,
+        ) -> Result<Option<Project>> {
+            let mut projects = self.projects.lock().unwrap();
+            let Some(project) = projects.iter_mut().find(|p| p.id == project_id) else {
+                return Ok(None);
+            };
+            project.settings = settings;
+            project.updated_at = OffsetDateTime::now_utc();
+            Ok(Some(project.clone()))
+        }
+
         async fn update_tree(
             &self,
-            _project_id: ObjectId,
-            _tree: HashMap<NodeId, ProjectionEntry>,
+            project_id: ObjectId,
+            tree: HashMap<NodeId, ProjectionEntry>,
         ) -> Result<()> {
-            // The mock doesn't store the projection; nothing reads it in tests.
+            let mut projects = self.projects.lock().unwrap();
+            if let Some(project) = projects.iter_mut().find(|p| p.id == project_id) {
+                project.tree = tree;
+            }
             Ok(())
         }
     }
 
-    use crate::models::project::ProjectFile;
+    #[tokio::test]
+    async fn test_update_tree_persists_the_projection_on_the_field() {
+        use crate::models::tree::NodeContent;
+
+        let project_id = ObjectId::new();
+        let repo = MockProjectRepo {
+            projects: Mutex::new(vec![new_project(ObjectId::new(), OwnerType::User)]),
+        };
+        // Point the seeded project's id at a known value.
+        repo.projects.lock().unwrap()[0].id = project_id;
+
+        let mut tree = HashMap::new();
+        tree.insert(
+            "chapters".to_string(),
+            ProjectionEntry {
+                parent: None,
+                name: "chapters".to_string(),
+                path: "chapters".to_string(),
+                content: NodeContent::Folder,
+            },
+        );
+        repo.update_tree(project_id, tree.clone()).await.unwrap();
+
+        let stored = repo.find_by_id(project_id).await.unwrap().unwrap();
+        assert_eq!(stored.tree, tree);
+    }
 
     async fn test_repo() -> MongoProjectRepo {
         let config = config::Config::load("config/test.yaml").unwrap();
@@ -259,18 +260,19 @@ pub mod tests {
         }
     }
 
-    fn new_project(owner_id: ObjectId, owner_type: OwnerType, files: Vec<ProjectFile>) -> Project {
+    fn new_project(owner_id: ObjectId, owner_type: OwnerType) -> Project {
         Project {
             id: ObjectId::new(),
             name: format!("Test Project {}", ObjectId::new().to_hex()),
             owner_id,
             owner_type,
             creator_id: ObjectId::new(),
-            files,
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         }
     }
 
@@ -282,7 +284,7 @@ pub mod tests {
     #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_create_and_find_by_id() {
         let repo = test_repo().await;
-        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
+        let project = new_project(ObjectId::new(), OwnerType::User);
 
         let created = repo.create(project.clone()).await.unwrap();
         assert_eq!(created.id, project.id);
@@ -315,9 +317,9 @@ pub mod tests {
         let owner_id = ObjectId::new();
         let other_owner_id = ObjectId::new();
 
-        let matching = new_project(owner_id, OwnerType::User, vec![]);
-        let same_owner_different_type = new_project(owner_id, OwnerType::Team, vec![]);
-        let same_type_different_owner = new_project(other_owner_id, OwnerType::User, vec![]);
+        let matching = new_project(owner_id, OwnerType::User);
+        let same_owner_different_type = new_project(owner_id, OwnerType::Team);
+        let same_type_different_owner = new_project(other_owner_id, OwnerType::User);
 
         repo.create(matching.clone()).await.unwrap();
         repo.create(same_owner_different_type.clone())
@@ -349,70 +351,9 @@ pub mod tests {
 
     #[tokio::test]
     #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
-    async fn test_update_file_content_bumps_version_and_timestamps() {
-        let repo = test_repo().await;
-        let file = ProjectFile {
-            id: ObjectId::new(),
-            path: "main.typ".to_string(),
-            content: FileContent::Text {
-                text: "original".to_string(),
-            },
-            size: 8,
-            version: 0,
-            updated_at: OffsetDateTime::now_utc(),
-        };
-        let project = new_project(ObjectId::new(), OwnerType::User, vec![file.clone()]);
-        repo.create(project.clone()).await.unwrap();
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-
-        let new_content = FileContent::Text {
-            text: "updated content".to_string(),
-        };
-        let updated = repo
-            .update_file_content(project.id, file.id, new_content, 16)
-            .await
-            .unwrap();
-
-        assert!(updated.is_some());
-        let updated = updated.unwrap();
-        assert!(updated.updated_at > project.updated_at);
-
-        let updated_file = updated.files.iter().find(|f| f.id == file.id).unwrap();
-        assert_eq!(updated_file.version, file.version + 1);
-        assert!(updated_file.updated_at > file.updated_at);
-        assert_eq!(updated_file.size, 16);
-        match &updated_file.content {
-            FileContent::Text { text } => assert_eq!(text, "updated content"),
-            FileContent::Binary { .. } => panic!("expected text content"),
-        }
-
-        cleanup(&repo, project.id).await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
-    async fn test_update_file_content_returns_none_for_missing_project() {
-        let repo = test_repo().await;
-        let result = repo
-            .update_file_content(
-                ObjectId::new(),
-                ObjectId::new(),
-                FileContent::Text {
-                    text: "x".to_string(),
-                },
-                1,
-            )
-            .await
-            .unwrap();
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
     async fn test_update_metadata_updates_fields_and_timestamp() {
         let repo = test_repo().await;
-        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
+        let project = new_project(ObjectId::new(), OwnerType::User);
         repo.create(project.clone()).await.unwrap();
 
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -452,28 +393,5 @@ pub mod tests {
             .await
             .unwrap();
         assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires a live MongoDB (provisioned in CI; run locally with cargo test -- --ignored)"]
-    async fn test_update_file_content_returns_none_for_missing_file() {
-        let repo = test_repo().await;
-        let project = new_project(ObjectId::new(), OwnerType::User, vec![]);
-        repo.create(project.clone()).await.unwrap();
-
-        let result = repo
-            .update_file_content(
-                project.id,
-                ObjectId::new(),
-                FileContent::Text {
-                    text: "x".to_string(),
-                },
-                1,
-            )
-            .await
-            .unwrap();
-        assert!(result.is_none());
-
-        cleanup(&repo, project.id).await;
     }
 }

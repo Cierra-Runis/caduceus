@@ -77,6 +77,12 @@ pub trait ObjectStore: Send + Sync {
     /// Fetch an object's bytes, or `None` if it doesn't exist.
     async fn get_object(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError>;
 
+    /// Every object key under `prefix`.
+    async fn list_prefix(&self, prefix: &str) -> Result<Vec<String>, StorageError>;
+
+    /// Delete a single object by key. Idempotent: an absent key succeeds.
+    async fn delete_object(&self, key: &str) -> Result<(), StorageError>;
+
     /// Delete every object whose key starts with `prefix`. Idempotent: a prefix
     /// that matches nothing succeeds. This is what makes project deletion cheap.
     async fn delete_prefix(&self, prefix: &str) -> Result<(), StorageError>;
@@ -147,31 +153,37 @@ impl ObjectStore for MinioObjectStore {
         }
     }
 
-    async fn delete_prefix(&self, prefix: &str) -> Result<(), StorageError> {
-        // List everything under the prefix (no delimiter = fully recursive),
-        // then delete each object. At project scale the object count is small.
+    async fn list_prefix(&self, prefix: &str) -> Result<Vec<String>, StorageError> {
+        // No delimiter = fully recursive. At project scale the count is small.
         let pages = self
             .bucket
             .list(prefix.to_string(), None)
             .await
             .map_err(|e| StorageError::Backend(e.to_string()))?;
-        for page in pages {
-            for object in page.contents {
-                let resp = self
-                    .bucket
-                    .delete_object(&object.key)
-                    .await
-                    .map_err(|e| StorageError::Backend(e.to_string()))?;
-                match resp.status_code() {
-                    // 404 is fine: an object vanishing mid-sweep is still "gone".
-                    200 | 204 | 404 => {}
-                    code => {
-                        return Err(StorageError::Backend(format!(
-                            "delete returned status {code}"
-                        )));
-                    }
-                }
-            }
+        Ok(pages
+            .into_iter()
+            .flat_map(|page| page.contents.into_iter().map(|object| object.key))
+            .collect())
+    }
+
+    async fn delete_object(&self, key: &str) -> Result<(), StorageError> {
+        let resp = self
+            .bucket
+            .delete_object(key)
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        match resp.status_code() {
+            // 404 is fine: deleting an already-absent object is a no-op.
+            200 | 204 | 404 => Ok(()),
+            code => Err(StorageError::Backend(format!(
+                "delete returned status {code}"
+            ))),
+        }
+    }
+
+    async fn delete_prefix(&self, prefix: &str) -> Result<(), StorageError> {
+        for key in self.list_prefix(prefix).await? {
+            self.delete_object(&key).await?;
         }
         Ok(())
     }
@@ -211,6 +223,22 @@ impl ObjectStore for InMemoryObjectStore {
 
     async fn get_object(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError> {
         Ok(self.objects.lock().unwrap().get(key).cloned())
+    }
+
+    async fn list_prefix(&self, prefix: &str) -> Result<Vec<String>, StorageError> {
+        Ok(self
+            .objects
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|key| key.starts_with(prefix))
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_object(&self, key: &str) -> Result<(), StorageError> {
+        self.objects.lock().unwrap().remove(key);
+        Ok(())
     }
 
     async fn delete_prefix(&self, prefix: &str) -> Result<(), StorageError> {
@@ -287,6 +315,26 @@ impl ProjectStore {
     /// Fetch a project's Y.Doc snapshot, or `None` if it has none yet.
     pub async fn get_snapshot(&self, project_id: &str) -> Result<Option<Vec<u8>>, StorageError> {
         self.inner.get_object(&snapshot_key(project_id)).await
+    }
+
+    /// Every blob sha currently stored for `project_id` — the input to a
+    /// project-scoped orphan sweep.
+    pub async fn list_blobs(&self, project_id: &str) -> Result<Vec<String>, StorageError> {
+        let prefix = format!("{}blobs/", project_prefix(project_id));
+        let keys = self.inner.list_prefix(&prefix).await?;
+        Ok(keys
+            .into_iter()
+            .filter_map(|key| key.rsplit('/').next().map(str::to_string))
+            .collect())
+    }
+
+    /// Delete one blob by sha within `project_id` — used by the orphan sweep,
+    /// never by a file deletion (other nodes in the project may share the bytes).
+    pub async fn delete_blob(&self, project_id: &str, sha256: &str) -> Result<(), StorageError> {
+        if !is_valid_sha256(sha256) {
+            return Err(StorageError::InvalidHash(sha256.to_string()));
+        }
+        self.inner.delete_object(&blob_key(project_id, sha256)).await
     }
 
     /// Delete everything a project owns — snapshot and every blob — in one
@@ -410,6 +458,26 @@ mod tests {
         // …and p2 is untouched.
         assert_eq!(store.get_snapshot("p2").await.unwrap().as_deref(), Some(&b"doc"[..]));
         assert_eq!(backend.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_and_delete_blobs_are_project_scoped() {
+        let store = store();
+        let a = store.put_blob("p1", b"one").await.unwrap();
+        let b = store.put_blob("p1", b"two").await.unwrap();
+        store.put_blob("p2", b"one").await.unwrap(); // same content, other project
+
+        let mut listed = store.list_blobs("p1").await.unwrap();
+        listed.sort();
+        let mut want = vec![a.sha256.clone(), b.sha256.clone()];
+        want.sort();
+        assert_eq!(listed, want);
+
+        store.delete_blob("p1", &a.sha256).await.unwrap();
+        assert_eq!(store.get_blob("p1", &a.sha256).await.unwrap(), None);
+        assert_eq!(store.list_blobs("p1").await.unwrap(), vec![b.sha256]);
+        // p2's identical-content blob is a distinct object, untouched.
+        assert!(store.get_blob("p2", &a.sha256).await.unwrap().is_some());
     }
 
     /// Round-trip against a real MinIO. Ignored by default (needs a running

@@ -23,7 +23,9 @@ impl ResponseError for ProjectServiceError {
             | ProjectServiceError::CreatorNotMatchOwner
             | ProjectServiceError::CreatorNotMemberOfTeam => StatusCode::FORBIDDEN,
             ProjectServiceError::InvalidOwnerType => StatusCode::BAD_REQUEST,
-            ProjectServiceError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ProjectServiceError::Database(_) | ProjectServiceError::Storage => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }
@@ -39,6 +41,7 @@ pub struct CreateProjectRequest {
 pub async fn create(
     req: actix_web::web::Json<CreateProjectRequest>,
     data: actix_web::web::Data<crate::AppState>,
+    store: actix_web::web::Data<crate::storage::ProjectStore>,
     user: UserClaims,
 ) -> Result<HttpResponse, ProjectServiceError> {
     match data
@@ -48,6 +51,7 @@ pub async fn create(
             req.owner_id,
             req.owner_type.clone(),
             req.name.clone(),
+            &store,
         )
         .await
     {
@@ -84,17 +88,22 @@ pub async fn find_by_id(
 }
 
 /// Clone a project the caller can access into a new, independent project.
-/// Access is enforced inside `ProjectService::duplicate` itself (mirroring
-/// `update_file`), so there is no separate check here.
+/// Access is enforced inside `ProjectService::duplicate` itself, so there is no
+/// separate check here.
 pub async fn duplicate(
     id: actix_web::web::Path<String>,
     data: actix_web::web::Data<crate::AppState>,
+    store: actix_web::web::Data<crate::storage::ProjectStore>,
     user: UserClaims,
 ) -> Result<HttpResponse, ProjectServiceError> {
     let project_id =
         ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
 
-    match data.project_service.duplicate(project_id, user.sub).await {
+    match data
+        .project_service
+        .duplicate(project_id, user.sub, &store)
+        .await
+    {
         Ok(project) => {
             let response = ApiResponse::success("Project duplicated successfully", project);
             Ok(HttpResponse::Ok().json(response))
@@ -142,31 +151,68 @@ pub async fn update(
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct UpdateFileRequest {
-    pub text: String,
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSettingsRequest {
+    pub auto_save: crate::models::project::AutoSavePolicy,
+    #[serde(default)]
+    pub auto_save_delay: Option<u32>,
 }
 
-pub async fn update_file(
-    path: actix_web::web::Path<(String, String)>,
-    body: actix_web::web::Json<UpdateFileRequest>,
+/// Update a project's editor settings (auto-save policy, …). Shared by every
+/// collaborator; access is enforced in `ProjectService::update_settings`.
+pub async fn update_settings(
+    id: actix_web::web::Path<String>,
+    req: actix_web::web::Json<UpdateSettingsRequest>,
     data: actix_web::web::Data<crate::AppState>,
     user: UserClaims,
 ) -> Result<HttpResponse, ProjectServiceError> {
-    let (id, file_id) = path.into_inner();
-    let project_id = ObjectId::parse_str(id).map_err(|_| ProjectServiceError::ProjectNotFound)?;
-    let file_id = ObjectId::parse_str(file_id).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+    use crate::models::project::ProjectSettings;
+
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    let settings = ProjectSettings {
+        auto_save: req.auto_save,
+        auto_save_delay: req.auto_save_delay.unwrap_or_else(default_auto_save_delay),
+    };
 
     match data
         .project_service
-        .update_file(project_id, user.sub, file_id, body.text.clone())
+        .update_settings(project_id, user.sub, settings)
         .await
     {
-        Ok(payload) => {
-            let response = ApiResponse::success("File updated successfully", payload);
+        Ok(settings) => {
+            let response = ApiResponse::success("Project settings updated", settings);
             Ok(HttpResponse::Ok().json(response))
         }
         Err(e) => Err(e),
     }
+}
+
+fn default_auto_save_delay() -> u32 {
+    1000
+}
+
+/// Force an immediate blob flush for the project's live room — the client's
+/// `files.autoSave` policy fired. Access is checked here (the room manager has
+/// no auth context); the flush itself is fire-and-forget.
+pub async fn flush(
+    id: actix_web::web::Path<String>,
+    data: actix_web::web::Data<crate::AppState>,
+    project_server: actix_web::web::Data<crate::handler::ws::ProjectServer>,
+    user: UserClaims,
+) -> Result<HttpResponse, ProjectServiceError> {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| ProjectServiceError::ProjectNotFound)?;
+
+    match data.project_service.accessible(project_id, user.sub).await {
+        Ok(true) => {}
+        Ok(false) => return Err(ProjectServiceError::AccessDenied),
+        Err(e) => return Err(e),
+    };
+
+    project_server.flush(project_id);
+    Ok(HttpResponse::Ok().json(ApiResponse::success("Flush requested", ())))
 }
 
 #[cfg(test)]

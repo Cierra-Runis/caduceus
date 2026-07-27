@@ -8,8 +8,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useProjectDetail } from '@/hooks/api/project';
+import { fetchBlob } from '@/lib/api/blob';
 import { Project, ProjectDetail } from '@/lib/types/project';
 import { compileProjectToPdf, TypstSourceFile } from '@/lib/typst';
+import { isBinaryPath } from '@/lib/yjs/tree';
 
 export function DownloadProjectButton({
   project,
@@ -31,7 +33,7 @@ export function DownloadProjectButton({
       const { payload } = await trigger(project.id);
       const pdf = await compileProjectToPdf(
         entryPath(payload),
-        textSources(payload),
+        await textSources(payload),
       );
       saveBytes(pdf, `${project.name}.pdf`);
     } catch (error) {
@@ -62,11 +64,11 @@ export function DownloadProjectButton({
 }
 
 // The compile root, resolved from the project's `entry` (a file id) to its
-// path. Thrown as a user-facing error rather than returned as null, since the
-// caller has nothing sensible to compile without it.
+// path against the tree. Thrown as a user-facing error rather than returned as
+// null, since the caller has nothing sensible to compile without it.
 function entryPath(project: ProjectDetail): string {
-  const entry = project.files.find((file) => file.id === project.entry);
-  if (entry?.content.kind !== 'text') {
+  const entry = project.entry ? project.tree[project.entry] : undefined;
+  if (entry?.kind !== 'file') {
     throw new Error('This project has no entry file to compile.');
   }
   return entry.path;
@@ -85,10 +87,20 @@ function saveBytes(bytes: Uint8Array, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function textSources(project: ProjectDetail): TypstSourceFile[] {
-  return project.files.flatMap((file) =>
-    file.content.kind === 'text'
-      ? [{ path: file.path, text: file.content.text }]
+// The compiler needs each text file's source. Text is no longer inlined in the
+// payload, so fetch it from the referenced blob. Binary assets (by extension)
+// aren't wired into the compiler yet, so they're skipped.
+async function textSources(project: ProjectDetail): Promise<TypstSourceFile[]> {
+  // Narrow `blob` inside the flatMap so no non-null assertion is needed.
+  const sources = Object.values(project.tree).flatMap((node) =>
+    node.kind === 'file' && node.blob && !isBinaryPath(node.path)
+      ? [{ path: node.path, sha256: node.blob.sha256 }]
       : [],
+  );
+  return Promise.all(
+    sources.map(async ({ path, sha256 }) => ({
+      path,
+      text: await (await fetchBlob(project.id, sha256)).text(),
+    })),
   );
 }

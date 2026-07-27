@@ -5,11 +5,15 @@ use derive_more::Display;
 use time::OffsetDateTime;
 
 use crate::{
-    models::project::{
-        FileContent, OwnerType, Project, ProjectDetailPayload, ProjectFile, ProjectPayload,
-        UpdateFilePayload,
+    models::{
+        project::{
+            DEFAULT_MAIN_TYP, OwnerType, Project, ProjectDetailPayload, ProjectPayload,
+            ProjectSettings,
+        },
+        tree::{NodeContent, ProjectionEntry},
     },
     repo::{project::ProjectRepo, team::TeamRepo, user::UserRepo},
+    storage::ProjectStore,
 };
 
 #[derive(Debug, Display)]
@@ -30,6 +34,8 @@ pub enum ProjectServiceError {
     InvalidOwnerType,
     #[display("Database error: {_0}")]
     Database(mongodb::error::Error),
+    #[display("Storage error")]
+    Storage,
 }
 
 pub struct ProjectService<P: ProjectRepo, U: UserRepo, T: TeamRepo> {
@@ -45,6 +51,7 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         owner_id: ObjectId,
         owner_type: OwnerType,
         name: String,
+        store: &ProjectStore,
     ) -> Result<ProjectPayload, ProjectServiceError> {
         // Validate creator exists, creator must be a user
         let creator = match self.user_repo.find_by_id(creator_id).await {
@@ -81,23 +88,39 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         };
 
         // Seed an entry file so the project is editable/compilable immediately.
-        let entry_file = ProjectFile::default();
-        let now = entry_file.updated_at;
-        let entry_id = entry_file.id;
+        // Its bytes go to a blob (the sole text store); the tree references it.
+        let project_id = ObjectId::new();
+        let entry_id = ObjectId::new();
+        let now = OffsetDateTime::now_utc();
+        let blob = store
+            .put_blob(&project_id.to_hex(), DEFAULT_MAIN_TYP.as_bytes())
+            .await
+            .map_err(|_| ProjectServiceError::Storage)?;
+        let mut tree = HashMap::new();
+        tree.insert(
+            entry_id.to_hex(),
+            ProjectionEntry {
+                parent: None,
+                name: "main.typ".to_string(),
+                path: "main.typ".to_string(),
+                content: NodeContent::File { blob },
+            },
+        );
 
         let project = self
             .project_repo
             .create(Project {
-                id: ObjectId::new(),
+                id: project_id,
                 name,
                 owner_id,
                 owner_type,
                 creator_id: creator.id,
-                files: vec![entry_file],
                 created_at: now,
                 updated_at: now,
                 entry: Some(entry_id),
                 pinned_version: None,
+                settings: ProjectSettings::default(),
+                tree,
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -111,42 +134,6 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
     ) -> Result<ProjectDetailPayload, ProjectServiceError> {
         match self.project_repo.find_by_id(project_id).await {
             Ok(Some(project)) => Ok(project.into()),
-            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
-            Err(e) => Err(ProjectServiceError::Database(e)),
-        }
-    }
-
-    /// Persist a text edit to a single file. Caller must have access. Returns
-    /// the file's new version/timestamp. Whole-buffer save (not a delta) — this
-    /// is the at-rest store, orthogonal to how edits are *synced* between
-    /// collaborators (that becomes CRDT in M5).
-    pub async fn update_file(
-        &self,
-        project_id: ObjectId,
-        user_id: ObjectId,
-        file_id: ObjectId,
-        text: String,
-    ) -> Result<UpdateFilePayload, ProjectServiceError> {
-        match self.accessible(project_id, user_id).await {
-            Ok(true) => {}
-            Ok(false) => return Err(ProjectServiceError::AccessDenied),
-            Err(e) => return Err(e),
-        };
-
-        let size = text.len() as i64;
-        let content = FileContent::Text { text };
-
-        match self
-            .project_repo
-            .update_file_content(project_id, file_id, content, size)
-            .await
-        {
-            Ok(Some(project)) => project
-                .files
-                .into_iter()
-                .find(|file| file.id == file_id)
-                .map(UpdateFilePayload::from)
-                .ok_or(ProjectServiceError::ProjectNotFound),
             Ok(None) => Err(ProjectServiceError::ProjectNotFound),
             Err(e) => Err(ProjectServiceError::Database(e)),
         }
@@ -206,16 +193,39 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         }
     }
 
+    /// Update a project's editor settings (auto-save policy, …). Any
+    /// collaborator with access can change them — they are project-level and
+    /// shared. Returns the stored settings.
+    pub async fn update_settings(
+        &self,
+        project_id: ObjectId,
+        user_id: ObjectId,
+        settings: ProjectSettings,
+    ) -> Result<ProjectSettings, ProjectServiceError> {
+        match self.accessible(project_id, user_id).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ProjectServiceError::AccessDenied),
+            Err(e) => return Err(e),
+        };
+
+        match self.project_repo.update_settings(project_id, settings).await {
+            Ok(Some(project)) => Ok(project.settings),
+            Ok(None) => Err(ProjectServiceError::ProjectNotFound),
+            Err(e) => Err(ProjectServiceError::Database(e)),
+        }
+    }
+
     /// Clone a project the caller can access into a brand-new, independent
     /// project owned the same way (same `owner_id`/`owner_type`), with the
-    /// requester recorded as the new project's `creator_id`. Every file gets a
-    /// fresh id — the copy must not alias the source's file rows — and `entry`
-    /// is remapped through that id swap so the duplicate still opens on the
-    /// same logical file.
+    /// requester recorded as the new project's `creator_id`. Every node gets a
+    /// fresh id (parents remapped through the swap, `entry` too), and each
+    /// file's bytes are copied into the new project's blob namespace — so the
+    /// copy shares nothing with the source.
     pub async fn duplicate(
         &self,
         project_id: ObjectId,
         user_id: ObjectId,
+        store: &ProjectStore,
     ) -> Result<ProjectPayload, ProjectServiceError> {
         match self.accessible(project_id, user_id).await {
             Ok(true) => {}
@@ -230,36 +240,56 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
         };
 
         let now = OffsetDateTime::now_utc();
+        let new_project_id = ObjectId::new();
+        let src_hex = project_id.to_hex();
+        let dst_hex = new_project_id.to_hex();
 
-        let mut id_map = HashMap::with_capacity(source.files.len());
-        let files: Vec<ProjectFile> = source
-            .files
-            .into_iter()
-            .map(|file| {
-                let new_id = ObjectId::new();
-                id_map.insert(file.id, new_id);
-                ProjectFile {
-                    id: new_id,
-                    updated_at: now,
-                    ..file
+        // Fresh id per node, decided up front so parents can be remapped.
+        let mut id_map: HashMap<String, String> = HashMap::with_capacity(source.tree.len());
+        for old_id in source.tree.keys() {
+            id_map.insert(old_id.clone(), ObjectId::new().to_hex());
+        }
+
+        let mut tree = HashMap::with_capacity(source.tree.len());
+        for (old_id, ProjectionEntry { parent, name, path, content }) in source.tree {
+            let new_id = id_map[&old_id].clone();
+            let parent = parent.map(|p| id_map.get(&p).cloned().unwrap_or(p));
+            // Copy a file's bytes into the new project's namespace (same sha,
+            // content-addressed) so the duplicate references its own blobs.
+            if let NodeContent::File { blob } = &content {
+                if let Some(bytes) = store
+                    .get_blob(&src_hex, &blob.sha256)
+                    .await
+                    .map_err(|_| ProjectServiceError::Storage)?
+                {
+                    store
+                        .put_blob(&dst_hex, &bytes)
+                        .await
+                        .map_err(|_| ProjectServiceError::Storage)?;
                 }
-            })
-            .collect();
-        let entry = source.entry.and_then(|old_id| id_map.get(&old_id).copied());
+            }
+            tree.insert(new_id, ProjectionEntry { parent, name, path, content });
+        }
+
+        let entry = source
+            .entry
+            .and_then(|old| id_map.get(&old.to_hex()).cloned())
+            .and_then(|hex| ObjectId::parse_str(hex).ok());
 
         let project = self
             .project_repo
             .create(Project {
-                id: ObjectId::new(),
+                id: new_project_id,
                 name: format!("{} copy", source.name),
                 owner_id: source.owner_id,
                 owner_type: source.owner_type,
                 creator_id: user_id,
-                files,
                 created_at: now,
                 updated_at: now,
                 entry,
                 pinned_version: source.pinned_version,
+                settings: source.settings,
+                tree,
             })
             .await
             .map_err(ProjectServiceError::Database)?;
@@ -311,9 +341,15 @@ mod tests {
     use crate::repo::project::tests::MockProjectRepo;
     use crate::repo::team::tests::MockTeamRepo;
     use crate::repo::user::tests::MockUserRepo;
+    use crate::storage::InMemoryObjectStore;
     use bson::oid::ObjectId;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use time::OffsetDateTime;
+
+    /// An in-memory project store for create/duplicate (which seed/copy blobs).
+    fn store() -> ProjectStore {
+        ProjectStore::new(Arc::new(InMemoryObjectStore::new()))
+    }
 
     fn dummy_user(id: ObjectId) -> User {
         User {
@@ -349,7 +385,7 @@ mod tests {
         let creator_id = ObjectId::new();
         let owner_id = creator_id;
         let res = service
-            .create(creator_id, owner_id, OwnerType::User, "p1".to_string())
+            .create(creator_id, owner_id, OwnerType::User, "p1".to_string(), &store())
             .await;
         assert!(matches!(res, Err(ProjectServiceError::UserNotFound)));
     }
@@ -366,7 +402,7 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
         let res = service
-            .create(creator_id, creator_id, OwnerType::User, "p3".to_string())
+            .create(creator_id, creator_id, OwnerType::User, "p3".to_string(), &store())
             .await;
         assert!(res.is_ok());
         let payload = res.unwrap();
@@ -387,7 +423,7 @@ mod tests {
         };
         let owner_id = ObjectId::new();
         let res = service
-            .create(creator_id, owner_id, OwnerType::User, "p4".to_string())
+            .create(creator_id, owner_id, OwnerType::User, "p4".to_string(), &store())
             .await;
         assert!(matches!(
             res,
@@ -407,7 +443,7 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
         let res = service
-            .create(creator_id, owner_id, OwnerType::User, "p5".to_string())
+            .create(creator_id, owner_id, OwnerType::User, "p5".to_string(), &store())
             .await;
         assert!(matches!(
             res,
@@ -431,7 +467,7 @@ mod tests {
             },
         };
         let res = service
-            .create(creator_id, team_id, OwnerType::Team, "p7".to_string())
+            .create(creator_id, team_id, OwnerType::Team, "p7".to_string(), &store())
             .await;
         assert!(res.is_ok());
         let payload = res.unwrap();
@@ -455,7 +491,7 @@ mod tests {
             },
         };
         let res = service
-            .create(creator_id, team_id, OwnerType::Team, "p8".to_string())
+            .create(creator_id, team_id, OwnerType::Team, "p8".to_string(), &store())
             .await;
         assert!(matches!(
             res,
@@ -476,7 +512,7 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
         let res = service
-            .create(creator_id, team_id, OwnerType::Team, "p9".to_string())
+            .create(creator_id, team_id, OwnerType::Team, "p9".to_string(), &store())
             .await;
         assert!(matches!(
             res,
@@ -496,11 +532,12 @@ mod tests {
             owner_id,
             owner_type: OwnerType::User,
             creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -527,11 +564,12 @@ mod tests {
             owner_id,
             owner_type: OwnerType::User,
             creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -559,11 +597,12 @@ mod tests {
             owner_id: team_id,
             owner_type: OwnerType::Team,
             creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id, member_id]);
@@ -595,11 +634,12 @@ mod tests {
             owner_id: team_id,
             owner_type: OwnerType::Team,
             creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![creator_id]);
@@ -631,11 +671,12 @@ mod tests {
             owner_id,
             owner_type: OwnerType::User,
             creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let service = ProjectService {
@@ -651,89 +692,34 @@ mod tests {
     }
 
     fn project_with_file(project_id: ObjectId, owner_id: ObjectId, file_id: ObjectId) -> Project {
+        let mut tree = HashMap::new();
+        tree.insert(
+            file_id.to_hex(),
+            ProjectionEntry {
+                parent: None,
+                name: "main.typ".to_string(),
+                path: "main.typ".to_string(),
+                content: NodeContent::File {
+                    blob: crate::storage::Blob {
+                        sha256: "a".repeat(64),
+                        size: 3,
+                    },
+                },
+            },
+        );
         Project {
             id: project_id,
             name: "test".to_string(),
             owner_id,
             owner_type: OwnerType::User,
             creator_id: owner_id,
-            files: vec![ProjectFile {
-                id: file_id,
-                path: "main.typ".to_string(),
-                content: FileContent::Text {
-                    text: "old".to_string(),
-                },
-                size: 3,
-                version: 1,
-                updated_at: OffsetDateTime::now_utc(),
-            }],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: Some(file_id),
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree,
         }
-    }
-
-    #[tokio::test]
-    async fn test_update_file_success() {
-        let owner_id = ObjectId::new();
-        let project_id = ObjectId::new();
-        let file_id = ObjectId::new();
-        let service = ProjectService {
-            project_repo: MockProjectRepo {
-                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
-            },
-            user_repo: MockUserRepo::default(),
-            team_repo: MockTeamRepo::default(),
-        };
-
-        let payload = service
-            .update_file(project_id, owner_id, file_id, "new body".to_string())
-            .await
-            .unwrap();
-
-        assert_eq!(payload.id, file_id.to_hex());
-        assert_eq!(payload.version, 2);
-    }
-
-    #[tokio::test]
-    async fn test_update_file_access_denied() {
-        let owner_id = ObjectId::new();
-        let other_user_id = ObjectId::new();
-        let project_id = ObjectId::new();
-        let file_id = ObjectId::new();
-        let service = ProjectService {
-            project_repo: MockProjectRepo {
-                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
-            },
-            user_repo: MockUserRepo::default(),
-            team_repo: MockTeamRepo::default(),
-        };
-
-        let res = service
-            .update_file(project_id, other_user_id, file_id, "x".to_string())
-            .await;
-        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
-    }
-
-    #[tokio::test]
-    async fn test_update_file_not_found() {
-        let owner_id = ObjectId::new();
-        let project_id = ObjectId::new();
-        let file_id = ObjectId::new();
-        let service = ProjectService {
-            project_repo: MockProjectRepo {
-                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
-            },
-            user_repo: MockUserRepo::default(),
-            team_repo: MockTeamRepo::default(),
-        };
-
-        // Access passes (owner) but the file id does not exist.
-        let res = service
-            .update_file(project_id, owner_id, ObjectId::new(), "x".to_string())
-            .await;
-        assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
     }
 
     #[tokio::test]
@@ -941,6 +927,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_settings_success() {
+        use crate::models::project::AutoSavePolicy;
+
+        let owner_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let settings = ProjectSettings {
+            auto_save: AutoSavePolicy::AfterDelay,
+            auto_save_delay: 500,
+        };
+        let stored = service
+            .update_settings(project_id, owner_id, settings)
+            .await
+            .unwrap();
+
+        assert_eq!(stored.auto_save, AutoSavePolicy::AfterDelay);
+        assert_eq!(stored.auto_save_delay, 500);
+    }
+
+    #[tokio::test]
+    async fn test_update_settings_access_denied() {
+        let owner_id = ObjectId::new();
+        let other_user_id = ObjectId::new();
+        let project_id = ObjectId::new();
+        let file_id = ObjectId::new();
+        let service = ProjectService {
+            project_repo: MockProjectRepo {
+                projects: Mutex::new(vec![project_with_file(project_id, owner_id, file_id)]),
+            },
+            user_repo: MockUserRepo::default(),
+            team_repo: MockTeamRepo::default(),
+        };
+
+        let res = service
+            .update_settings(project_id, other_user_id, ProjectSettings::default())
+            .await;
+        assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
+    }
+
+    #[tokio::test]
     async fn test_duplicate_project_success() {
         let creator_id = ObjectId::new();
         let project_id = ObjectId::new();
@@ -953,19 +987,17 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
 
-        let payload = service.duplicate(project_id, creator_id).await.unwrap();
+        let payload = service.duplicate(project_id, creator_id, &store()).await.unwrap();
 
         assert_eq!(payload.name, "test copy");
         assert_eq!(payload.owner_id, creator_id.to_hex());
         assert_eq!(payload.creator_id, creator_id.to_hex());
         assert_ne!(payload.id, project_id.to_hex());
-        assert_eq!(payload.files.len(), 1);
 
-        // The duplicated file gets a fresh id, distinct from the source
-        // file's, and `entry` is remapped to point at the new one.
-        let new_file_id = payload.files[0].id.clone();
-        assert_ne!(new_file_id, file_id.to_hex());
-        assert_eq!(payload.entry, Some(new_file_id));
+        // `entry` is remapped to the duplicated file's fresh id — the copy does
+        // not alias the source's node ids.
+        let new_entry = payload.entry.clone().expect("duplicate keeps an entry");
+        assert_ne!(new_entry, file_id.to_hex());
     }
 
     #[tokio::test]
@@ -981,11 +1013,12 @@ mod tests {
             owner_id: team_id,
             owner_type: OwnerType::Team,
             creator_id: original_creator_id,
-            files: vec![],
             created_at: OffsetDateTime::now_utc(),
             updated_at: OffsetDateTime::now_utc(),
             entry: None,
             pinned_version: None,
+            settings: ProjectSettings::default(),
+            tree: Default::default(),
         };
 
         let team = dummy_team(team_id, vec![original_creator_id, member_id]);
@@ -1003,7 +1036,7 @@ mod tests {
         // A team member other than the original creator duplicates the
         // project: ownership stays with the team, but the duplicate's creator
         // is the requester, not the original creator.
-        let payload = service.duplicate(project_id, member_id).await.unwrap();
+        let payload = service.duplicate(project_id, member_id, &store()).await.unwrap();
         assert_eq!(payload.owner_id, team_id.to_hex());
         assert_eq!(payload.owner_type, OwnerType::Team);
         assert_eq!(payload.creator_id, member_id.to_hex());
@@ -1018,7 +1051,7 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
 
-        let res = service.duplicate(ObjectId::new(), ObjectId::new()).await;
+        let res = service.duplicate(ObjectId::new(), ObjectId::new(), &store()).await;
         assert!(matches!(res, Err(ProjectServiceError::ProjectNotFound)));
     }
 
@@ -1036,7 +1069,7 @@ mod tests {
             team_repo: MockTeamRepo::default(),
         };
 
-        let res = service.duplicate(project_id, other_user_id).await;
+        let res = service.duplicate(project_id, other_user_id, &store()).await;
         assert!(matches!(res, Err(ProjectServiceError::AccessDenied)));
     }
 }

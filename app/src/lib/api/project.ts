@@ -1,7 +1,12 @@
 import * as z from 'zod';
 
 import { api } from '@/lib/request';
-import { ProjectDetailSchema, ProjectSchema } from '@/lib/types/project';
+import {
+  ProjectDetailSchema,
+  ProjectSchema,
+  ProjectSettings,
+  ProjectSettingsSchema,
+} from '@/lib/types/project';
 
 export type CreateProjectRequest = {
   owner_id: string;
@@ -52,24 +57,27 @@ export const UpdateProjectResponseSchema = z.object({
   payload: ProjectSchema,
 });
 
-// Persist a single file's text content (whole-buffer save). Returns the file's
-// freshly bumped version/timestamp.
-export type UpdateFileResponse = z.infer<typeof UpdateFileResponseSchema>;
-export const UpdateFileResponseSchema = z.object({
+// Response for updating a project's editor settings (PUT /project/{id}/settings).
+export const UpdateSettingsResponseSchema = z.object({
   message: z.string().trim(),
-  payload: z.object({
-    id: z.string().trim(),
-    updated_at: z.string().trim().transform((str) => new Date(str)),
-    version: z.number(),
-  }),
+  payload: ProjectSettingsSchema,
 });
 
-export async function updateProjectFile(
+// Ask the server to materialize the room's live text into blobs now — the
+// client's `files.autoSave` policy fired. Fire-and-forget; errors are ignored
+// (the periodic snapshot still holds the text durably).
+export async function flushProject(projectId: string): Promise<void> {
+  await api.post(`project/${projectId}/flush`).json();
+}
+
+// Persist the project's editor settings (auto-save policy, …). Shared by every
+// collaborator; returns the stored settings.
+export async function updateProjectSettings(
   projectId: string,
-  fileId: string,
-  text: string,
-): Promise<UpdateFileResponse> {
-  return UpdateFileResponseSchema.parse(
-    await api.put(`project/${projectId}/file/${fileId}`, { json: { text } }).json(),
+  settings: ProjectSettings,
+): Promise<ProjectSettings> {
+  const res = UpdateSettingsResponseSchema.parse(
+    await api.put(`project/${projectId}/settings`, { json: settings }).json(),
   );
+  return res.payload;
 }
