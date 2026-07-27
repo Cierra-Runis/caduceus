@@ -24,10 +24,6 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
                         .route("/settings", web::put().to(handler::project::update_settings))
                         // Client auto-save trigger: force a blob flush for the room.
                         .route("/flush", web::post().to(handler::project::flush))
-                        .route(
-                            "/file/{file_id}",
-                            web::put().to(handler::project::update_file),
-                        )
                         .route("/duplicate", web::post().to(handler::project::duplicate))
                         // Binary blobs (images, fonts). The upload body is raw
                         // bytes; the default extractor cap is 256 KiB. For now

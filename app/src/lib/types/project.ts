@@ -11,24 +11,6 @@ export const ProjectSchema = z.object({
   updated_at: z.string().trim().transform((str) => new Date(str)),
 });
 
-// The content of a single file, as delivered to the editor. Text is inlined so
-// the compiler can use it immediately; a binary is only a reference until asset
-// delivery lands (M3).
-export type FileContent = z.infer<typeof FileContentSchema>;
-export const FileContentSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('text'), text: z.string().trim() }),
-  z.object({ kind: z.literal('binary'), storageKey: z.string().trim() }),
-]);
-
-export type ProjectFile = z.infer<typeof ProjectFileSchema>;
-export const ProjectFileSchema = z.object({
-  content: FileContentSchema,
-  id: z.string().trim(),
-  path: z.string().trim(),
-  size: z.number(),
-  updated_at: z.string().trim().transform((str) => new Date(str)),
-  version: z.number(),
-});
 
 // When the editor materializes a file's live text into a durable blob —
 // mirrors VS Code's `files.autoSave`. Governs *blob materialization*, not
@@ -49,15 +31,31 @@ export const ProjectSettingsSchema = z.object({
   autoSaveDelay: z.number().default(1000),
 });
 
-// Editor-facing project ("open in editor"): carries the whole virtual file
-// system with text content inlined, plus the compile `entry`. `entry` is a file
-// id (resolved to a path against `files`); null for a project with no entry.
+// One node in the project's file `tree`, id-keyed on the wire. Structure +
+// (for files) a blob reference — no inline text; text comes from the CRDT (the
+// editor) or is fetched from the blob (download). Mirrors the server's
+// `ProjectionEntry`.
+export type TreeEntry = z.infer<typeof TreeEntrySchema>;
+export const TreeEntrySchema = z.object({
+  blob: z
+    .object({ sha256: z.string().trim(), size: z.number() })
+    .optional(),
+  kind: z.enum(['file', 'folder']),
+  name: z.string().trim(),
+  parent: z.string().trim().nullish(),
+  path: z.string().trim(),
+});
+
+// Editor-facing project ("open in editor"): carries the file `tree`
+// (structure + blob refs, id-keyed) and the compile `entry` (a file id). Text
+// is not inlined — the editor reads it from the CRDT; other consumers fetch the
+// referenced blobs.
 export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
 export const ProjectDetailSchema = ProjectSchema.extend({
   entry: z.string().trim().nullable(),
-  files: z.array(ProjectFileSchema),
   settings: ProjectSettingsSchema.default({
     autoSave: 'onFocusChange',
     autoSaveDelay: 1000,
   }),
+  tree: z.record(z.string(), TreeEntrySchema).default({}),
 });

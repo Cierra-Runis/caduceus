@@ -105,10 +105,13 @@ flowchart TB
 - **`projects/{id}/ydoc`** is the source of truth for **CRDT state** (the tree
   structure, and later the text overlay). The in-memory room Doc is the live
   copy; snapshots are its durable form.
-- **MongoDB projection** is a **derived cache** — a list of `NodeProjection`
-  (id, parent, name, derived path, blob) so REST listings and access checks
-  don't have to load and decode a Y.Doc. It can be rebuilt from the snapshot at
-  any time and is never authoritative.
+- **MongoDB `Project.tree`** is the id-keyed projection (id → parent, name,
+  derived path, blob ref) so REST payloads and access checks don't have to load
+  and decode a Y.Doc. It is refreshed from the snapshot on persist; it is also
+  the **structure source for a cold start** (a project with no snapshot yet):
+  the room is built from `tree` and its text rematerialized from blobs. There is
+  no longer any inline-text `files` array — bytes live once, in blobs; structure
+  lives in `tree`; the CRDT snapshot is the live/warm form of both.
 
 ## End-to-end flow
 

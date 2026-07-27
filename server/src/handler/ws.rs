@@ -27,10 +27,11 @@ use yrs::{
 
 use crate::config::WsConfig;
 use crate::crdt::snapshot::encode_doc;
-use crate::crdt::{nodes_map, read_tree, seed::nodes_from_files, write_tree};
-use crate::models::project::FileContent;
+use crate::crdt::{nodes_map, read_tree, write_tree};
+#[cfg(test)]
+use crate::crdt::seed::nodes_from_files;
 use crate::models::response::ApiResponse;
-use crate::models::tree::ProjectTree;
+use crate::models::tree::{Node, ProjectTree};
 use crate::models::user::UserClaims;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
 use crate::storage::{Blob, ProjectStore, sha256_hex};
@@ -72,7 +73,9 @@ const MSG_AWARENESS: u8 = 1;
 /// (nodes + text) from stored files when there is no snapshot yet. The blob is
 /// the file's content already uploaded to the object store, so the file node
 /// references bytes that exist. Text roots are keyed by the file's **id**
-/// (stable across renames), not its path.
+/// (stable across renames), not its path. A test-only convenience shape for
+/// [`RoomState::new`]; production cold-starts from the tree + blobs.
+#[cfg(test)]
 type SeedFile = (ObjectId, String, String, Blob);
 
 /// Handshake and start WebSocket handler with heartbeats.
@@ -109,22 +112,19 @@ pub async fn ws(
 
     // Only the *first* connection to a project hydrates the room; later joiners
     // sync against the already-live document. Prefer restoring from the last
-    // Y.Doc snapshot; otherwise seed a fresh doc from the stored files, uploading
-    // each text as a blob first so its file node references bytes that exist.
+    // Y.Doc snapshot; otherwise cold-start from the stored tree (structure), and
+    // the room rematerializes each file's text from its blob after building.
+    // Blobs already exist (create seeds them, edits flush them) — nothing is
+    // uploaded here.
     let store: &ProjectStore = store.get_ref();
     let project_hex = project_id.to_hex();
     let snapshot = store.get_snapshot(&project_hex).await.ok().flatten();
-    let mut seed: Vec<SeedFile> = Vec::new();
-    if snapshot.is_none() {
-        for file in project.files {
-            if let FileContent::Text { text } = file.content {
-                match store.put_blob(&project_hex, text.as_bytes()).await {
-                    Ok(blob) => seed.push((file.id, file.path, text, blob)),
-                    Err(e) => warn!("seed blob upload failed for {}: {e:?}", file.id.to_hex()),
-                }
-            }
-        }
-    }
+    let tree = ProjectTree::from_nodes(project.tree.into_iter().map(|(id, entry)| Node {
+        id,
+        parent: entry.parent,
+        name: entry.name,
+        content: entry.content,
+    }));
 
     let (res, session, stream) = match actix_ws::handle(&req, stream) {
         Ok(tuple) => tuple,
@@ -135,7 +135,7 @@ pub async fn ws(
         project_server.as_ref().clone(),
         project_id,
         snapshot,
-        seed,
+        tree,
         session,
         stream,
         ws_config.as_ref().clone(),
@@ -152,7 +152,7 @@ async fn handle_ws(
     project_server: ProjectServer,
     project_id: ObjectId,
     snapshot: Option<Vec<u8>>,
-    seed: Vec<SeedFile>,
+    tree: ProjectTree,
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
     ws_config: WsConfig,
@@ -164,7 +164,7 @@ async fn handle_ws(
 
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    project_server.join(project_id, snapshot, seed, conn_id, out_tx);
+    project_server.join(project_id, snapshot, tree, conn_id, out_tx);
     info!("WS handler: joined project {}", project_id.to_hex());
 
     let mut msg_stream = msg_stream
@@ -227,8 +227,9 @@ enum Command {
         project_id: ObjectId,
         /// Prior Y.Doc snapshot bytes, if any — restores the room directly.
         snapshot: Option<Vec<u8>>,
-        /// Fallback seed (from Mongo files) used only when there is no snapshot.
-        seed: Vec<SeedFile>,
+        /// The stored tree (structure), used to cold-start when there is no
+        /// snapshot; the room then rematerializes text from blobs.
+        tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     },
@@ -310,14 +311,14 @@ impl ProjectServer {
         &self,
         project_id: ObjectId,
         snapshot: Option<Vec<u8>>,
-        seed: Vec<SeedFile>,
+        tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
     ) {
         let _ = self.cmd_tx.send(Command::Join {
             project_id,
             snapshot,
-            seed,
+            tree,
             conn_id,
             out,
         });
@@ -358,10 +359,6 @@ struct RoomState {
     /// connection's cursor/presence can be retracted when it leaves instead
     /// of lingering as a ghost participant (see `handle_data`/`Leave`).
     client_owner: HashMap<ClientID, ObjectId>,
-    /// Last text persisted per text-root key (file id hex), to skip unchanged
-    /// files. The file id list itself is derived from the `nodes` map at
-    /// persist time, not tracked here.
-    last: HashMap<String, String>,
     /// Whether the Y.Doc changed since the last snapshot, so persist can skip
     /// re-snapshotting an unchanged room.
     dirty: bool,
@@ -393,17 +390,43 @@ impl RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
             client_owner: HashMap::new(),
-            last: HashMap::new(),
             dirty: false, // the snapshot we loaded is already durable
             blobs_pending: false,
             empty_since: Some(Instant::now()),
         }
     }
 
-    /// Seed a fresh room's Y.Doc from stored files: a text root per file (keyed
-    /// by id) plus the derived `nodes` tree. Used only when a project has no
-    /// snapshot yet. The server is authoritative on cold start; clients connect
-    /// empty and sync against this, avoiding duplicated initial content.
+    /// Cold-start a room's Y.Doc from the stored tree (structure only): the
+    /// `nodes` map plus an empty text root per file. The text is refilled from
+    /// blobs by [`rematerialize`] once the room is built. Used when a project has
+    /// no snapshot; clients connect empty and sync against this.
+    fn from_tree(tree: &ProjectTree) -> RoomState {
+        let doc = Doc::new();
+        // Empty text root per file — `get_or_insert_text` opens its own txn, so
+        // it must precede the write txn below.
+        for node in tree.iter().filter(|n| n.is_file()) {
+            doc.get_or_insert_text(node.id.as_str());
+        }
+        let nodes = nodes_map(&doc);
+        {
+            let mut txn = doc.transact_mut();
+            write_tree(&mut txn, &nodes, tree);
+        }
+        RoomState {
+            awareness: Awareness::new(doc),
+            conns: HashMap::new(),
+            client_owner: HashMap::new(),
+            dirty: true, // a fresh cold-start needs an initial snapshot
+            blobs_pending: false,
+            empty_since: Some(Instant::now()),
+        }
+    }
+
+    /// Seed a fresh room's Y.Doc from `(id, path, text, blob)` tuples: a text
+    /// root per file plus the derived `nodes` tree. A test helper for building a
+    /// populated room in one call (production cold-starts via [`from_tree`] +
+    /// rematerialization).
+    #[cfg(test)]
     fn new(seed: Vec<SeedFile>) -> RoomState {
         let doc = Doc::new();
         // Create the text roots and nodes map up front — each `get_or_insert`
@@ -430,7 +453,6 @@ impl RoomState {
             awareness: Awareness::new(doc),
             conns: HashMap::new(),
             client_owner: HashMap::new(),
-            last: HashMap::new(),
             dirty: true, // a fresh seed needs an initial snapshot
             // Seed blobs already match their seeded text; nothing to flush until
             // an edit drifts a file from its blob.
@@ -488,13 +510,14 @@ async fn room_manager(
         tokio::select! {
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(Command::Join { project_id, snapshot, seed, conn_id, out }) => {
+                    Some(Command::Join { project_id, snapshot, tree, conn_id, out }) => {
                         // Track whether this join *builds* the room, so a room
-                        // rebuilt from a stripped snapshot refills its text once.
+                        // built from a stripped snapshot or cold-started from the
+                        // tree refills its text from blobs once.
                         let fresh = !rooms.contains_key(&project_id);
                         let room = rooms.entry(project_id).or_insert_with(|| match &snapshot {
                             Some(bytes) => RoomState::from_snapshot(bytes),
-                            None => RoomState::new(seed),
+                            None => RoomState::from_tree(&tree),
                         });
                         // Send the initial sync step 1 + awareness state.
                         let mut encoder = EncoderV1::new();
@@ -816,10 +839,9 @@ fn persist_room(
     }
 
     // Phase 1 (sync, holds the doc): encode the snapshot, derive the projection,
-    // read each changed file's text (for the Mongo dual-write), and — only when
-    // flushing — the files whose text has drifted from their recorded blob.
-    // Outputs are owned/`Send`.
-    let (snapshot_bytes, projection, mongo_changed, blob_stale) = {
+    // and — only when flushing — the files whose text has drifted from their
+    // recorded blob. Outputs are owned/`Send`.
+    let (snapshot_bytes, projection, blob_stale) = {
         let doc = room.awareness.doc();
         let snapshot_bytes = encode_doc(doc);
         let nodes = nodes_map(doc);
@@ -827,29 +849,20 @@ fn persist_room(
         let tree = read_tree(&txn, &nodes).ok();
         let projection = tree.as_ref().and_then(|t| t.projection().ok());
 
-        let mut mongo_changed: Vec<(ObjectId, String)> = Vec::new();
         let mut blob_stale: Vec<(String, String)> = Vec::new();
-        if let Some(tree) = tree.as_ref() {
-            for node in tree.iter().filter(|n| n.is_file()) {
-                // A binary file has no text overlay; skip it (its blob is set at
-                // upload time and must never be flushed over with empty text).
-                let Some(text) = txn
-                    .get_text(node.id.as_str())
-                    .map(|txt| txt.get_string(&txn))
-                else {
-                    continue;
-                };
-                // Mongo dual-write: dedup against the last persisted text.
-                let unchanged = room.last.get(&node.id).is_some_and(|prev| prev == &text);
-                if !unchanged {
-                    room.last.insert(node.id.clone(), text.clone());
-                    if let Ok(file_id) = ObjectId::parse_str(&node.id) {
-                        mongo_changed.push((file_id, text.clone()));
-                    }
-                }
-                // Blob flush (settle only): a file whose current text hashes to
-                // something other than its recorded blob sha needs re-uploading.
-                if do_flush {
+        if do_flush {
+            if let Some(tree) = tree.as_ref() {
+                for node in tree.iter().filter(|n| n.is_file()) {
+                    // A binary file has no text overlay; skip it (its blob is set
+                    // at upload and must never be flushed over with empty text).
+                    let Some(text) = txn
+                        .get_text(node.id.as_str())
+                        .map(|txt| txt.get_string(&txn))
+                    else {
+                        continue;
+                    };
+                    // A file whose current text hashes to something other than
+                    // its recorded blob sha needs re-uploading.
                     let fresh = sha256_hex(text.as_bytes());
                     let recorded = node.blob().map(|b| b.sha256.as_str());
                     if recorded != Some(fresh.as_str()) {
@@ -858,13 +871,13 @@ fn persist_room(
                 }
             }
         }
-        (snapshot_bytes, projection, mongo_changed, blob_stale)
+        (snapshot_bytes, projection, blob_stale)
     };
 
     // Phase 2 (async, no doc borrow): write to the durable stores. The snapshot
-    // and projection go only when the doc actually changed; the Mongo text cache
-    // tracks every persist; blobs are uploaded (write-before-reference) and their
-    // hashes sent back as `FlushBlobs` so each node's blob reference catches up.
+    // and projection go only when the doc actually changed; blobs are uploaded
+    // (write-before-reference) and their hashes sent back as `FlushBlobs` so each
+    // node's blob reference catches up.
     let repo = repo.clone();
     let store = store.clone();
     let cmd_tx = cmd_tx.clone();
@@ -878,15 +891,6 @@ fn persist_room(
                 if let Err(e) = repo.update_tree(project_id, projection).await {
                     warn!("projection update failed in {pid}: {e:?}");
                 }
-            }
-        }
-        for (file_id, text) in mongo_changed {
-            let size = text.len() as i64;
-            if let Err(e) = repo
-                .update_file_content(project_id, file_id, FileContent::Text { text }, size)
-                .await
-            {
-                warn!("text persist failed in {pid}: {e:?}");
             }
         }
         let mut flushed: Vec<(String, Blob)> = Vec::new();

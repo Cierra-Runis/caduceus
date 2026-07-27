@@ -57,28 +57,6 @@ export const UpdateProjectResponseSchema = z.object({
   payload: ProjectSchema,
 });
 
-// Persist a single file's text content (whole-buffer save). Returns the file's
-// freshly bumped version/timestamp.
-export type UpdateFileResponse = z.infer<typeof UpdateFileResponseSchema>;
-export const UpdateFileResponseSchema = z.object({
-  message: z.string().trim(),
-  payload: z.object({
-    id: z.string().trim(),
-    updated_at: z.string().trim().transform((str) => new Date(str)),
-    version: z.number(),
-  }),
-});
-
-export async function updateProjectFile(
-  projectId: string,
-  fileId: string,
-  text: string,
-): Promise<UpdateFileResponse> {
-  return UpdateFileResponseSchema.parse(
-    await api.put(`project/${projectId}/file/${fileId}`, { json: { text } }).json(),
-  );
-}
-
 // Response for updating a project's editor settings (PUT /project/{id}/settings).
 export const UpdateSettingsResponseSchema = z.object({
   message: z.string().trim(),
