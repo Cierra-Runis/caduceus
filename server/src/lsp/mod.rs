@@ -355,8 +355,10 @@ mod tests {
         assert!(matches!(err, LspError::Closed));
     }
 
-    // End-to-end against a real tinymist binary. Ignored by default (no binary
-    // in CI yet); run with the binary path once built:
+    // End-to-end against a real tinymist binary. Skipped (a no-op) unless
+    // `CADUCEUS_TINYMIST_BIN` points at one — the CI coverage job runs with
+    // `--include-ignored`, and there is no tinymist binary there, so this must
+    // skip cleanly rather than panic. Run it locally with the binary:
     //
     //   CADUCEUS_TINYMIST_BIN=/path/to/tinymist \
     //     cargo test -p server --lib lsp:: -- --ignored --nocapture
@@ -369,8 +371,10 @@ mod tests {
     async fn real_tinymist_reports_diagnostics_for_a_broken_doc() {
         use std::time::Duration;
 
-        let bin = std::env::var("CADUCEUS_TINYMIST_BIN")
-            .expect("set CADUCEUS_TINYMIST_BIN to the tinymist binary path");
+        let Ok(bin) = std::env::var("CADUCEUS_TINYMIST_BIN") else {
+            eprintln!("skipping: CADUCEUS_TINYMIST_BIN not set");
+            return;
+        };
         // A workspace root on disk (the file itself is only ever an in-memory
         // overlay — nothing is written there).
         let root = std::env::temp_dir().join("caduceus-lsp-it");
