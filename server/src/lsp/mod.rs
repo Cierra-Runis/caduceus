@@ -7,8 +7,10 @@
 //! process's stdio in production and an in-memory duplex in tests — no tinymist
 //! binary needed to exercise the framing and correlation.
 //!
-//! Higher layers (document mirroring, diagnostics fan-out, worker lifecycle)
-//! build on top; see `docs/Architecture - Compilation and Project Model.md` §3.
+//! The per-room worker that mirrors a project and fans out diagnostics lives in
+//! [`room`]; see `docs/Architecture - Compilation and Project Model.md` §3.
+
+pub mod room;
 
 use std::collections::HashMap;
 use std::path::Path;
