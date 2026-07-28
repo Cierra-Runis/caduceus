@@ -256,8 +256,8 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
             let parent = parent.map(|p| id_map.get(&p).cloned().unwrap_or(p));
             // Copy a file's bytes into the new project's namespace (same sha,
             // content-addressed) so the duplicate references its own blobs.
-            if let NodeContent::File { blob } = &content {
-                if let Some(bytes) = store
+            if let NodeContent::File { blob } = &content
+                && let Some(bytes) = store
                     .get_blob(&src_hex, &blob.sha256)
                     .await
                     .map_err(|_| ProjectServiceError::Storage)?
@@ -267,7 +267,6 @@ impl<P: ProjectRepo, U: UserRepo, T: TeamRepo> ProjectService<P, U, T> {
                         .await
                         .map_err(|_| ProjectServiceError::Storage)?;
                 }
-            }
             tree.insert(new_id, ProjectionEntry { parent, name, path, content });
         }
 

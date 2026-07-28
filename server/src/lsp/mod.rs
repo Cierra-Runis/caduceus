@@ -340,11 +340,10 @@ async fn read_frame<R: AsyncBufReadExt + Unpin>(
         if trimmed.is_empty() {
             break; // blank line ends the header block
         }
-        if let Some((name, value)) = trimmed.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
+        if let Some((name, value)) = trimmed.split_once(':')
+            && name.trim().eq_ignore_ascii_case("content-length") {
                 content_length = value.trim().parse().ok();
             }
-        }
     }
 
     let len = content_length.ok_or_else(|| {
