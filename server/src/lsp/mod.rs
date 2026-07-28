@@ -155,6 +155,83 @@ impl LspClient {
         }));
         let _ = self.outgoing.send(frame);
     }
+
+    // ---- LSP verbs used to mirror a room's document set into the worker ----
+    // These are the minimal set for P1 (diagnostics): the room is the sole
+    // document owner, so only it issues these; browsers issue *queries*, not
+    // edits (see the architecture doc §3, "Multi-client LSP").
+
+    /// `initialize` + `initialized`. `root_uri` is the worker's workspace root
+    /// (`file://…`), under which the project's files live. Minimal client
+    /// capabilities are enough for push diagnostics.
+    pub async fn initialize(&self, root_uri: &str) -> Result<Value, LspError> {
+        let result = self
+            .request(
+                "initialize",
+                json!({
+                    "processId": std::process::id(),
+                    "rootUri": root_uri,
+                    "capabilities": {},
+                }),
+            )
+            .await?;
+        self.notify("initialized", json!({}));
+        Ok(result)
+    }
+
+    /// Open a text document in the worker's in-memory overlay (no disk write).
+    pub fn did_open(&self, uri: &str, text: &str) {
+        self.notify(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "typst",
+                    "version": 1,
+                    "text": text,
+                }
+            }),
+        );
+    }
+
+    /// Replace a document's overlay text (full-document sync — simplest and
+    /// robust; incremental ranges are a later optimization).
+    pub fn did_change(&self, uri: &str, version: i64, text: &str) {
+        self.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": { "uri": uri, "version": version },
+                "contentChanges": [ { "text": text } ],
+            }),
+        );
+    }
+
+    /// Close a document's overlay (e.g. the file was deleted or renamed away).
+    pub fn did_close(&self, uri: &str) {
+        self.notify(
+            "textDocument/didClose",
+            json!({ "textDocument": { "uri": uri } }),
+        );
+    }
+
+    /// Select the compile entry (`tinymist.pinMain`), so diagnostics are
+    /// computed against `uri` as the document root.
+    pub async fn pin_main(&self, uri: &str) -> Result<Value, LspError> {
+        self.request(
+            "workspace/executeCommand",
+            json!({ "command": "tinymist.pinMain", "arguments": [uri] }),
+        )
+        .await
+    }
+}
+
+/// Build a `file://` URI for a project-relative path under a workspace root.
+/// The worker's world resolves imports/images by path, so a file's URI is its
+/// tree path joined to the room's staging root — stable across the id-keyed
+/// overlay because the projection derives the path.
+pub fn file_uri(workspace_root: &Path, path: &str) -> String {
+    let rel = path.trim_start_matches('/');
+    format!("file://{}/{}", workspace_root.display(), rel)
 }
 
 /// A tinymist LSP subprocess and the client driving it over stdio. Dropping the
@@ -277,6 +354,8 @@ async fn read_frame<R: AsyncBufReadExt + Unpin>(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use tokio::io::{AsyncWriteExt, duplex};
 
@@ -286,6 +365,17 @@ mod tests {
         let text = String::from_utf8(frame).unwrap();
         assert!(text.starts_with("Content-Length: 7\r\n\r\n"));
         assert!(text.ends_with("{\"a\":1}"));
+    }
+
+    #[test]
+    fn file_uri_joins_root_and_relative_path() {
+        let root = Path::new("/srv/lsp/proj");
+        assert_eq!(file_uri(root, "main.typ"), "file:///srv/lsp/proj/main.typ");
+        // A leading slash on the path doesn't double up.
+        assert_eq!(
+            file_uri(root, "/chapters/intro.typ"),
+            "file:///srv/lsp/proj/chapters/intro.typ"
+        );
     }
 
     #[tokio::test]
@@ -370,76 +460,85 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a tinymist binary; set CADUCEUS_TINYMIST_BIN"]
     async fn real_tinymist_reports_diagnostics_for_a_broken_doc() {
-        use std::time::Duration;
-
-        let Ok(bin) = std::env::var("CADUCEUS_TINYMIST_BIN") else {
-            eprintln!("skipping: CADUCEUS_TINYMIST_BIN not set");
+        let Some((worker, mut notes, root)) = spawn_real_worker().await else {
             return;
         };
-        // A workspace root on disk (the file itself is only ever an in-memory
-        // overlay — nothing is written there).
-        let root = std::env::temp_dir().join("caduceus-lsp-it");
-        std::fs::create_dir_all(&root).unwrap();
-        let root_uri = format!("file://{}", root.display());
-        let main_uri = format!("file://{}/main.typ", root.display());
-
-        let (worker, mut notes) = Worker::spawn(Path::new(&bin)).unwrap();
-
-        worker
-            .client
-            .request(
-                "initialize",
-                json!({
-                    "processId": std::process::id(),
-                    "rootUri": root_uri,
-                    "capabilities": {},
-                }),
-            )
-            .await
-            .expect("initialize");
-        worker.client.notify("initialized", json!({}));
+        let main = file_uri(&root, "main.typ");
 
         // A Typst source that references an undefined variable → an error.
-        worker.client.notify(
-            "textDocument/didOpen",
-            json!({
-                "textDocument": {
-                    "uri": main_uri,
-                    "languageId": "typst",
-                    "version": 1,
-                    "text": "#let a = 1\n#nope\n",
-                }
-            }),
-        );
-        // Select it as the compile main so diagnostics are pushed for it.
-        let _ = worker
-            .client
-            .request(
-                "workspace/executeCommand",
-                json!({ "command": "tinymist.pinMain", "arguments": [main_uri] }),
-            )
-            .await;
+        worker.client.did_open(&main, "#let a = 1\n#nope\n");
+        worker.client.pin_main(&main).await.ok();
 
-        // Await a non-empty publishDiagnostics for our file (bounded).
-        let found = tokio::time::timeout(Duration::from_secs(20), async {
+        let hit = wait_for_diagnostics(&mut notes, &[main.clone()]).await;
+        assert_eq!(hit.as_deref(), Some(main.as_str()), "expected a diagnostic");
+        worker.shutdown().await;
+    }
+
+    // Cross-file: an error in an *imported* file must surface (the load-bearing
+    // spike claim). We assert a diagnostic lands on either file — tinymist may
+    // attribute it to the broken import or to the importing file's failed load.
+    #[tokio::test]
+    #[ignore = "requires a tinymist binary; set CADUCEUS_TINYMIST_BIN"]
+    async fn real_tinymist_reports_cross_file_diagnostics() {
+        let Some((worker, mut notes, root)) = spawn_real_worker().await else {
+            return;
+        };
+        let main = file_uri(&root, "main.typ");
+        let chapter = file_uri(&root, "chapter.typ");
+
+        worker.client.did_open(&main, "#import \"chapter.typ\": *\n");
+        worker.client.did_open(&chapter, "#nope\n"); // undefined in the import
+        worker.client.pin_main(&main).await.ok();
+
+        let hit = wait_for_diagnostics(&mut notes, &[main, chapter]).await;
+        assert!(hit.is_some(), "expected a cross-file diagnostic");
+        worker.shutdown().await;
+    }
+
+    /// Spawn a real worker (or `None` to skip when no binary), initialize it
+    /// against a temp workspace root, and return the worker, its notification
+    /// stream, and the root. Files are only ever in-memory overlays — nothing is
+    /// written to the root on disk.
+    async fn spawn_real_worker() -> Option<(Worker, mpsc::UnboundedReceiver<Notification>, PathBuf)>
+    {
+        let bin = match std::env::var("CADUCEUS_TINYMIST_BIN") {
+            Ok(bin) => bin,
+            Err(_) => {
+                eprintln!("skipping: CADUCEUS_TINYMIST_BIN not set");
+                return None;
+            }
+        };
+        let root = std::env::temp_dir().join("caduceus-lsp-it");
+        std::fs::create_dir_all(&root).unwrap();
+        let (worker, notes) = Worker::spawn(Path::new(&bin)).unwrap();
+        let root_uri = format!("file://{}", root.display());
+        worker.client.initialize(&root_uri).await.expect("initialize");
+        Some((worker, notes, root))
+    }
+
+    /// Wait (bounded) for a `publishDiagnostics` carrying a non-empty list for
+    /// any of `uris`; returns which uri, or `None` on timeout.
+    async fn wait_for_diagnostics(
+        notes: &mut mpsc::UnboundedReceiver<Notification>,
+        uris: &[String],
+    ) -> Option<String> {
+        tokio::time::timeout(std::time::Duration::from_secs(20), async {
             loop {
-                let Some(note) = notes.recv().await else {
-                    return false;
-                };
-                if note.method == "textDocument/publishDiagnostics"
-                    && note.params["uri"] == json!(main_uri)
-                    && note.params["diagnostics"]
-                        .as_array()
-                        .is_some_and(|d| !d.is_empty())
-                {
-                    return true;
+                let note = notes.recv().await?;
+                if note.method != "textDocument/publishDiagnostics" {
+                    continue;
+                }
+                let uri = note.params["uri"].as_str().unwrap_or_default().to_string();
+                let nonempty = note.params["diagnostics"]
+                    .as_array()
+                    .is_some_and(|d| !d.is_empty());
+                if nonempty && uris.iter().any(|u| *u == uri) {
+                    return Some(uri);
                 }
             }
         })
         .await
-        .expect("timed out waiting for diagnostics");
-
-        assert!(found, "expected a diagnostic for the broken document");
-        worker.shutdown().await;
+        .ok()
+        .flatten()
     }
 }
