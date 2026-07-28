@@ -25,6 +25,14 @@ describe('ProjectSchema', () => {
       ProjectSchema.parse({ ...validProject, owner_type: 'bogus' }),
     ).toThrow();
   });
+
+  it('carries pinned_version when present and defaults it to nullish', () => {
+    expect(ProjectSchema.parse(validProject).pinned_version).toBeUndefined();
+    expect(
+      ProjectSchema.parse({ ...validProject, pinned_version: '0.13.1' })
+        .pinned_version,
+    ).toBe('0.13.1');
+  });
 });
 
 describe('ProjectDetailSchema', () => {

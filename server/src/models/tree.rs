@@ -310,11 +310,10 @@ impl ProjectTree {
 
         // Dangling: a parent that isn't in the map. The node itself moves up.
         for node in self.nodes.values() {
-            if let Some(pid) = &node.parent {
-                if !self.nodes.contains_key(pid) {
+            if let Some(pid) = &node.parent
+                && !self.nodes.contains_key(pid) {
                     victims.push(node.id.clone());
                 }
-            }
         }
 
         // Cycles: follow parent pointers (through existing nodes only); for each

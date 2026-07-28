@@ -6,6 +6,8 @@ import { Panel, PanelImperativeHandle } from 'react-resizable-panels';
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
+import { LspDiagnostic } from '@/lib/lsp/client';
+
 import { BinaryFileView } from './BinaryFileView';
 import { Editor } from './Editor';
 import { FileTab, FileTabs } from './FileTabs';
@@ -15,6 +17,8 @@ export interface EditorPanelProps {
   /// code editor, so Monaco never opens it (which would create a text overlay
   /// the server would flush empty over the blob).
   binary: BinaryFile | null;
+  /// Diagnostics for the focused text file (from tinymist), shown as squiggles.
+  diagnostics?: LspDiagnostic[];
   editorPanelRef: RefObject<null | PanelImperativeHandle>;
   /// Close the tab with this id.
   onCloseTab: (id: string) => void;
@@ -36,6 +40,7 @@ interface BinaryFile {
 
 export function EditorPanel({
   binary,
+  diagnostics,
   editorPanelRef,
   onCloseTab,
   onSelectTab,
@@ -73,7 +78,12 @@ export function EditorPanel({
               size={binary.size}
             />
           ) : (
-            <Editor provider={provider} textId={textId} ydoc={ydoc} />
+            <Editor
+              diagnostics={diagnostics}
+              provider={provider}
+              textId={textId}
+              ydoc={ydoc}
+            />
           )}
         </div>
       </div>

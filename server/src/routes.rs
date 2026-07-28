@@ -45,6 +45,8 @@ pub fn configure(cfg: &mut web::ServiceConfig, jwt_secret: String) {
         .service(
             web::scope("/ws")
                 .wrap(JwtMiddleware::new(jwt_secret))
-                .route("/project/{id}", web::get().to(handler::ws::ws)),
+                .route("/project/{id}", web::get().to(handler::ws::ws))
+                // Per-browser LSP session bridged to the project's tinymist worker.
+                .route("/project/{id}/lsp", web::get().to(handler::ws::ws_lsp)),
         );
 }

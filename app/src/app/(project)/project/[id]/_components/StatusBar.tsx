@@ -2,12 +2,15 @@
 
 import {
   CheckIcon,
+  CircleCheckIcon,
   FileIcon,
   PencilLineIcon,
   RefreshCwIcon,
+  TriangleAlertIcon,
   UsersIcon,
   WifiIcon,
   WifiOffIcon,
+  XCircleIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { WebsocketProvider } from 'y-websocket';
@@ -21,24 +24,27 @@ import { AutoSavePolicy } from '@/lib/types/project';
 import { cn } from '@/lib/utils';
 
 // A VS Code-style bottom status bar for the editor: ambient, glanceable state
-// that doesn't belong in a panel. Everything here is sourced from signals we
-// already have (the y-websocket provider, awareness, the dirty map, the
-// project settings) — no backend work. Diagnostics-driven segments (compile
-// status, problem counts) are deferred until the tinymist integration fills a
-// shared diagnostics store; see docs/Architecture - Compilation and Project
-// Model.md §6.
+// that doesn't belong in a panel. Sourced from the y-websocket provider,
+// awareness, the dirty map, the project settings, and the tinymist diagnostics
+// store (the problems segment).
 export function StatusBar({
   autoSave,
   dirtyCount,
   entryName,
+  errors,
   meId,
   provider,
+  warnings,
 }: {
   autoSave: AutoSavePolicy;
   dirtyCount: number;
   entryName: null | string;
+  /// Total tinymist error diagnostics across the project.
+  errors: number;
   meId: null | string;
   provider: null | WebsocketProvider;
+  /// Total tinymist warning diagnostics across the project.
+  warnings: number;
 }) {
   const t = useTranslations('Editor.status');
   const tAutoSave = useTranslations('Editor.autoSave');
@@ -46,6 +52,7 @@ export function StatusBar({
   const others = useAwareness(provider, meId);
   const connection = connectionView(state, synced);
   const saved = dirtyCount === 0;
+  const clean = errors === 0 && warnings === 0;
 
   return (
     <footer className='flex h-6 shrink-0 items-center gap-4 border-t bg-muted/40 px-3 text-xs text-muted-foreground select-none'>
@@ -70,6 +77,24 @@ export function StatusBar({
         {saved ? t('saved') : t('unsaved', { count: dirtyCount })}
         <span className='opacity-70'>· {tAutoSave(autoSave)}</span>
       </span>
+
+      {clean ? (
+        <span className='flex items-center gap-1 text-emerald-600 dark:text-emerald-400'>
+          <CircleCheckIcon className='size-3.5' />
+          {t('noProblems')}
+        </span>
+      ) : (
+        <span className='flex items-center gap-3'>
+          <span className='flex items-center gap-1 text-destructive'>
+            <XCircleIcon className='size-3.5' />
+            {errors}
+          </span>
+          <span className='flex items-center gap-1 text-amber-500'>
+            <TriangleAlertIcon className='size-3.5' />
+            {warnings}
+          </span>
+        </span>
+      )}
 
       <span className='ml-auto flex items-center gap-1'>
         <FileIcon className='size-3.5' />

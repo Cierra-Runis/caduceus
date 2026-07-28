@@ -14,9 +14,11 @@ function renderBar(overrides: Partial<Parameters<typeof StatusBar>[0]> = {}) {
         autoSave='onFocusChange'
         dirtyCount={0}
         entryName='main.typ'
+        errors={0}
         meId='u1'
         // A null provider is the pre-connection state: offline + no peers.
         provider={null}
+        warnings={0}
         {...overrides}
       />,
     ),
@@ -32,6 +34,14 @@ describe('StatusBar', () => {
     expect(screen.getByText('Saved')).toBeTruthy();
     expect(screen.getByText('main.typ')).toBeTruthy();
     expect(screen.getByText(/Typst/)).toBeTruthy();
+    expect(screen.getByText('No problems')).toBeTruthy();
+  });
+
+  it('shows error and warning counts when there are problems', () => {
+    renderBar({ errors: 2, warnings: 1 });
+    expect(screen.queryByText('No problems')).toBeNull();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('1')).toBeTruthy();
   });
 
   it('pluralizes the unsaved-file count instead of "Saved"', () => {

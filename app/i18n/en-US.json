@@ -75,6 +75,7 @@
     "status": {
       "collaborators": "{count, plural, =0 {Just you} =1 {1 collaborator} other {# collaborators}}",
       "live": "Live",
+      "noProblems": "No problems",
       "offline": "Offline",
       "reconnecting": "Reconnecting…",
       "saved": "Saved",

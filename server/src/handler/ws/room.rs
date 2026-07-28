@@ -1,23 +1,17 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+//! The room manager: the single-threaded owner of every live collaboration
+//! room. Holds the `!Send` `yrs` documents, serves [`Command`]s from the
+//! connection layer (`super`), mirrors edits into each room's tinymist worker,
+//! persists snapshots + projections, sweeps orphaned blobs, and evicts idle
+//! rooms. Split out of the connection/handler layer in `super` to keep each
+//! focused.
 
-use actix_web::ResponseError;
-use actix_web::http::StatusCode;
-use actix_web::{HttpRequest, HttpResponse, rt, web};
-use actix_ws::AggregatedMessage;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use bson::oid::ObjectId;
-use derive_more::Display;
-use futures_util::StreamExt as _;
-use tokio::{
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
-    sync::oneshot,
-    task::LocalSet,
-    time::{Instant, interval},
-};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::time::{Instant, interval};
 use tracing::{debug, info, warn};
 use yrs::{
     Any, ClientID, Doc, GetString, Map, Out, ReadTxn, Text, Transact, Update,
@@ -29,403 +23,14 @@ use yrs::{
 use crate::config::WsConfig;
 use crate::crdt::snapshot::encode_doc;
 use crate::crdt::{nodes_map, read_tree, write_tree};
-use crate::models::response::ApiResponse;
-use crate::models::tree::{Node, ProjectTree};
-use crate::models::user::UserClaims;
+use crate::lsp::LspError;
+use crate::lsp::room::RoomWorker;
+use crate::models::tree::ProjectTree;
 use crate::repo::project::{MongoProjectRepo, ProjectRepo};
 use crate::storage::{Blob, ProjectStore, sha256_hex};
 
-#[derive(Debug, Display)]
-pub enum WebSocketError {
-    #[display("User not Found")]
-    UserNotFound,
-    #[display("Project not Found")]
-    ProjectNotFound,
-    #[display("Handshake Failed: {_0}")]
-    HandshakeFailed(actix_web::Error),
-    #[display("Unauthorized: {_0}")]
-    Unauthorized(String),
-    #[display("Forbidden: You don't have access to this project")]
-    Forbidden,
-}
-
-impl ResponseError for WebSocketError {
-    fn error_response(&self) -> HttpResponse {
-        let response = ApiResponse::error(&self.to_string());
-        HttpResponse::build(self.status_code()).json(response)
-    }
-    fn status_code(&self) -> StatusCode {
-        match *self {
-            WebSocketError::UserNotFound | WebSocketError::ProjectNotFound => StatusCode::NOT_FOUND,
-            WebSocketError::HandshakeFailed(_) => StatusCode::BAD_REQUEST,
-            WebSocketError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            WebSocketError::Forbidden => StatusCode::FORBIDDEN,
-        }
-    }
-}
-
-/// y-protocol message-type tag for awareness frames (sync is `0`). The tag is a
-/// single lib0 varint byte for values < 128, so the first byte identifies it.
-const MSG_AWARENESS: u8 = 1;
-
-/// Handshake and start WebSocket handler with heartbeats.
-pub async fn ws(
-    id: web::Path<String>,
-    req: HttpRequest,
-    stream: web::Payload,
-    data: actix_web::web::Data<crate::AppState>,
-    project_server: web::Data<ProjectServer>,
-    ws_config: web::Data<WsConfig>,
-    store: web::Data<ProjectStore>,
-    user: UserClaims,
-) -> Result<HttpResponse, WebSocketError> {
-    let project_id =
-        ObjectId::parse_str(id.into_inner()).map_err(|_| WebSocketError::ProjectNotFound)?;
-
-    // Check if user has access to this project
-    match data.project_service.accessible(project_id, user.sub).await {
-        Ok(true) => {}
-        Ok(false) => return Err(WebSocketError::Forbidden),
-        Err(_) => return Err(WebSocketError::ProjectNotFound),
-    };
-
-    let project = match data
-        .project_service
-        .project_repo
-        .find_by_id(project_id)
-        .await
-    {
-        Ok(Some(project)) => project,
-        Ok(None) => return Err(WebSocketError::ProjectNotFound),
-        Err(_) => return Err(WebSocketError::ProjectNotFound),
-    };
-
-    // Only the *first* connection to a project hydrates the room; later joiners
-    // sync against the already-live document. Prefer restoring from the last
-    // Y.Doc snapshot; otherwise cold-start from the stored tree (structure), and
-    // the room rematerializes each file's text from its blob after building.
-    // Blobs already exist (create seeds them, edits flush them) — nothing is
-    // uploaded here.
-    let store: &ProjectStore = store.get_ref();
-    let project_hex = project_id.to_hex();
-    let snapshot = store.get_snapshot(&project_hex).await.ok().flatten();
-    let tree = ProjectTree::from_nodes(project.tree.into_iter().map(|(id, entry)| Node {
-        id,
-        parent: entry.parent,
-        name: entry.name,
-        content: entry.content,
-    }));
-
-    let (res, session, stream) = match actix_ws::handle(&req, stream) {
-        Ok(tuple) => tuple,
-        Err(e) => return Err(WebSocketError::HandshakeFailed(e)),
-    };
-
-    rt::spawn(handle_ws(
-        project_server.as_ref().clone(),
-        project_id,
-        snapshot,
-        tree,
-        session,
-        stream,
-        ws_config.as_ref().clone(),
-    ));
-
-    Ok(res)
-}
-
-/// `GET /api/admin/rooms` — a read-only snapshot of every live collaboration
-/// room's state (connection counts, dirty/idle flags, node counts). Aggregate
-/// data only, no document content. Behind the same JWT auth as the rest of
-/// `/api`; `_user` proves the caller is authenticated. Meant for operator
-/// introspection — turning "what are the rooms doing?" into a live query
-/// instead of a recompile-with-a-print.
-pub async fn rooms(
-    project_server: web::Data<ProjectServer>,
-    _user: UserClaims,
-) -> HttpResponse {
-    let rooms = project_server.inspect().await;
-    HttpResponse::Ok().json(ApiResponse::success("Live rooms", rooms))
-}
-
-/// Per-connection loop. Bridges this WebSocket to the single-threaded room
-/// manager: client frames are forwarded as [`Command::Data`], and messages the
-/// manager routes back (initial sync, peers' updates, awareness) arrive on
-/// `out_rx` and are written to the socket.
-async fn handle_ws(
-    project_server: ProjectServer,
-    project_id: ObjectId,
-    snapshot: Option<Vec<u8>>,
-    tree: ProjectTree,
-    mut session: actix_ws::Session,
-    msg_stream: actix_ws::MessageStream,
-    ws_config: WsConfig,
-) {
-    let heartbeat_interval = Duration::from_secs(ws_config.heartbeat_interval_secs);
-    let client_timeout = Duration::from_secs(ws_config.client_timeout_secs);
-    let mut last_heartbeat = Instant::now();
-    let mut interval = interval(heartbeat_interval);
-    // Application-level keepalive, sent on the heartbeat cadence (see the tick
-    // branch). Built once; empty only if encoding ever fails, in which case it
-    // is never sent.
-    let keepalive = keepalive_frame();
-
-    let conn_id = ObjectId::new();
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    project_server.join(project_id, snapshot, tree, conn_id, out_tx);
-    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection opened");
-
-    let mut msg_stream = msg_stream
-        .max_frame_size(1024 * 1024)
-        .aggregate_continuations()
-        .max_continuation_size(8 * 1024 * 1024);
-
-    let close_reason = loop {
-        tokio::select! {
-            Some(Ok(msg)) = msg_stream.next() => {
-                match msg {
-                    AggregatedMessage::Ping(bytes) => {
-                        last_heartbeat = Instant::now();
-                        if session.pong(&bytes).await.is_err() { break None; }
-                    }
-                    AggregatedMessage::Pong(_) => {
-                        last_heartbeat = Instant::now();
-                    }
-                    AggregatedMessage::Binary(bin) => {
-                        last_heartbeat = Instant::now();
-                        project_server.data(project_id, conn_id, bin.to_vec());
-                    }
-                    AggregatedMessage::Text(_) => {
-                        // The collaboration protocol is binary; ignore text.
-                    }
-                    AggregatedMessage::Close(reason) => break reason,
-                }
-            }
-
-            msg = out_rx.recv() => {
-                match msg {
-                    Some(bytes) => {
-                        if session.binary(bytes).await.is_err() { break None; }
-                    }
-                    None => break None,
-                }
-            }
-
-            _ = interval.tick() => {
-                if Instant::now().duration_since(last_heartbeat) > client_timeout {
-                    break None;
-                }
-                // Keep the client's y-websocket alive with an application-level
-                // frame *before* the protocol ping. The browser answers a WS
-                // ping/pong itself, at the protocol layer, so those frames never
-                // surface to y-websocket's `onmessage` and never reset its
-                // `messageReconnectTimeout` (30s of no *message* ⇒ it force-closes
-                // and reconnects). A lone client that neither receives peers'
-                // updates (broadcasts skip the sender) nor a server push within
-                // that window would otherwise reconnect every ~30s — dropping the
-                // room to zero connections and back. The keepalive is a no-op
-                // awareness frame, so it refreshes that clock without touching the
-                // document or presence. The protocol ping still runs, driving the
-                // server-side dead-client check above via the client's pong.
-                if !keepalive.is_empty() && session.binary(keepalive.clone()).await.is_err() {
-                    break None;
-                }
-                let _ = session.ping(b"").await;
-            }
-
-            else => break None,
-        }
-    };
-
-    project_server.leave(project_id, conn_id);
-    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection closed");
-    let _ = session.close(close_reason).await;
-}
-
-/// A no-op y-awareness frame the server sends on the heartbeat cadence to keep a
-/// client's y-websocket `messageReconnectTimeout` from firing (see the tick
-/// branch in [`handle_ws`]). It carries *zero* awareness clients, so the client
-/// decodes it, resets its "last message received" clock, and changes nothing —
-/// no presence added, updated, or removed, and the document is untouched. Built
-/// from a throwaway awareness because `handle_ws` runs off the room-manager
-/// thread and so has no access to the live doc; the frame is content-free, so a
-/// throwaway is equivalent. Returns an empty vec only if encoding fails (not
-/// expected for an empty client set), in which case no keepalive is sent.
-fn keepalive_frame() -> Vec<u8> {
-    let awareness = Awareness::new(Doc::new());
-    match awareness.update_with_clients(Vec::<ClientID>::new()) {
-        Ok(update) => YMessage::Awareness(update).encode_v1(),
-        Err(e) => {
-            warn!("failed to encode keepalive frame: {e:?}");
-            Vec::new()
-        }
-    }
-}
-
-/// Commands sent from connection handlers (any worker thread) to the
-/// single-threaded room manager. Everything here is `Send`; the `yrs` document
-/// itself never leaves the manager thread.
-enum Command {
-    Join {
-        project_id: ObjectId,
-        /// Prior Y.Doc snapshot bytes, if any — restores the room directly.
-        snapshot: Option<Vec<u8>>,
-        /// The stored tree (structure), used to cold-start when there is no
-        /// snapshot; the room then rematerializes text from blobs.
-        tree: ProjectTree,
-        conn_id: ObjectId,
-        out: UnboundedSender<Vec<u8>>,
-    },
-    Data {
-        project_id: ObjectId,
-        conn_id: ObjectId,
-        data: Vec<u8>,
-    },
-    Leave {
-        project_id: ObjectId,
-        conn_id: ObjectId,
-    },
-    /// A client asked to save now (its `files.autoSave` policy fired). Force a
-    /// blob flush for the room so the current text is materialized, regardless
-    /// of the settle cadence. Missing room = nothing to flush.
-    FlushRoom {
-        project_id: ObjectId,
-    },
-    /// A persist cycle uploaded changed file text as blobs (async, off the room
-    /// thread); this brings the result back so the room can update each file
-    /// node's `blob` (sha256 / size) in the Y.Doc and broadcast it — keeping the
-    /// node's blob reference current with its edited text.
-    FlushBlobs {
-        project_id: ObjectId,
-        blobs: Vec<(String, Blob)>,
-    },
-    /// Text fetched from blobs (async) to refill a room rebuilt from a *stripped*
-    /// resting snapshot — one whose text overlays were emptied on eviction so the
-    /// bytes live only in blobs. Applied to the empty overlays and broadcast.
-    ApplyRemat {
-        project_id: ObjectId,
-        texts: Vec<(String, String)>,
-    },
-    /// The result of a GC sweep (async): the blobs found orphaned this pass. The
-    /// manager stores them so the *next* sweep only deletes blobs orphaned twice
-    /// in a row — a grace window so a blob uploaded between passes is never
-    /// swept before its `FlushBlobs` records it on a node.
-    GcSwept {
-        project_id: ObjectId,
-        orphans: HashSet<String>,
-    },
-    /// A read-only snapshot of every live room's state, for operator
-    /// introspection (`GET /api/admin/rooms`). The manager fills `reply` with a
-    /// [`RoomInfo`] per room; sent over a oneshot so the async handler can await
-    /// it off the manager thread.
-    Inspect {
-        reply: oneshot::Sender<Vec<RoomInfo>>,
-    },
-}
-
-/// A read-only view of one live room, safe to send off the manager thread
-/// (`Send`, no `yrs` handles). Aggregate state only — ids and counts, never
-/// document content — so it is cheap to expose to an authenticated operator.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct RoomInfo {
-    /// Project id (hex) this room serves.
-    pub project_id: String,
-    /// Live WebSocket connections.
-    pub conns: usize,
-    /// Whether the Y.Doc changed since the last snapshot.
-    pub dirty: bool,
-    /// Whether some file's text has drifted from its recorded blob.
-    pub blobs_pending: bool,
-    /// Seconds the room has sat with no connections, or `null` while occupied.
-    pub empty_secs: Option<u64>,
-    /// Nodes (files + folders) in the tree.
-    pub nodes: usize,
-    /// Files that currently carry a non-empty text overlay in the doc.
-    pub text_overlays: usize,
-}
-
-/// Handle to the collaboration subsystem, stored in actix app data. Cheap to
-/// clone and `Send + Sync` (it is just a channel sender), unlike the `yrs`
-/// types it fronts.
-#[derive(Clone)]
-pub struct ProjectServer {
-    cmd_tx: UnboundedSender<Command>,
-}
-
-impl ProjectServer {
-    pub fn new(
-        project_repo: MongoProjectRepo,
-        ws_config: WsConfig,
-        store: ProjectStore,
-    ) -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        // The room manager owns all `yrs` state on a dedicated thread running a
-        // current-thread runtime + LocalSet, so the `!Send` documents never have
-        // to cross threads. It keeps a `cmd_tx` clone so a persist task can send
-        // itself the blob-flush result once the async upload finishes.
-        let manager_tx = cmd_tx.clone();
-        thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("build room-manager runtime");
-            let local = LocalSet::new();
-            local.block_on(
-                &rt,
-                room_manager(cmd_rx, manager_tx, project_repo, ws_config, store),
-            );
-        });
-        ProjectServer { cmd_tx }
-    }
-
-    fn join(
-        &self,
-        project_id: ObjectId,
-        snapshot: Option<Vec<u8>>,
-        tree: ProjectTree,
-        conn_id: ObjectId,
-        out: UnboundedSender<Vec<u8>>,
-    ) {
-        let _ = self.cmd_tx.send(Command::Join {
-            project_id,
-            snapshot,
-            tree,
-            conn_id,
-            out,
-        });
-    }
-
-    fn data(&self, project_id: ObjectId, conn_id: ObjectId, data: Vec<u8>) {
-        let _ = self.cmd_tx.send(Command::Data {
-            project_id,
-            conn_id,
-            data,
-        });
-    }
-
-    fn leave(&self, project_id: ObjectId, conn_id: ObjectId) {
-        let _ = self.cmd_tx.send(Command::Leave {
-            project_id,
-            conn_id,
-        });
-    }
-
-    /// Request an immediate blob flush for a room (a client's auto-save fired).
-    /// Fire-and-forget: the room manager force-flushes on its own thread.
-    pub fn flush(&self, project_id: ObjectId) {
-        let _ = self.cmd_tx.send(Command::FlushRoom { project_id });
-    }
-
-    /// A read-only snapshot of every live room's state. Returns an empty list if
-    /// the manager thread has gone away (send fails or the reply is dropped).
-    pub async fn inspect(&self) -> Vec<RoomInfo> {
-        let (reply, rx) = oneshot::channel();
-        if self.cmd_tx.send(Command::Inspect { reply }).is_err() {
-            return Vec::new();
-        }
-        rx.await.unwrap_or_default()
-    }
-}
+use super::lsp::{LspDispatch, classify_lsp_message, publish_diagnostics_frame, rewrite_uris};
+use super::{Command, LspSpawnInfo, MSG_AWARENESS, RoomInfo};
 
 /// sha256 of empty content — a file whose blob is this has no bytes to
 /// rematerialize. Matches the client's `EMPTY_SHA256`.
@@ -453,6 +58,22 @@ struct RoomState {
     /// idle past `room_idle_secs` is evicted from memory (freeing RAM); the next
     /// joiner rebuilds it verbatim from the snapshot.
     empty_since: Option<Instant>,
+    /// This room's tinymist worker, once it has finished starting (`None` while
+    /// LSP is unconfigured or the worker is still spawning). The room is the
+    /// worker's sole document owner — it mirrors edits in via `did_change`.
+    lsp: Option<RoomWorker>,
+    /// The worker's workspace root, for translating between the worker's
+    /// `file://<root>/<path>` URIs and the browser's root-relative `file:///…`.
+    lsp_root: Option<std::path::PathBuf>,
+    /// Browser LSP sessions (`/ws/project/{id}/lsp`), for fanning out diagnostics
+    /// and routing query responses back to the right connection.
+    lsp_conns: HashMap<ObjectId, UnboundedSender<Vec<u8>>>,
+    /// Whether a worker spawn is in flight, so a second joiner doesn't start a
+    /// duplicate.
+    lsp_starting: bool,
+    /// Last text mirrored to the worker per file, so an edit only re-`did_change`s
+    /// files whose text actually changed.
+    lsp_mirror: HashMap<String, String>,
 }
 
 impl RoomState {
@@ -474,6 +95,11 @@ impl RoomState {
             dirty: false, // the snapshot we loaded is already durable
             blobs_pending: false,
             empty_since: Some(Instant::now()),
+            lsp: None,
+            lsp_root: None,
+            lsp_conns: HashMap::new(),
+            lsp_starting: false,
+            lsp_mirror: HashMap::new(),
         }
     }
 
@@ -500,6 +126,11 @@ impl RoomState {
             dirty: true, // a fresh cold-start needs an initial snapshot
             blobs_pending: false,
             empty_since: Some(Instant::now()),
+            lsp: None,
+            lsp_root: None,
+            lsp_conns: HashMap::new(),
+            lsp_starting: false,
+            lsp_mirror: HashMap::new(),
         }
     }
 }
@@ -558,13 +189,155 @@ fn room_info(project_id: ObjectId, room: &RoomState) -> RoomInfo {
         empty_secs: room.empty_since.map(|since| since.elapsed().as_secs()),
         nodes: node_count,
         text_overlays,
+        lsp: room.lsp.is_some(),
+        lsp_conns: room.lsp_conns.len(),
+    }
+}
+
+/// The room's current text files as `(tree path, text)`, for mirroring into the
+/// worker. Binary files (no text overlay) are skipped. `nodes_map` before the
+/// read txn, per the yrs borrow rules.
+fn room_text_files(room: &RoomState) -> Vec<(String, String)> {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+    let txn = doc.transact();
+    let Ok(tree) = read_tree(&txn, &nodes) else {
+        return Vec::new();
+    };
+    tree.iter()
+        .filter(|n| n.is_file())
+        .filter_map(|n| {
+            let text = txn.get_text(n.id.as_str())?.get_string(&txn);
+            let path = tree.path_of(&n.id).ok()?;
+            Some((path, text))
+        })
+        .collect()
+}
+
+/// Start this room's tinymist worker once, off the manager thread: snapshot the
+/// current text files to mirror, spawn [`RoomWorker::start`], forward its
+/// diagnostics back as [`Command::LspDiagnostics`], and hand the ready worker to
+/// the manager via [`Command::LspReady`]. A no-op when LSP is unconfigured for
+/// the project or a worker is already running/starting.
+fn ensure_worker(
+    project_id: ObjectId,
+    room: &mut RoomState,
+    lsp: Option<LspSpawnInfo>,
+    cmd_tx: &UnboundedSender<Command>,
+) {
+    let Some(info) = lsp else {
+        return;
+    };
+    if room.lsp.is_some() || room.lsp_starting {
+        return;
+    }
+    let files = room_text_files(room);
+    // Seed the mirror cache so later edits only re-send files that changed.
+    room.lsp_mirror = files.iter().cloned().collect();
+    room.lsp_root = Some(info.root.clone());
+    room.lsp_starting = true;
+
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        match RoomWorker::start(&info.binary, info.root, &files, info.entry_path.as_deref()).await {
+            Ok(worker) => {
+                // Pump the worker's diagnostics into the manager for fan-out.
+                let mut diagnostics = worker.subscribe();
+                let diag_tx = cmd_tx.clone();
+                tokio::task::spawn_local(async move {
+                    while let Ok(fd) = diagnostics.recv().await {
+                        let sent = diag_tx.send(Command::LspDiagnostics {
+                            project_id,
+                            path: fd.path,
+                            diagnostics: fd.diagnostics,
+                        });
+                        if sent.is_err() {
+                            break;
+                        }
+                    }
+                });
+                let _ = cmd_tx.send(Command::LspReady { project_id, worker });
+            }
+            Err(e) => warn!("lsp worker start failed for {}: {e}", project_id.to_hex()),
+        }
+    });
+}
+
+/// Mirror the room's current text into its worker after a doc-changing frame:
+/// `did_change` only the files whose text differs from what was last sent
+/// (tracked in `lsp_mirror`), so an edit to one file doesn't re-push them all.
+fn mirror_text_to_worker(room: &mut RoomState) {
+    if room.lsp.is_none() {
+        return;
+    }
+    for (path, text) in room_text_files(room) {
+        if room.lsp_mirror.get(&path) == Some(&text) {
+            continue; // unchanged since last mirror
+        }
+        if let Some(worker) = &room.lsp {
+            worker.did_change(&path, &text);
+        }
+        room.lsp_mirror.insert(path, text);
+    }
+}
+
+/// One browser LSP frame (bare JSON, vscode-ws-jsonrpc). Bridge lifecycle
+/// requests are answered locally; genuine queries are forwarded to the room's
+/// worker with URIs translated between the browser's root-relative `file:///…`
+/// and the worker's `file://<root>/…`, and the response routed back.
+fn handle_lsp_data(room: &RoomState, conn_id: ObjectId, data: Vec<u8>) {
+    let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&data) else {
+        return;
+    };
+    let Some(out) = room.lsp_conns.get(&conn_id).cloned() else {
+        return;
+    };
+
+    match classify_lsp_message(&msg) {
+        // Lifecycle replies (initialize/shutdown) are answered even when no
+        // worker is running, so a client always completes its handshake.
+        LspDispatch::Reply(response) => {
+            if let Ok(bytes) = serde_json::to_vec(&response) {
+                let _ = out.send(bytes);
+            }
+        }
+        LspDispatch::Drop => {}
+        // A query needs the worker; if there's none yet, there's nothing to
+        // answer it with (the client retries as the user keeps typing).
+        LspDispatch::Forward { id, method, params } => {
+            let (Some(worker), Some(root)) = (&room.lsp, &room.lsp_root) else {
+                return;
+            };
+            let worker_prefix = format!("file://{}/", root.display());
+            let params = rewrite_uris(params, "file:///", &worker_prefix);
+            let client = worker.client();
+            tokio::task::spawn_local(async move {
+                let response = match client.request(&method, params).await {
+                    Ok(result) => serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": rewrite_uris(result, &worker_prefix, "file:///"),
+                    }),
+                    Err(LspError::Rpc(error)) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id, "error": error,
+                    }),
+                    Err(LspError::Closed) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32000, "message": "lsp worker unavailable" },
+                    }),
+                };
+                if let Ok(bytes) = serde_json::to_vec(&response) {
+                    let _ = out.send(bytes);
+                }
+            });
+        }
     }
 }
 
 /// Single-threaded owner of every room. Serves commands and periodically
 /// persists each room (Y.Doc snapshot to MinIO, tree projection to Mongo),
 /// sweeps orphaned blobs, and evicts idle rooms.
-async fn room_manager(
+pub(super) async fn room_manager(
     mut cmd_rx: UnboundedReceiver<Command>,
     cmd_tx: UnboundedSender<Command>,
     repo: MongoProjectRepo,
@@ -586,7 +359,7 @@ async fn room_manager(
         tokio::select! {
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(Command::Join { project_id, snapshot, tree, conn_id, out }) => {
+                    Some(Command::Join { project_id, snapshot, tree, conn_id, out, lsp }) => {
                         // Track whether this join *builds* the room, so a room
                         // built from a stripped snapshot or cold-started from the
                         // tree refills its text from blobs once.
@@ -614,6 +387,9 @@ async fn room_manager(
                         if fresh {
                             rematerialize(project_id, room, &store, &cmd_tx);
                         }
+                        // Lazily start this room's tinymist worker on first join
+                        // (idempotent: skipped if one is running or starting).
+                        ensure_worker(project_id, room, lsp, &cmd_tx);
                     }
                     Some(Command::Data { project_id, conn_id, data }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
@@ -690,6 +466,51 @@ async fn room_manager(
                             .collect();
                         let _ = reply.send(infos);
                     }
+                    Some(Command::LspReady { project_id, worker }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            room.lsp_starting = false;
+                            // The room may have emptied while the worker started;
+                            // if so, drop it right back (shutdown off-thread).
+                            if room.conns.is_empty() {
+                                tokio::task::spawn_local(worker.shutdown());
+                            } else {
+                                room.lsp = Some(worker);
+                                info!(project = %project_id.to_hex(), "lsp worker ready");
+                            }
+                        } else {
+                            tokio::task::spawn_local(worker.shutdown());
+                        }
+                    }
+                    Some(Command::LspConnect { project_id, conn_id, out }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            // Prime the new session with the current diagnostics
+                            // before streaming live ones.
+                            if let Some(worker) = &room.lsp {
+                                for fd in worker.latest() {
+                                    let _ = out.send(publish_diagnostics_frame(&fd.path, &fd.diagnostics));
+                                }
+                            }
+                            room.lsp_conns.insert(conn_id, out);
+                        }
+                    }
+                    Some(Command::LspData { project_id, conn_id, data }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            handle_lsp_data(room, conn_id, data);
+                        }
+                    }
+                    Some(Command::LspLeave { project_id, conn_id }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            room.lsp_conns.remove(&conn_id);
+                        }
+                    }
+                    Some(Command::LspDiagnostics { project_id, path, diagnostics }) => {
+                        if let Some(room) = rooms.get(&project_id) {
+                            let frame = publish_diagnostics_frame(&path, &diagnostics);
+                            for out in room.lsp_conns.values() {
+                                let _ = out.send(frame.clone());
+                            }
+                        }
+                    }
                     None => break,
                 }
             }
@@ -729,6 +550,10 @@ async fn room_manager(
                             .map(|since| since.elapsed().as_secs())
                             .unwrap_or(0);
                         strip_text(room);
+                        // Reap this room's tinymist worker along with its doc.
+                        if let Some(worker) = room.lsp.take() {
+                            tokio::task::spawn_local(worker.shutdown());
+                        }
                         let bytes = encode_doc(room.awareness.doc());
                         let store = store.clone();
                         let pid = project_id.to_hex();
@@ -823,6 +648,8 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
         // included; it is a cheap map scan at current scale — gate it on a
         // nodes-map observer if that ever shows up in a profile.
         reconcile_tree(room);
+        // Mirror changed text into the tinymist worker (no-op without one).
+        mirror_text_to_worker(room);
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -964,8 +791,8 @@ fn persist_room(
         let projection = tree.as_ref().and_then(|t| t.projection().ok());
 
         let mut blob_stale: Vec<(String, String)> = Vec::new();
-        if do_flush {
-            if let Some(tree) = tree.as_ref() {
+        if do_flush
+            && let Some(tree) = tree.as_ref() {
                 for node in tree.iter().filter(|n| n.is_file()) {
                     // A binary file has no text overlay; skip it (its blob is set
                     // at upload and must never be flushed over with empty text).
@@ -984,7 +811,6 @@ fn persist_room(
                     }
                 }
             }
-        }
         (snapshot_bytes, projection, blob_stale)
     };
 
@@ -1001,11 +827,10 @@ fn persist_room(
             if let Err(e) = store.put_snapshot(&pid, &snapshot_bytes).await {
                 warn!("snapshot save failed in {pid}: {e:?}");
             }
-            if let Some(projection) = projection {
-                if let Err(e) = repo.update_tree(project_id, projection).await {
+            if let Some(projection) = projection
+                && let Err(e) = repo.update_tree(project_id, projection).await {
                     warn!("projection update failed in {pid}: {e:?}");
                 }
-            }
         }
         let mut flushed: Vec<(String, Blob)> = Vec::new();
         for (id_hex, text) in blob_stale {
@@ -1262,7 +1087,12 @@ fn gc_room(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use tokio::sync::mpsc;
+
     use super::*;
+    use crate::models::tree::Node;
+    // The connection-layer keepalive helper lives in the parent module.
+    use super::super::keepalive_frame;
 
     fn insert_conn(room: &mut RoomState) -> (ObjectId, UnboundedReceiver<Vec<u8>>) {
         let conn_id = ObjectId::new();
@@ -1386,6 +1216,7 @@ mod tests {
         let info = room_info(ObjectId::new(), &room);
         assert_eq!(info.conns, 0);
         assert!(info.empty_secs.is_some());
+        assert!(!info.lsp, "no worker without an LSP config");
     }
 
     #[test]

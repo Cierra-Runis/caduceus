@@ -13,6 +13,7 @@ import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 
 import { useUserMe } from '@/hooks/api/user/me';
+import { useLsp } from '@/hooks/useLsp';
 import { useProjectNodes } from '@/hooks/useProjectNodes';
 import { flushProject, updateProjectSettings } from '@/lib/api/project';
 import { env } from '@/lib/env';
@@ -388,6 +389,14 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
   );
   const entryName = entry ? (entry.split('/').pop() ?? entry) : null;
 
+  // Server-side tinymist diagnostics for this project. Keyed by file path;
+  // the focused file's path (`focusPath`, above) selects its diagnostics for
+  // the editor's squiggles.
+  const { diagnostics: lspDiagnostics, errors, warnings } = useLsp(project.id);
+  const focusedDiagnostics = focusPath
+    ? lspDiagnostics.get(focusPath)
+    : undefined;
+
   return (
     <div className='flex h-screen flex-col'>
       <div className='relative flex min-h-0 flex-1'>
@@ -426,6 +435,7 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         </Separator>
         <EditorPanel
           binary={binaryFile}
+          diagnostics={focusedDiagnostics}
           editorPanelRef={editorPanelRef}
           onCloseTab={closeTab}
           onSelectTab={openFile}
@@ -448,8 +458,10 @@ export function ClientPage({ project }: { project: ProjectDetail }) {
         autoSave={autoSave}
         dirtyCount={dirtyCount}
         entryName={entryName}
+        errors={errors}
         meId={localUser?.id ?? null}
         provider={provider}
+        warnings={warnings}
       />
       <UploadDialog
         onOpenChange={setUploadOpen}

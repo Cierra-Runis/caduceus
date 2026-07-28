@@ -75,6 +75,7 @@
     "status": {
       "collaborators": "{count, plural, =0 {仅你自己} other {# 位协作者}}",
       "live": "已连接",
+      "noProblems": "无问题",
       "offline": "离线",
       "reconnecting": "重连中…",
       "saved": "已保存",
