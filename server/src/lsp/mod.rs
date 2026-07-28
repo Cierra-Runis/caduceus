@@ -11,6 +11,8 @@
 //! build on top; see `docs/Architecture - Compilation and Project Model.md` §3.
 
 use std::collections::HashMap;
+use std::path::Path;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -18,6 +20,7 @@ use serde_json::{Value, json};
 use tokio::io::{
     AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader,
 };
+use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, warn};
 
@@ -151,6 +154,41 @@ impl LspClient {
             "params": params,
         }));
         let _ = self.outgoing.send(frame);
+    }
+}
+
+/// A tinymist LSP subprocess and the client driving it over stdio. Dropping the
+/// worker leaves the child running detached; call [`Worker::shutdown`] to reap
+/// it. One worker serves one room (all its collaborators) in production.
+pub struct Worker {
+    pub client: LspClient,
+    child: Child,
+}
+
+impl Worker {
+    /// Spawn `binary lsp` with piped stdio and wire an [`LspClient`] to it.
+    /// `binary` is the version-pinned tinymist chosen by [`crate::config::LspConfig::binary_for`].
+    /// stderr is discarded; tinymist logs there and we don't surface it in P1.
+    pub fn spawn(
+        binary: &Path,
+    ) -> std::io::Result<(Worker, mpsc::UnboundedReceiver<Notification>)> {
+        let mut child = Command::new(binary)
+            .arg("lsp")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()?;
+        let stdin = child.stdin.take().expect("piped stdin");
+        let stdout = child.stdout.take().expect("piped stdout");
+        let (client, notifications) = LspClient::new(stdout, stdin);
+        Ok((Worker { client, child }, notifications))
+    }
+
+    /// Terminate the worker process and wait for it to exit.
+    pub async fn shutdown(mut self) {
+        let _ = self.child.start_kill();
+        let _ = self.child.wait().await;
     }
 }
 
@@ -315,5 +353,88 @@ mod tests {
         drop(peer_write);
         let err = client.request("ping", json!({})).await.unwrap_err();
         assert!(matches!(err, LspError::Closed));
+    }
+
+    // End-to-end against a real tinymist binary. Ignored by default (no binary
+    // in CI yet); run with the binary path once built:
+    //
+    //   CADUCEUS_TINYMIST_BIN=/path/to/tinymist \
+    //     cargo test -p server --lib lsp:: -- --ignored --nocapture
+    //
+    // Doubles as the P1-0 spike re-validation: drive initialize → pinMain →
+    // publishDiagnostics purely over an in-memory `didOpen`, and assert a broken
+    // doc surfaces a diagnostic with the disk untouched.
+    #[tokio::test]
+    #[ignore = "requires a tinymist binary; set CADUCEUS_TINYMIST_BIN"]
+    async fn real_tinymist_reports_diagnostics_for_a_broken_doc() {
+        use std::time::Duration;
+
+        let bin = std::env::var("CADUCEUS_TINYMIST_BIN")
+            .expect("set CADUCEUS_TINYMIST_BIN to the tinymist binary path");
+        // A workspace root on disk (the file itself is only ever an in-memory
+        // overlay — nothing is written there).
+        let root = std::env::temp_dir().join("caduceus-lsp-it");
+        std::fs::create_dir_all(&root).unwrap();
+        let root_uri = format!("file://{}", root.display());
+        let main_uri = format!("file://{}/main.typ", root.display());
+
+        let (worker, mut notes) = Worker::spawn(Path::new(&bin)).unwrap();
+
+        worker
+            .client
+            .request(
+                "initialize",
+                json!({
+                    "processId": std::process::id(),
+                    "rootUri": root_uri,
+                    "capabilities": {},
+                }),
+            )
+            .await
+            .expect("initialize");
+        worker.client.notify("initialized", json!({}));
+
+        // A Typst source that references an undefined variable → an error.
+        worker.client.notify(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": main_uri,
+                    "languageId": "typst",
+                    "version": 1,
+                    "text": "#let a = 1\n#nope\n",
+                }
+            }),
+        );
+        // Select it as the compile main so diagnostics are pushed for it.
+        let _ = worker
+            .client
+            .request(
+                "workspace/executeCommand",
+                json!({ "command": "tinymist.pinMain", "arguments": [main_uri] }),
+            )
+            .await;
+
+        // Await a non-empty publishDiagnostics for our file (bounded).
+        let found = tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                let Some(note) = notes.recv().await else {
+                    return false;
+                };
+                if note.method == "textDocument/publishDiagnostics"
+                    && note.params["uri"] == json!(main_uri)
+                    && note.params["diagnostics"]
+                        .as_array()
+                        .is_some_and(|d| !d.is_empty())
+                {
+                    return true;
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for diagnostics");
+
+        assert!(found, "expected a diagnostic for the broken document");
+        worker.shutdown().await;
     }
 }
