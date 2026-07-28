@@ -96,9 +96,7 @@ impl RoomWorker {
 
     /// The current diagnostics per file, for priming a just-connected client.
     pub fn latest(&self) -> Vec<FileDiagnostics> {
-        self.latest
-            .lock()
-            .unwrap()
+        lock(&self.latest)
             .iter()
             .map(|(path, diagnostics)| FileDiagnostics {
                 path: path.clone(),
@@ -112,7 +110,7 @@ impl RoomWorker {
     /// manager can call it inline as CRDT text updates arrive.
     pub fn did_change(&self, path: &str, text: &str) {
         let uri = file_uri(&self.root, path);
-        let mut versions = self.versions.lock().unwrap();
+        let mut versions = lock(&self.versions);
         match versions.get_mut(path) {
             Some(version) => {
                 *version += 1;
@@ -164,12 +162,19 @@ fn spawn_pump(
                 continue; // a uri outside the project (e.g. a package) — ignore
             };
             let diagnostics = note.params["diagnostics"].clone();
-            latest.lock().unwrap().insert(path.clone(), diagnostics.clone());
+            lock(&latest).insert(path.clone(), diagnostics.clone());
             // `send` errors only when there are no subscribers; that's fine, the
             // latest cache still primes the next one.
             let _ = tx.send(FileDiagnostics { path, diagnostics });
         }
     })
+}
+
+/// Lock a std mutex, recovering the guard if a previous holder panicked rather
+/// than propagating the poison (these mutexes guard plain maps with no
+/// invariant a panic could have broken).
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Map a `file://<root>/<path>` uri back to its project-relative `<path>`, or

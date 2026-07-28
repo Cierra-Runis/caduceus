@@ -26,9 +26,11 @@ use yrs::{
     updates::encoder::{Encode, Encoder, EncoderV1},
 };
 
-use crate::config::WsConfig;
+use crate::config::{LspConfig, WsConfig};
 use crate::crdt::snapshot::encode_doc;
 use crate::crdt::{nodes_map, read_tree, write_tree};
+use crate::lsp::LspError;
+use crate::lsp::room::RoomWorker;
 use crate::models::response::ApiResponse;
 use crate::models::tree::{Node, ProjectTree};
 use crate::models::user::UserClaims;
@@ -77,6 +79,7 @@ pub async fn ws(
     project_server: web::Data<ProjectServer>,
     ws_config: web::Data<WsConfig>,
     store: web::Data<ProjectStore>,
+    lsp_config: web::Data<Option<LspConfig>>,
     user: UserClaims,
 ) -> Result<HttpResponse, WebSocketError> {
     let project_id =
@@ -109,6 +112,23 @@ pub async fn ws(
     let store: &ProjectStore = store.get_ref();
     let project_hex = project_id.to_hex();
     let snapshot = store.get_snapshot(&project_hex).await.ok().flatten();
+
+    // How to spawn this project's tinymist worker (if LSP is configured and the
+    // pinned version has a binary). Resolved here where the `Project` is in hand;
+    // computed before `project.tree` is consumed below.
+    let lsp = lsp_config.get_ref().as_ref().and_then(|cfg| {
+        let version = project.pinned_version.as_ref().map(|v| v.to_string());
+        let binary = cfg.binary_for(version.as_deref())?.to_path_buf();
+        let entry_path = project
+            .entry
+            .and_then(|id| project.tree.get(&id.to_hex()).map(|e| e.path.clone()));
+        Some(LspSpawnInfo {
+            binary,
+            root: cfg.workspace_root.join(&project_hex),
+            entry_path,
+        })
+    });
+
     let tree = ProjectTree::from_nodes(project.tree.into_iter().map(|(id, entry)| Node {
         id,
         parent: entry.parent,
@@ -129,6 +149,7 @@ pub async fn ws(
         session,
         stream,
         ws_config.as_ref().clone(),
+        lsp,
     ));
 
     Ok(res)
@@ -148,6 +169,92 @@ pub async fn rooms(
     HttpResponse::Ok().json(ApiResponse::success("Live rooms", rooms))
 }
 
+/// `GET /ws/project/{id}/lsp` — a per-browser LSP session bridged to the
+/// project's tinymist worker. Frames are vscode-ws-jsonrpc style (one bare JSON
+/// message per websocket text frame). Diagnostics are pushed to the browser;
+/// its requests are forwarded to the worker; its document-sync notifications are
+/// dropped (the room owns document sync).
+pub async fn ws_lsp(
+    id: web::Path<String>,
+    req: HttpRequest,
+    stream: web::Payload,
+    data: actix_web::web::Data<crate::AppState>,
+    project_server: web::Data<ProjectServer>,
+    user: UserClaims,
+) -> Result<HttpResponse, WebSocketError> {
+    let project_id =
+        ObjectId::parse_str(id.into_inner()).map_err(|_| WebSocketError::ProjectNotFound)?;
+    match data.project_service.accessible(project_id, user.sub).await {
+        Ok(true) => {}
+        Ok(false) => return Err(WebSocketError::Forbidden),
+        Err(_) => return Err(WebSocketError::ProjectNotFound),
+    };
+    let (res, session, stream) =
+        actix_ws::handle(&req, stream).map_err(WebSocketError::HandshakeFailed)?;
+    rt::spawn(handle_lsp_ws(
+        project_server.as_ref().clone(),
+        project_id,
+        session,
+        stream,
+    ));
+    Ok(res)
+}
+
+/// Per-connection LSP bridge loop: browser frames become [`Command::LspData`],
+/// and frames the manager routes back (diagnostics, query responses) arrive on
+/// `out_rx` and are written to the socket as text.
+async fn handle_lsp_ws(
+    project_server: ProjectServer,
+    project_id: ObjectId,
+    mut session: actix_ws::Session,
+    msg_stream: actix_ws::MessageStream,
+) {
+    let conn_id = ObjectId::new();
+    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    project_server.lsp_connect(project_id, conn_id, out_tx);
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "lsp session opened");
+
+    let mut msg_stream = msg_stream
+        .max_frame_size(1024 * 1024)
+        .aggregate_continuations()
+        .max_continuation_size(8 * 1024 * 1024);
+
+    loop {
+        tokio::select! {
+            Some(Ok(msg)) = msg_stream.next() => {
+                match msg {
+                    AggregatedMessage::Text(text) => {
+                        project_server.lsp_data(project_id, conn_id, text.as_bytes().to_vec());
+                    }
+                    AggregatedMessage::Binary(bin) => {
+                        project_server.lsp_data(project_id, conn_id, bin.to_vec());
+                    }
+                    AggregatedMessage::Ping(bytes) => {
+                        if session.pong(&bytes).await.is_err() { break; }
+                    }
+                    AggregatedMessage::Close(_) => break,
+                    _ => {}
+                }
+            }
+            msg = out_rx.recv() => {
+                match msg {
+                    // vscode-ws-jsonrpc expects one JSON message per text frame.
+                    Some(bytes) => match String::from_utf8(bytes) {
+                        Ok(text) => { if session.text(text).await.is_err() { break; } }
+                        Err(_) => continue,
+                    },
+                    None => break,
+                }
+            }
+            else => break,
+        }
+    }
+
+    project_server.lsp_leave(project_id, conn_id);
+    debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "lsp session closed");
+    let _ = session.close(None).await;
+}
+
 /// Per-connection loop. Bridges this WebSocket to the single-threaded room
 /// manager: client frames are forwarded as [`Command::Data`], and messages the
 /// manager routes back (initial sync, peers' updates, awareness) arrive on
@@ -160,6 +267,7 @@ async fn handle_ws(
     mut session: actix_ws::Session,
     msg_stream: actix_ws::MessageStream,
     ws_config: WsConfig,
+    lsp: Option<LspSpawnInfo>,
 ) {
     let heartbeat_interval = Duration::from_secs(ws_config.heartbeat_interval_secs);
     let client_timeout = Duration::from_secs(ws_config.client_timeout_secs);
@@ -172,7 +280,7 @@ async fn handle_ws(
 
     let conn_id = ObjectId::new();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    project_server.join(project_id, snapshot, tree, conn_id, out_tx);
+    project_server.join(project_id, snapshot, tree, conn_id, out_tx, lsp);
     debug!(project = %project_id.to_hex(), conn = %conn_id.to_hex(), "ws connection opened");
 
     let mut msg_stream = msg_stream
@@ -265,6 +373,19 @@ fn keepalive_frame() -> Vec<u8> {
 /// Commands sent from connection handlers (any worker thread) to the
 /// single-threaded room manager. Everything here is `Send`; the `yrs` document
 /// itself never leaves the manager thread.
+/// Everything the room manager needs to spawn a tinymist worker for a project,
+/// resolved at handshake time (where the `Project` and `LspConfig` are in hand).
+/// `None` when LSP is unconfigured or the pinned version has no binary.
+#[derive(Clone)]
+pub struct LspSpawnInfo {
+    /// The version-pinned tinymist binary for this project.
+    pub binary: std::path::PathBuf,
+    /// This project's staging root (`workspace_root/<project_hex>`).
+    pub root: std::path::PathBuf,
+    /// The compile entry's tree path, if any (for `tinymist.pinMain`).
+    pub entry_path: Option<String>,
+}
+
 enum Command {
     Join {
         project_id: ObjectId,
@@ -275,6 +396,8 @@ enum Command {
         tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
+        /// How to spawn this project's tinymist worker, if LSP is enabled.
+        lsp: Option<LspSpawnInfo>,
     },
     Data {
         project_id: ObjectId,
@@ -321,6 +444,41 @@ enum Command {
     Inspect {
         reply: oneshot::Sender<Vec<RoomInfo>>,
     },
+    /// A browser opened an LSP session (`/ws/project/{id}/lsp`). Register its out
+    /// channel so the room's worker diagnostics fan out to it, priming it with
+    /// the latest per-file diagnostics.
+    LspConnect {
+        project_id: ObjectId,
+        conn_id: ObjectId,
+        out: UnboundedSender<Vec<u8>>,
+    },
+    /// A raw LSP frame (bare JSON, vscode-ws-jsonrpc style) from a browser. A
+    /// request is forwarded to the room's worker and its response routed back to
+    /// this connection; the browser's document-sync notifications are dropped —
+    /// the room owns document sync.
+    LspData {
+        project_id: ObjectId,
+        conn_id: ObjectId,
+        data: Vec<u8>,
+    },
+    /// A browser LSP session closed.
+    LspLeave {
+        project_id: ObjectId,
+        conn_id: ObjectId,
+    },
+    /// The room's worker finished starting (async); store it on the room and
+    /// begin forwarding its diagnostics.
+    LspReady {
+        project_id: ObjectId,
+        worker: RoomWorker,
+    },
+    /// Diagnostics from a room's worker (forwarded off its broadcast), to fan out
+    /// to that room's LSP connections as a `publishDiagnostics` notification.
+    LspDiagnostics {
+        project_id: ObjectId,
+        path: String,
+        diagnostics: serde_json::Value,
+    },
 }
 
 /// A read-only view of one live room, safe to send off the manager thread
@@ -342,6 +500,10 @@ pub struct RoomInfo {
     pub nodes: usize,
     /// Files that currently carry a non-empty text overlay in the doc.
     pub text_overlays: usize,
+    /// Whether a tinymist LSP worker is running for this room.
+    pub lsp: bool,
+    /// Browser LSP sessions currently connected.
+    pub lsp_conns: usize,
 }
 
 /// Handle to the collaboration subsystem, stored in actix app data. Cheap to
@@ -385,6 +547,7 @@ impl ProjectServer {
         tree: ProjectTree,
         conn_id: ObjectId,
         out: UnboundedSender<Vec<u8>>,
+        lsp: Option<LspSpawnInfo>,
     ) {
         let _ = self.cmd_tx.send(Command::Join {
             project_id,
@@ -392,6 +555,30 @@ impl ProjectServer {
             tree,
             conn_id,
             out,
+            lsp,
+        });
+    }
+
+    fn lsp_connect(&self, project_id: ObjectId, conn_id: ObjectId, out: UnboundedSender<Vec<u8>>) {
+        let _ = self.cmd_tx.send(Command::LspConnect {
+            project_id,
+            conn_id,
+            out,
+        });
+    }
+
+    fn lsp_data(&self, project_id: ObjectId, conn_id: ObjectId, data: Vec<u8>) {
+        let _ = self.cmd_tx.send(Command::LspData {
+            project_id,
+            conn_id,
+            data,
+        });
+    }
+
+    fn lsp_leave(&self, project_id: ObjectId, conn_id: ObjectId) {
+        let _ = self.cmd_tx.send(Command::LspLeave {
+            project_id,
+            conn_id,
         });
     }
 
@@ -453,6 +640,22 @@ struct RoomState {
     /// idle past `room_idle_secs` is evicted from memory (freeing RAM); the next
     /// joiner rebuilds it verbatim from the snapshot.
     empty_since: Option<Instant>,
+    /// This room's tinymist worker, once it has finished starting (`None` while
+    /// LSP is unconfigured or the worker is still spawning). The room is the
+    /// worker's sole document owner — it mirrors edits in via `did_change`.
+    lsp: Option<RoomWorker>,
+    /// The worker's workspace root, for translating between the worker's
+    /// `file://<root>/<path>` URIs and the browser's root-relative `file:///…`.
+    lsp_root: Option<std::path::PathBuf>,
+    /// Browser LSP sessions (`/ws/project/{id}/lsp`), for fanning out diagnostics
+    /// and routing query responses back to the right connection.
+    lsp_conns: HashMap<ObjectId, UnboundedSender<Vec<u8>>>,
+    /// Whether a worker spawn is in flight, so a second joiner doesn't start a
+    /// duplicate.
+    lsp_starting: bool,
+    /// Last text mirrored to the worker per file, so an edit only re-`did_change`s
+    /// files whose text actually changed.
+    lsp_mirror: HashMap<String, String>,
 }
 
 impl RoomState {
@@ -474,6 +677,11 @@ impl RoomState {
             dirty: false, // the snapshot we loaded is already durable
             blobs_pending: false,
             empty_since: Some(Instant::now()),
+            lsp: None,
+            lsp_root: None,
+            lsp_conns: HashMap::new(),
+            lsp_starting: false,
+            lsp_mirror: HashMap::new(),
         }
     }
 
@@ -500,6 +708,11 @@ impl RoomState {
             dirty: true, // a fresh cold-start needs an initial snapshot
             blobs_pending: false,
             empty_since: Some(Instant::now()),
+            lsp: None,
+            lsp_root: None,
+            lsp_conns: HashMap::new(),
+            lsp_starting: false,
+            lsp_mirror: HashMap::new(),
         }
     }
 }
@@ -558,6 +771,171 @@ fn room_info(project_id: ObjectId, room: &RoomState) -> RoomInfo {
         empty_secs: room.empty_since.map(|since| since.elapsed().as_secs()),
         nodes: node_count,
         text_overlays,
+        lsp: room.lsp.is_some(),
+        lsp_conns: room.lsp_conns.len(),
+    }
+}
+
+/// The room's current text files as `(tree path, text)`, for mirroring into the
+/// worker. Binary files (no text overlay) are skipped. `nodes_map` before the
+/// read txn, per the yrs borrow rules.
+fn room_text_files(room: &RoomState) -> Vec<(String, String)> {
+    let doc = room.awareness.doc();
+    let nodes = nodes_map(doc);
+    let txn = doc.transact();
+    let Ok(tree) = read_tree(&txn, &nodes) else {
+        return Vec::new();
+    };
+    tree.iter()
+        .filter(|n| n.is_file())
+        .filter_map(|n| {
+            let text = txn.get_text(n.id.as_str())?.get_string(&txn);
+            let path = tree.path_of(&n.id).ok()?;
+            Some((path, text))
+        })
+        .collect()
+}
+
+/// Start this room's tinymist worker once, off the manager thread: snapshot the
+/// current text files to mirror, spawn [`RoomWorker::start`], forward its
+/// diagnostics back as [`Command::LspDiagnostics`], and hand the ready worker to
+/// the manager via [`Command::LspReady`]. A no-op when LSP is unconfigured for
+/// the project or a worker is already running/starting.
+fn ensure_worker(
+    project_id: ObjectId,
+    room: &mut RoomState,
+    lsp: Option<LspSpawnInfo>,
+    cmd_tx: &UnboundedSender<Command>,
+) {
+    let Some(info) = lsp else {
+        return;
+    };
+    if room.lsp.is_some() || room.lsp_starting {
+        return;
+    }
+    let files = room_text_files(room);
+    // Seed the mirror cache so later edits only re-send files that changed.
+    room.lsp_mirror = files.iter().cloned().collect();
+    room.lsp_root = Some(info.root.clone());
+    room.lsp_starting = true;
+
+    let cmd_tx = cmd_tx.clone();
+    tokio::task::spawn_local(async move {
+        match RoomWorker::start(&info.binary, info.root, &files, info.entry_path.as_deref()).await {
+            Ok(worker) => {
+                // Pump the worker's diagnostics into the manager for fan-out.
+                let mut diagnostics = worker.subscribe();
+                let diag_tx = cmd_tx.clone();
+                tokio::task::spawn_local(async move {
+                    while let Ok(fd) = diagnostics.recv().await {
+                        let sent = diag_tx.send(Command::LspDiagnostics {
+                            project_id,
+                            path: fd.path,
+                            diagnostics: fd.diagnostics,
+                        });
+                        if sent.is_err() {
+                            break;
+                        }
+                    }
+                });
+                let _ = cmd_tx.send(Command::LspReady { project_id, worker });
+            }
+            Err(e) => warn!("lsp worker start failed for {}: {e}", project_id.to_hex()),
+        }
+    });
+}
+
+/// Mirror the room's current text into its worker after a doc-changing frame:
+/// `did_change` only the files whose text differs from what was last sent
+/// (tracked in `lsp_mirror`), so an edit to one file doesn't re-push them all.
+fn mirror_text_to_worker(room: &mut RoomState) {
+    if room.lsp.is_none() {
+        return;
+    }
+    for (path, text) in room_text_files(room) {
+        if room.lsp_mirror.get(&path) == Some(&text) {
+            continue; // unchanged since last mirror
+        }
+        if let Some(worker) = &room.lsp {
+            worker.did_change(&path, &text);
+        }
+        room.lsp_mirror.insert(path, text);
+    }
+}
+
+/// One browser LSP frame (bare JSON, vscode-ws-jsonrpc). A *request* is
+/// forwarded to the room's worker and its response routed back to `conn_id`,
+/// translating the browser's root-relative `file:///…` URIs to the worker's
+/// `file://<root>/…` and back. The browser's document-sync *notifications*
+/// (didOpen/didChange/didClose) are dropped — the room owns document sync.
+fn handle_lsp_data(room: &RoomState, conn_id: ObjectId, data: Vec<u8>) {
+    let (Some(worker), Some(root)) = (&room.lsp, &room.lsp_root) else {
+        return;
+    };
+    let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&data) else {
+        return;
+    };
+    // Only requests (id + method) are forwarded; client notifications are dropped.
+    let (Some(id), Some(method)) = (
+        msg.get("id").cloned(),
+        msg.get("method").and_then(|m| m.as_str()),
+    ) else {
+        return;
+    };
+    let method = method.to_string();
+    let worker_prefix = format!("file://{}/", root.display());
+    let params = rewrite_uris(
+        msg.get("params").cloned().unwrap_or(serde_json::Value::Null),
+        "file:///",
+        &worker_prefix,
+    );
+    let Some(out) = room.lsp_conns.get(&conn_id).cloned() else {
+        return;
+    };
+    let client = worker.client();
+    tokio::task::spawn_local(async move {
+        let response = match client.request(&method, params).await {
+            Ok(result) => serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": rewrite_uris(result, &worker_prefix, "file:///"),
+            }),
+            Err(LspError::Rpc(error)) => serde_json::json!({
+                "jsonrpc": "2.0", "id": id, "error": error,
+            }),
+            Err(LspError::Closed) => serde_json::json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32000, "message": "lsp worker unavailable" },
+            }),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&response) {
+            let _ = out.send(bytes);
+        }
+    });
+}
+
+/// A `publishDiagnostics` frame for a browser: the file's tree `path` becomes a
+/// root-relative `file:///<path>` URI (the browser's workspace root is `/`).
+fn publish_diagnostics_frame(path: &str, diagnostics: &serde_json::Value) -> Vec<u8> {
+    let note = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/publishDiagnostics",
+        "params": { "uri": format!("file:///{path}"), "diagnostics": diagnostics },
+    });
+    serde_json::to_vec(&note).unwrap_or_default()
+}
+
+/// Rewrite every `from` URI prefix to `to` throughout a JSON value. A blunt
+/// string substitution over the serialized form — enough for P1, where the only
+/// `file://` strings are document URIs and the two roots never collide.
+fn rewrite_uris(value: serde_json::Value, from: &str, to: &str) -> serde_json::Value {
+    let text = value.to_string();
+    if !text.contains(from) {
+        return value;
+    }
+    match serde_json::from_str(&text.replace(from, to)) {
+        Ok(rewritten) => rewritten,
+        Err(_) => value,
     }
 }
 
@@ -586,7 +964,7 @@ async fn room_manager(
         tokio::select! {
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(Command::Join { project_id, snapshot, tree, conn_id, out }) => {
+                    Some(Command::Join { project_id, snapshot, tree, conn_id, out, lsp }) => {
                         // Track whether this join *builds* the room, so a room
                         // built from a stripped snapshot or cold-started from the
                         // tree refills its text from blobs once.
@@ -614,6 +992,9 @@ async fn room_manager(
                         if fresh {
                             rematerialize(project_id, room, &store, &cmd_tx);
                         }
+                        // Lazily start this room's tinymist worker on first join
+                        // (idempotent: skipped if one is running or starting).
+                        ensure_worker(project_id, room, lsp, &cmd_tx);
                     }
                     Some(Command::Data { project_id, conn_id, data }) => {
                         if let Some(room) = rooms.get_mut(&project_id) {
@@ -690,6 +1071,51 @@ async fn room_manager(
                             .collect();
                         let _ = reply.send(infos);
                     }
+                    Some(Command::LspReady { project_id, worker }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            room.lsp_starting = false;
+                            // The room may have emptied while the worker started;
+                            // if so, drop it right back (shutdown off-thread).
+                            if room.conns.is_empty() {
+                                tokio::task::spawn_local(worker.shutdown());
+                            } else {
+                                room.lsp = Some(worker);
+                                info!(project = %project_id.to_hex(), "lsp worker ready");
+                            }
+                        } else {
+                            tokio::task::spawn_local(worker.shutdown());
+                        }
+                    }
+                    Some(Command::LspConnect { project_id, conn_id, out }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            // Prime the new session with the current diagnostics
+                            // before streaming live ones.
+                            if let Some(worker) = &room.lsp {
+                                for fd in worker.latest() {
+                                    let _ = out.send(publish_diagnostics_frame(&fd.path, &fd.diagnostics));
+                                }
+                            }
+                            room.lsp_conns.insert(conn_id, out);
+                        }
+                    }
+                    Some(Command::LspData { project_id, conn_id, data }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            handle_lsp_data(room, conn_id, data);
+                        }
+                    }
+                    Some(Command::LspLeave { project_id, conn_id }) => {
+                        if let Some(room) = rooms.get_mut(&project_id) {
+                            room.lsp_conns.remove(&conn_id);
+                        }
+                    }
+                    Some(Command::LspDiagnostics { project_id, path, diagnostics }) => {
+                        if let Some(room) = rooms.get(&project_id) {
+                            let frame = publish_diagnostics_frame(&path, &diagnostics);
+                            for out in room.lsp_conns.values() {
+                                let _ = out.send(frame.clone());
+                            }
+                        }
+                    }
                     None => break,
                 }
             }
@@ -729,6 +1155,10 @@ async fn room_manager(
                             .map(|since| since.elapsed().as_secs())
                             .unwrap_or(0);
                         strip_text(room);
+                        // Reap this room's tinymist worker along with its doc.
+                        if let Some(worker) = room.lsp.take() {
+                            tokio::task::spawn_local(worker.shutdown());
+                        }
                         let bytes = encode_doc(room.awareness.doc());
                         let store = store.clone();
                         let pid = project_id.to_hex();
@@ -823,6 +1253,8 @@ fn handle_data(room: &mut RoomState, conn_id: ObjectId, data: Vec<u8>) {
         // included; it is a cheap map scan at current scale — gate it on a
         // nodes-map observer if that ever shows up in a profile.
         reconcile_tree(room);
+        // Mirror changed text into the tinymist worker (no-op without one).
+        mirror_text_to_worker(room);
     }
     if is_awareness {
         // Track which connection last reported each awareness client id, so
@@ -1386,6 +1818,30 @@ mod tests {
         let info = room_info(ObjectId::new(), &room);
         assert_eq!(info.conns, 0);
         assert!(info.empty_secs.is_some());
+        assert!(!info.lsp, "no worker without an LSP config");
+    }
+
+    #[test]
+    fn rewrite_uris_swaps_root_prefixes_both_ways() {
+        let browser = serde_json::json!({ "textDocument": { "uri": "file:///main.typ" } });
+        // Browser (root = /) → worker (root = /tmp/x).
+        let worker = rewrite_uris(browser.clone(), "file:///", "file:///tmp/x/");
+        assert_eq!(worker["textDocument"]["uri"], "file:///tmp/x/main.typ");
+        // …and back is exactly the original.
+        let back = rewrite_uris(worker, "file:///tmp/x/", "file:///");
+        assert_eq!(back, browser);
+    }
+
+    #[test]
+    fn publish_diagnostics_frame_uses_a_root_relative_uri() {
+        let frame = publish_diagnostics_frame(
+            "chapters/intro.typ",
+            &serde_json::json!([{ "message": "oops" }]),
+        );
+        let v: serde_json::Value = serde_json::from_slice(&frame).unwrap();
+        assert_eq!(v["method"], "textDocument/publishDiagnostics");
+        assert_eq!(v["params"]["uri"], "file:///chapters/intro.typ");
+        assert_eq!(v["params"]["diagnostics"][0]["message"], "oops");
     }
 
     #[test]
