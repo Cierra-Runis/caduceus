@@ -72,6 +72,7 @@
     "status": {
       "collaborators": "{count, plural, =0 {自分のみ} other {# 人のコラボレーター}}",
       "live": "接続済み",
+      "noProblems": "問題なし",
       "offline": "オフライン",
       "reconnecting": "再接続中…",
       "saved": "保存済み",

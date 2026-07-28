@@ -7,6 +7,13 @@
 // hover, …), and receives `publishDiagnostics`. URIs are root-relative
 // `file:///<path>`; the server translates to the worker's workspace root.
 
+/// Called whenever the server publishes diagnostics for a file (`path` is the
+/// project-relative tree path; an empty array clears the file).
+export type DiagnosticsHandler = (
+  path: string,
+  diagnostics: LspDiagnostic[],
+) => void;
+
 /// One LSP diagnostic for a file (a subset of the spec — what the UI needs).
 export interface LspDiagnostic {
   message: string;
@@ -28,21 +35,9 @@ export interface LspRange {
   start: LspPosition;
 }
 
-/// Called whenever the server publishes diagnostics for a file (`path` is the
-/// project-relative tree path; an empty array clears the file).
-export type DiagnosticsHandler = (
-  path: string,
-  diagnostics: LspDiagnostic[],
-) => void;
-
 interface Pending {
   reject: (reason: unknown) => void;
   resolve: (value: unknown) => void;
-}
-
-// Strip the browser's root-relative `file:///` prefix back to a tree path.
-function uriToPath(uri: string): string {
-  return uri.replace(/^file:\/\/\//, '');
 }
 
 export class LspClient {
@@ -130,4 +125,9 @@ export class LspClient {
       this.ws.send(JSON.stringify(message));
     }
   }
+}
+
+// Strip the browser's root-relative `file:///` prefix back to a tree path.
+function uriToPath(uri: string): string {
+  return uri.replace(/^file:\/\/\//, '');
 }
