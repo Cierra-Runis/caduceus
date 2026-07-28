@@ -355,10 +355,11 @@ mod tests {
         assert!(matches!(err, LspError::Closed));
     }
 
-    // End-to-end against a real tinymist binary. Skipped (a no-op) unless
-    // `CADUCEUS_TINYMIST_BIN` points at one — the CI coverage job runs with
-    // `--include-ignored`, and there is no tinymist binary there, so this must
-    // skip cleanly rather than panic. Run it locally with the binary:
+    // End-to-end against a real tinymist binary. This runs for real in the
+    // dedicated "LSP Integration" CI workflow, which builds tinymist and sets
+    // `CADUCEUS_TINYMIST_BIN`; the coverage job excludes it via `--skip`. When
+    // the env var is unset (a local `cargo test`, or a safety net) it skips
+    // cleanly rather than panicking. Run it locally with the binary:
     //
     //   CADUCEUS_TINYMIST_BIN=/path/to/tinymist \
     //     cargo test -p server --lib lsp:: -- --ignored --nocapture

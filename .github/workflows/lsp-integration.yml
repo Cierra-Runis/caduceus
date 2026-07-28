@@ -1,0 +1,81 @@
+name: LSP Integration
+
+permissions:
+  contents: read
+
+# Drives the tinymist LSP end-to-end (initialize → didOpen → pinMain →
+# publishDiagnostics) against a REAL tinymist binary, so the integration test is
+# actually exercised in CI rather than skipped. Split into its own workflow
+# because obtaining the binary is heavy: tinymist can't be a library dependency
+# and ships no usable published binary, so we build it from a pinned tag. The
+# build is cached on the tag, so it's only paid when the pinned version changes.
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'server/**'
+      - 'scripts/build-tinymist.sh'
+      - '.github/workflows/lsp-integration.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'server/**'
+      - 'scripts/build-tinymist.sh'
+      - '.github/workflows/lsp-integration.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+  # The tinymist tag to test against. Bump in lockstep with the server's
+  # supported Typst version(s); changing it invalidates the binary cache.
+  TINYMIST_TAG: v0.15.2
+
+jobs:
+  lsp-integration:
+    name: LSP Integration (tinymist)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Cache the built binary, keyed on the tag. A hit skips the ~10-minute
+      # build entirely; a miss (first run, or a version bump) pays it once.
+      - name: Cache tinymist binary
+        id: tinymist
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/tinymist
+          key: tinymist-${{ env.TINYMIST_TAG }}-${{ runner.os }}
+
+      # Build from the pinned tag on a cache miss. The tinymist checkout pins its
+      # own Rust toolchain (rust-toolchain.toml), which rustup installs on demand
+      # — we don't force a toolchain here so its pin wins for its own build.
+      - name: Build tinymist ${{ env.TINYMIST_TAG }}
+        if: steps.tinymist.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$TINYMIST_TAG" \
+            https://github.com/Myriad-Dreamin/tinymist.git /tmp/tinymist-src
+          cd /tmp/tinymist-src
+          cargo build --release --locked -p tinymist-cli
+          mkdir -p "$HOME/.local/tinymist"
+          install -m0755 target/release/tinymist "$HOME/.local/tinymist/tinymist"
+
+      # Cache the server's own build separately from the tinymist build.
+      - name: Cache server build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/target
+          key: ${{ runner.os }}-cargo-lsp-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lsp-
+
+      # Run only the LSP integration test, pointed at the real binary. No Mongo /
+      # MinIO needed — the worker talks to tinymist over stdio, nothing else.
+      - name: Run the LSP integration test
+        working-directory: ./server
+        env:
+          CADUCEUS_TINYMIST_BIN: /home/runner/.local/tinymist/tinymist
+        run: cargo test --lib lsp::tests::real_tinymist -- --ignored --nocapture

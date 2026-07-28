@@ -74,7 +74,10 @@ jobs:
         # `--include-ignored` runs the MongoDB-backed repo/database integration
         # tests, which are `#[ignore]`d so a local `cargo test` (no MongoDB)
         # stays green. CI provisions MongoDB above, so it runs the full suite.
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info -- --include-ignored
+        # The tinymist LSP integration test is excluded here — it needs a
+        # tinymist binary this job doesn't have, and runs for real in the
+        # dedicated "LSP Integration" workflow instead.
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path ./target/lcov.info -- --include-ignored --skip real_tinymist_reports_diagnostics_for_a_broken_doc
 
       # https://github.com/codecov/codecov-action
       - name: Upload coverage reports to Codecov
