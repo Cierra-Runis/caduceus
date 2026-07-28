@@ -93,8 +93,11 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(project_server.clone()))
             .app_data(web::Data::new(ws_config.clone()))
             .app_data(web::Data::new(store.clone()))
-            // The tinymist/LSP config (or `None` when the feature is off); the
-            // ws handshake reads it to resolve a project's worker binary.
+            // Server-side tinymist/LSP config. `None` only when this deployment
+            // has no tinymist binaries configured (a bare checkout / CI) — not a
+            // feature toggle: server-side compilation is the intended path,
+            // replacing the client WASM compiler. The ws handshake reads it to
+            // resolve a project's worker binary.
             .app_data(web::Data::new(config.lsp.clone()))
             .configure(|cfg| server::routes::configure(cfg, jwt_secret.clone()))
             .wrap(actix_web::middleware::Logger::default())

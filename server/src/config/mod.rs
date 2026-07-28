@@ -95,11 +95,17 @@ impl StorageConfig {
 }
 
 /// Server-side Typst compilation via tinymist workers (LSP + diagnostics).
-/// Optional so a checkout runs without any tinymist binaries: absent disables
-/// the feature entirely. tinymist is obtained as a **subprocess** binary — the
-/// crate is not usable as a library dependency (it builds only against a
-/// patched Typst fork), and crates.io ships no binary — so each supported Typst
-/// version maps to a `tinymist` binary built and staged out of band (see
+///
+/// Server-side tinymist is the **intended** compile/analysis path — it replaces
+/// the client-side WASM compiler, giving real language intelligence, consistent
+/// fonts/packages, and version pinning. This is `Option` only so a checkout
+/// without any tinymist binaries staged (local dev, CI) still boots; it is not a
+/// feature toggle to leave off in a real deployment.
+///
+/// tinymist is obtained as a **subprocess** binary — the crate is not usable as
+/// a library dependency (it builds only against a patched Typst fork), and
+/// crates.io ships no binary — so each supported Typst version maps to a
+/// `tinymist` binary built and staged out of band (see
 /// `scripts/build-tinymist.sh`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct LspConfig {

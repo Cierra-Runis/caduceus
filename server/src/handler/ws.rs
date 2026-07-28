@@ -863,11 +863,70 @@ fn mirror_text_to_worker(room: &mut RoomState) {
     }
 }
 
-/// One browser LSP frame (bare JSON, vscode-ws-jsonrpc). A *request* is
-/// forwarded to the room's worker and its response routed back to `conn_id`,
-/// translating the browser's root-relative `file:///…` URIs to the worker's
-/// `file://<root>/…` and back. The browser's document-sync *notifications*
-/// (didOpen/didChange/didClose) are dropped — the room owns document sync.
+/// What to do with one browser LSP message. The room is the sole document owner
+/// and the worker is already `initialize`d, so the client's lifecycle and
+/// document-sync traffic must not reach the worker.
+enum LspDispatch {
+    /// Answer this request locally (id + method are handled by the bridge, e.g.
+    /// `initialize`/`shutdown`) — never forwarded to the worker.
+    Reply(serde_json::Value),
+    /// Forward this query to the worker; route the response back under `id`.
+    Forward {
+        id: serde_json::Value,
+        method: String,
+        params: serde_json::Value,
+    },
+    /// Drop it (a notification the room owns, or an unhandled request-less frame).
+    Drop,
+}
+
+/// Classify one browser LSP message. `initialize` is answered with the bridge's
+/// synthetic capabilities (the worker was already initialized by the room);
+/// `shutdown` acks; the client's lifecycle/document-sync notifications are
+/// dropped; every other request is forwarded.
+fn classify_lsp_message(msg: &serde_json::Value) -> LspDispatch {
+    let method = msg.get("method").and_then(|m| m.as_str());
+    let id = msg.get("id").cloned();
+    match (method, id) {
+        (Some("initialize"), Some(id)) => LspDispatch::Reply(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "capabilities": {
+                    "textDocumentSync": 1,
+                    "completionProvider": { "triggerCharacters": ["#", ".", "@", "("] },
+                    "hoverProvider": true,
+                    "definitionProvider": true,
+                    "documentSymbolProvider": true,
+                },
+                "serverInfo": { "name": "caduceus-tinymist-bridge" },
+            },
+        })),
+        (Some("shutdown"), Some(id)) => {
+            LspDispatch::Reply(serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": null }))
+        }
+        // The room owns document sync and the lifecycle; drop these.
+        (
+            Some(
+                "initialized" | "exit" | "textDocument/didOpen" | "textDocument/didChange"
+                | "textDocument/didClose" | "textDocument/didSave" | "$/cancelRequest",
+            ),
+            _,
+        ) => LspDispatch::Drop,
+        (Some(method), Some(id)) => LspDispatch::Forward {
+            id,
+            method: method.to_string(),
+            params: msg.get("params").cloned().unwrap_or(serde_json::Value::Null),
+        },
+        // A response from the client, or a request-less frame — nothing to do.
+        _ => LspDispatch::Drop,
+    }
+}
+
+/// One browser LSP frame (bare JSON, vscode-ws-jsonrpc). Bridge lifecycle
+/// requests are answered locally; genuine queries are forwarded to the room's
+/// worker with URIs translated between the browser's root-relative `file:///…`
+/// and the worker's `file://<root>/…`, and the response routed back.
 fn handle_lsp_data(room: &RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let (Some(worker), Some(root)) = (&room.lsp, &room.lsp_root) else {
         return;
@@ -875,43 +934,42 @@ fn handle_lsp_data(room: &RoomState, conn_id: ObjectId, data: Vec<u8>) {
     let Ok(msg) = serde_json::from_slice::<serde_json::Value>(&data) else {
         return;
     };
-    // Only requests (id + method) are forwarded; client notifications are dropped.
-    let (Some(id), Some(method)) = (
-        msg.get("id").cloned(),
-        msg.get("method").and_then(|m| m.as_str()),
-    ) else {
-        return;
-    };
-    let method = method.to_string();
-    let worker_prefix = format!("file://{}/", root.display());
-    let params = rewrite_uris(
-        msg.get("params").cloned().unwrap_or(serde_json::Value::Null),
-        "file:///",
-        &worker_prefix,
-    );
     let Some(out) = room.lsp_conns.get(&conn_id).cloned() else {
         return;
     };
-    let client = worker.client();
-    tokio::task::spawn_local(async move {
-        let response = match client.request(&method, params).await {
-            Ok(result) => serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": rewrite_uris(result, &worker_prefix, "file:///"),
-            }),
-            Err(LspError::Rpc(error)) => serde_json::json!({
-                "jsonrpc": "2.0", "id": id, "error": error,
-            }),
-            Err(LspError::Closed) => serde_json::json!({
-                "jsonrpc": "2.0", "id": id,
-                "error": { "code": -32000, "message": "lsp worker unavailable" },
-            }),
-        };
-        if let Ok(bytes) = serde_json::to_vec(&response) {
-            let _ = out.send(bytes);
+
+    match classify_lsp_message(&msg) {
+        LspDispatch::Reply(response) => {
+            if let Ok(bytes) = serde_json::to_vec(&response) {
+                let _ = out.send(bytes);
+            }
         }
-    });
+        LspDispatch::Drop => {}
+        LspDispatch::Forward { id, method, params } => {
+            let worker_prefix = format!("file://{}/", root.display());
+            let params = rewrite_uris(params, "file:///", &worker_prefix);
+            let client = worker.client();
+            tokio::task::spawn_local(async move {
+                let response = match client.request(&method, params).await {
+                    Ok(result) => serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": rewrite_uris(result, &worker_prefix, "file:///"),
+                    }),
+                    Err(LspError::Rpc(error)) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id, "error": error,
+                    }),
+                    Err(LspError::Closed) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32000, "message": "lsp worker unavailable" },
+                    }),
+                };
+                if let Ok(bytes) = serde_json::to_vec(&response) {
+                    let _ = out.send(bytes);
+                }
+            });
+        }
+    }
 }
 
 /// A `publishDiagnostics` frame for a browser: the file's tree `path` becomes a
@@ -1830,6 +1888,32 @@ mod tests {
         // …and back is exactly the original.
         let back = rewrite_uris(worker, "file:///tmp/x/", "file:///");
         assert_eq!(back, browser);
+    }
+
+    #[test]
+    fn classify_lsp_message_handles_lifecycle_and_forwards_queries() {
+        // initialize is answered locally with capabilities, never forwarded.
+        let init = serde_json::json!({ "id": 1, "method": "initialize", "params": {} });
+        match classify_lsp_message(&init) {
+            LspDispatch::Reply(r) => {
+                assert!(r["result"]["capabilities"]["hoverProvider"].as_bool().unwrap());
+            }
+            _ => panic!("initialize must be answered locally"),
+        }
+        // The client's document sync is dropped (the room owns it).
+        assert!(matches!(
+            classify_lsp_message(&serde_json::json!({ "method": "textDocument/didChange" })),
+            LspDispatch::Drop
+        ));
+        // A genuine query is forwarded.
+        let hover = serde_json::json!({ "id": 7, "method": "textDocument/hover", "params": { "x": 1 } });
+        match classify_lsp_message(&hover) {
+            LspDispatch::Forward { id, method, .. } => {
+                assert_eq!(id, serde_json::json!(7));
+                assert_eq!(method, "textDocument/hover");
+            }
+            _ => panic!("a query must be forwarded"),
+        }
     }
 
     #[test]
