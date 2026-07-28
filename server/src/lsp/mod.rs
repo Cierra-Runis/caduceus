@@ -60,10 +60,15 @@ type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Value, Value>>>>>;
 /// A live LSP connection. Cheap to clone-by-`Arc` intent: one writer task owns
 /// the output half, one reader task owns the input half, and requests correlate
 /// through a shared pending map.
+///
+/// Cheaply cloneable — all state is shared (`Arc`/channel), so every clone talks
+/// to the same worker. This lets both the room manager (mirroring edits) and the
+/// per-connection query path hold a handle to one room's worker.
+#[derive(Clone)]
 pub struct LspClient {
     outgoing: mpsc::UnboundedSender<Vec<u8>>,
     pending: Pending,
-    next_id: AtomicI64,
+    next_id: Arc<AtomicI64>,
 }
 
 impl LspClient {
@@ -116,7 +121,7 @@ impl LspClient {
             LspClient {
                 outgoing: outgoing_tx,
                 pending,
-                next_id: AtomicI64::new(1),
+                next_id: Arc::new(AtomicI64::new(1)),
             },
             notify_rx,
         )

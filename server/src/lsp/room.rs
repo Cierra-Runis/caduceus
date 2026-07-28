@@ -7,12 +7,13 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
-use super::{LspError, Notification, Worker, file_uri};
+use super::{LspClient, LspError, Notification, Worker, file_uri};
 
 /// A diagnostics update for one file, fanned out to every room client. `path` is
 /// the project-relative tree path (not a `file://` URI); `diagnostics` is the
@@ -30,6 +31,8 @@ pub struct RoomWorker {
     worker: Worker,
     root: PathBuf,
     /// Per-file `didChange` version counter (LSP requires monotonic versions).
+    /// A std mutex (not tokio's) so mirroring an edit is a synchronous call from
+    /// the single-threaded room manager — no `.await` in its hot loop.
     versions: Mutex<HashMap<String, i64>>,
     /// The most recent diagnostics per file, so a client connecting mid-session
     /// sees existing problems without waiting for the next recompile.
@@ -38,7 +41,7 @@ pub struct RoomWorker {
     pump: JoinHandle<()>,
 }
 
-type Latest = std::sync::Arc<Mutex<HashMap<String, Value>>>;
+type Latest = Arc<Mutex<HashMap<String, Value>>>;
 
 impl RoomWorker {
     /// Spawn a worker for a project and mirror its files. `files` is
@@ -72,7 +75,7 @@ impl RoomWorker {
         }
 
         let (diagnostics_tx, _) = broadcast::channel(256);
-        let latest: Latest = std::sync::Arc::new(Mutex::new(HashMap::new()));
+        let latest: Latest = Arc::new(Mutex::new(HashMap::new()));
         let pump = spawn_pump(notes, root.clone(), diagnostics_tx.clone(), latest.clone());
 
         Ok(RoomWorker {
@@ -92,10 +95,10 @@ impl RoomWorker {
     }
 
     /// The current diagnostics per file, for priming a just-connected client.
-    pub async fn latest(&self) -> Vec<FileDiagnostics> {
+    pub fn latest(&self) -> Vec<FileDiagnostics> {
         self.latest
             .lock()
-            .await
+            .unwrap()
             .iter()
             .map(|(path, diagnostics)| FileDiagnostics {
                 path: path.clone(),
@@ -105,10 +108,11 @@ impl RoomWorker {
     }
 
     /// Mirror a live edit: bump the file's version and push its new full text.
-    /// A file not opened at `start` is opened first.
-    pub async fn did_change(&self, path: &str, text: &str) {
+    /// A file not opened at `start` is opened first. Synchronous so the room
+    /// manager can call it inline as CRDT text updates arrive.
+    pub fn did_change(&self, path: &str, text: &str) {
         let uri = file_uri(&self.root, path);
-        let mut versions = self.versions.lock().await;
+        let mut versions = self.versions.lock().unwrap();
         match versions.get_mut(path) {
             Some(version) => {
                 *version += 1;
@@ -119,6 +123,12 @@ impl RoomWorker {
                 versions.insert(path.to_string(), 1);
             }
         }
+    }
+
+    /// A cloneable handle to the worker's LSP client, for forwarding browser
+    /// queries off the room-manager thread (the client is `Send + Clone`).
+    pub fn client(&self) -> LspClient {
+        self.worker.client.clone()
     }
 
     /// Forward a browser LSP query (completion, hover, …) to the worker.
@@ -154,7 +164,7 @@ fn spawn_pump(
                 continue; // a uri outside the project (e.g. a package) — ignore
             };
             let diagnostics = note.params["diagnostics"].clone();
-            latest.lock().await.insert(path.clone(), diagnostics.clone());
+            latest.lock().unwrap().insert(path.clone(), diagnostics.clone());
             // `send` errors only when there are no subscribers; that's fine, the
             // latest cache still primes the next one.
             let _ = tx.send(FileDiagnostics { path, diagnostics });
@@ -229,7 +239,7 @@ mod tests {
         assert!(broken.is_some_and(|d| !d.is_empty()), "expected an error");
 
         // Fix the file; the worker re-publishes an empty (cleared) list.
-        rw.did_change("main.typ", "#let a = 1\n#a\n").await;
+        rw.did_change("main.typ", "#let a = 1\n#a\n");
         let cleared = await_main_diag(&mut sub, Duration::from_secs(20)).await;
         assert_eq!(cleared.as_deref(), Some(&[][..]), "expected diagnostics cleared");
 
